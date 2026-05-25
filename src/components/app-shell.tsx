@@ -14,6 +14,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setSidebarOpen(false)
   }, [pathname])
 
+  const isLogin = pathname === "/login"
+
+  if (isLogin) {
+    return <>{children}</>
+  }
+
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
