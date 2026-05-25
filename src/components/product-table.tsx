@@ -118,7 +118,7 @@ export function ProductTable() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [loadingNames, setLoadingNames] = useState(false)
-  const [namesProgress, setNamesProgress] = useState({ current: 0, total: 0 })
+  const [, setNamesProgress] = useState({ current: 0, total: 0 })
   const [names, setNames] = useState<Record<string, { name: string; brand?: string }>>({})
   const [refreshing, setRefreshing] = useState(false)
   const [lastSync, setLastSync] = useState<string | null>(null)

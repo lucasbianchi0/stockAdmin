@@ -6,7 +6,7 @@ const MEMORY_TTL_MS = 5 * 60 * 1000
 export type NameEntry = { name: string; brand?: string }
 
 export let enrichedCache: { products: Product[]; builtAt: number } | null = null
-export let buildState = {
+export const buildState = {
   running: false,
   current: 0,
   total: 0,
