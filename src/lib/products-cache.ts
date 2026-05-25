@@ -37,15 +37,29 @@ export async function getProducts(): Promise<Product[]> {
     return enrichedCache.products
   }
 
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .order("code")
+  const PAGE = 1000
+  let all: Record<string, unknown>[] = []
+  let from = 0
 
-  if (error) {
-    console.error("[products-cache] supabase error:", error.message)
-    return enrichedCache?.products ?? []
+  while (true) {
+    const { data: page, error } = await supabase
+      .from("products")
+      .select("*")
+      .order("code")
+      .range(from, from + PAGE - 1)
+
+    if (error) {
+      console.error("[products-cache] supabase error:", error.message)
+      return enrichedCache?.products ?? []
+    }
+
+    if (!page || page.length === 0) break
+    all = all.concat(page)
+    if (page.length < PAGE) break
+    from += PAGE
   }
+
+  const data = all
 
   if (!data || data.length === 0) {
     triggerSync()
