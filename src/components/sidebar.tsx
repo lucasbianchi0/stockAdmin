@@ -3,7 +3,9 @@
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutGrid, ShoppingCart, Users, BarChart3, Settings } from "lucide-react"
+import { LayoutGrid, ShoppingCart, Users, BarChart3, Settings, LogOut } from "lucide-react"
+import { createSupabaseBrowser } from "@/lib/supabase-browser"
+import { useRouter } from "next/navigation"
 
 const navigation = [
   { name: "Inventario", href: "/", icon: LayoutGrid, available: true },
@@ -19,6 +21,14 @@ interface SidebarProps {
 
 export function Sidebar({ mobile }: SidebarProps = {}) {
   const pathname = usePathname()
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    const supabase = createSupabaseBrowser()
+    await supabase.auth.signOut()
+    router.push("/login")
+    router.refresh()
+  }
 
   const content = (
     <>
@@ -82,6 +92,13 @@ export function Sidebar({ mobile }: SidebarProps = {}) {
       <div className="px-4 py-5 mt-auto border-t border-white/[0.07]">
         <p className="text-[11px] font-semibold text-slate-500 tracking-wide">BACKOFFICE</p>
         <p className="text-[11px] text-slate-600 mt-0.5">Accedra IT Solutions</p>
+        <button
+          onClick={handleLogout}
+          className="mt-4 flex items-center gap-2 text-xs text-slate-500 hover:text-slate-300 transition-colors w-full"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+          Cerrar sesión
+        </button>
       </div>
     </>
   )
