@@ -2,13 +2,13 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import { Sidebar } from "@/components/sidebar"
+import { AppShell } from "@/components/app-shell"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "E-commerce Admin",
-  description: "Admin panel for e-commerce product management",
+  title: "Accedra · Backoffice",
+  description: "Sistema de gestión de inventario y precios — Accedra IT Solutions",
 }
 
 export default function RootLayout({
@@ -18,11 +18,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body className={inter.className}>
-        <div className="flex h-screen bg-background">
-          <Sidebar />
-          <div className="flex-1 overflow-auto">{children}</div>
-        </div>
+      <body className={inter.className} suppressHydrationWarning>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   )
