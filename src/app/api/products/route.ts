@@ -7,6 +7,7 @@ export async function GET() {
       products,
       enriched: true,
       syncing: buildState.running,
+      lastSync: buildState.lastSync,
     })
   } catch (err) {
     console.error("[/api/products]", err)

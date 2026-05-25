@@ -53,7 +53,11 @@ async function main() {
   }
 
   const now = new Date().toISOString()
-  const rows = enriched.map((p) => ({
+  // deduplicate by code — the API occasionally returns duplicate entries
+  const unique = [...new Map(enriched.map((p) => [p.code, p])).values()]
+  console.log(`[sync] ${enriched.length} enriched → ${unique.length} unique`)
+
+  const rows = unique.map((p) => ({
     code: p.code,
     sku: p.sku,
     stock: p.stock,

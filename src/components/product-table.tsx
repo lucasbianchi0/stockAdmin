@@ -91,6 +91,18 @@ function SortButton({
   )
 }
 
+function formatLastSync(iso: string) {
+  const date = new Date(iso)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffHs = diffMs / (1000 * 60 * 60)
+  const time = date.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })
+
+  if (diffHs < 24) return `hoy ${time}`
+  if (diffHs < 48) return `ayer ${time}`
+  return date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }) + ` ${time}`
+}
+
 function formatPrice(price: number, currency: string) {
   if (!price) return "-"
   return `${currency} ${price.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -104,10 +116,12 @@ function formatPercent(val: number) {
 export function ProductTable() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
   const [loadingNames, setLoadingNames] = useState(false)
   const [namesProgress, setNamesProgress] = useState({ current: 0, total: 0 })
   const [names, setNames] = useState<Record<string, { name: string; brand?: string }>>({})
   const [refreshing, setRefreshing] = useState(false)
+  const [lastSync, setLastSync] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [filterStock, setFilterStock] = useState(false)
@@ -143,10 +157,21 @@ export function ProductTable() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
         setProducts(data.products ?? [])
+        if (data.lastSync) setLastSync(data.lastSync)
 
-        if (!data.enriched) {
-          setLoadingNames(true)
-          startPolling(pollRef)
+        if (data.syncing && (data.products ?? []).length === 0) {
+          setSyncing(true)
+          pollRef.current = setInterval(async () => {
+            try {
+              const r = await fetch("/api/products")
+              const d = await r.json()
+              if ((d.products ?? []).length > 0) {
+                setProducts(d.products)
+                setSyncing(false)
+                clearInterval(pollRef.current!)
+              }
+            } catch { /* keep polling */ }
+          }, 5000)
         }
       } catch (err) {
         setError("No se pudieron cargar los productos. Intentá de nuevo.")
@@ -284,6 +309,16 @@ export function ProductTable() {
     )
   }
 
+  if (syncing) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 gap-4">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="font-semibold text-foreground">Sincronizando productos...</p>
+        <p className="text-sm text-muted-foreground">La primera carga puede tardar unos minutos. La página se actualizará sola.</p>
+      </div>
+    )
+  }
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-3">
@@ -364,19 +399,15 @@ export function ProductTable() {
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            {loadingNames ? (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                {namesProgress.total > 0
-                  ? `Nombres ${namesProgress.current}/${namesProgress.total}`
-                  : "Cargando nombres…"}
+            {lastSync && (
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                Sync: <span className="font-medium text-foreground">{formatLastSync(lastSync)}</span>
               </span>
-            ) : (
-              <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing} className="h-8 gap-1.5 text-xs">
-                <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
-                Actualizar
-              </Button>
             )}
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing} className="h-8 gap-1.5 text-xs">
+              <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+              Actualizar
+            </Button>
 
             <div className="h-4 w-px bg-border" />
 
