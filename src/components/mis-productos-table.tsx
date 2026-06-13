@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import {
   Table,
@@ -134,7 +134,6 @@ export function MisProductosTable() {
     value: string
   } | null>(null)
   const [deletingCode, setDeletingCode] = useState<string | null>(null)
-  const editInputRef = useRef<HTMLInputElement>(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -166,13 +165,6 @@ export function MisProductosTable() {
   useEffect(() => {
     fetchAll()
   }, [fetchAll])
-
-  useEffect(() => {
-    if (editingCell && editInputRef.current) {
-      editInputRef.current.focus()
-      editInputRef.current.select()
-    }
-  }, [editingCell])
 
   const saveMargen = useCallback(async () => {
     const val = parseFloat(margenInput)
@@ -434,7 +426,7 @@ export function MisProductosTable() {
                       <TableCell className="py-3 max-w-[220px]">
                         {isEditingPub ? (
                           <Input
-                            ref={editInputRef}
+                            autoFocus
                             value={editingCell.value}
                             onChange={(e) =>
                               setEditingCell((c) =>
@@ -523,7 +515,7 @@ export function MisProductosTable() {
                       <TableCell className="py-3">
                         {isEditingPrice ? (
                           <Input
-                            ref={editInputRef}
+                            autoFocus
                             value={editingCell.value}
                             onChange={(e) =>
                               setEditingCell((c) =>
@@ -576,7 +568,7 @@ export function MisProductosTable() {
                       <TableCell className="py-3 hidden lg:table-cell max-w-[170px]">
                         {isEditingLink ? (
                           <Input
-                            ref={editInputRef}
+                            autoFocus
                             value={editingCell.value}
                             onChange={(e) =>
                               setEditingCell((c) =>
