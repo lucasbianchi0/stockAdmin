@@ -3,12 +3,13 @@
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutGrid, ShoppingCart, Users, BarChart3, Settings, LogOut } from "lucide-react"
+import { LayoutGrid, ShoppingCart, Users, BarChart3, Settings, LogOut, Star } from "lucide-react"
 import { createSupabaseBrowser } from "@/lib/supabase-browser"
 import { useRouter } from "next/navigation"
 
 const navigation = [
   { name: "Inventario", href: "/", icon: LayoutGrid, available: true },
+  { name: "Nuestros Productos", href: "/mis-productos", icon: Star, available: true },
   { name: "Pedidos", href: "/orders", icon: ShoppingCart, available: false },
   { name: "Clientes", href: "/customers", icon: Users, available: false },
   { name: "Reportes", href: "/reports", icon: BarChart3, available: false },

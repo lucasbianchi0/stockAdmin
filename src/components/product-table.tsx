@@ -30,6 +30,7 @@ import {
   Package,
   CheckCircle2,
   XCircle,
+  Star,
 } from "lucide-react"
 import type { Product } from "@/types/product"
 
@@ -129,6 +130,10 @@ export function ProductTable() {
   const [pageSize, setPageSize] = useState(50)
   const [sortField, setSortField] = useState<SortField>("stock")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
+  const [myCodes, setMyCodes] = useState<Set<string>>(new Set())
+  const [pendingCodes, setPendingCodes] = useState<Set<string>>(new Set())
+  const [exporting, setExporting] = useState(false)
+  const [exportedCount, setExportedCount] = useState(0)
 
   const startPolling = useCallback((intervalRef: { current: ReturnType<typeof setInterval> | null }) => {
     intervalRef.current = setInterval(async () => {
@@ -184,6 +189,44 @@ export function ProductTable() {
     fetchProducts()
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [startPolling])
+
+  useEffect(() => {
+    fetch("/api/my-products")
+      .then((r) => r.json())
+      .then((d) => setMyCodes(new Set<string>(d.codes ?? [])))
+      .catch(() => {})
+  }, [])
+
+  const handleCheckbox = useCallback((code: string) => {
+    if (myCodes.has(code)) return
+    setPendingCodes((prev) => {
+      const next = new Set(prev)
+      if (next.has(code)) next.delete(code)
+      else next.add(code)
+      return next
+    })
+  }, [myCodes])
+
+  const handleExport = useCallback(async () => {
+    if (pendingCodes.size === 0) return
+    setExporting(true)
+    try {
+      const codes = [...pendingCodes]
+      const res = await fetch("/api/my-products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codes }),
+      })
+      if (res.ok) {
+        setMyCodes((prev) => new Set([...prev, ...codes]))
+        setExportedCount(codes.length)
+        setPendingCodes(new Set())
+        setTimeout(() => setExportedCount(0), 3000)
+      }
+    } finally {
+      setExporting(false)
+    }
+  }, [pendingCodes])
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -330,6 +373,7 @@ export function ProductTable() {
   }
 
   return (
+    <>
     <div className="space-y-5">
 
       {/* Stat cards */}
@@ -450,6 +494,27 @@ export function ProductTable() {
           <Table>
             <TableHeader>
               <TableRow className="bg-slate-50/80 hover:bg-slate-50/80 border-b">
+                <TableHead className="w-10 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border-muted-foreground/40 accent-primary cursor-pointer"
+                    checked={
+                      paginated.filter((p) => !myCodes.has(p.code)).length > 0 &&
+                      paginated.filter((p) => !myCodes.has(p.code)).every((p) => pendingCodes.has(p.code))
+                    }
+                    onChange={() => {
+                      const available = paginated.filter((p) => !myCodes.has(p.code)).map((p) => p.code)
+                      const allSelected = available.every((c) => pendingCodes.has(c))
+                      setPendingCodes((prev) => {
+                        const next = new Set(prev)
+                        if (allSelected) available.forEach((c) => next.delete(c))
+                        else available.forEach((c) => next.add(c))
+                        return next
+                      })
+                    }}
+                    title="Seleccionar página"
+                  />
+                </TableHead>
                 <TableHead className="min-w-[260px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
                   <SortButton field="name" label="Producto" {...sortProps} />
                 </TableHead>
@@ -479,7 +544,17 @@ export function ProductTable() {
             <TableBody>
               {paginated.length > 0 ? (
                 paginated.map((product) => (
-                  <TableRow key={product.code} className="hover:bg-primary/[0.03] transition-colors border-b border-border/60">
+                  <TableRow key={product.code} className={`hover:bg-primary/[0.03] transition-colors border-b border-border/60 ${myCodes.has(product.code) ? "bg-primary/[0.02]" : ""}`}>
+                    <TableCell className="py-3 text-center">
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 rounded border-muted-foreground/40 accent-primary cursor-pointer disabled:cursor-default"
+                        checked={myCodes.has(product.code) || pendingCodes.has(product.code)}
+                        onChange={() => handleCheckbox(product.code)}
+                        disabled={myCodes.has(product.code)}
+                        title={myCodes.has(product.code) ? "Ya está en Nuestros Productos" : undefined}
+                      />
+                    </TableCell>
                     <TableCell className="max-w-[260px] py-3">
                       {(() => {
                         const entry = names[product.code] ?? (product.name ? { name: product.name, brand: product.brand } : null)
@@ -512,18 +587,23 @@ export function ProductTable() {
                       {formatPercent(product.ii)}
                     </TableCell>
                     <TableCell className="py-3 text-right">
-                      <Link href={`/product/${product.code}`}>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-primary hover:text-primary-foreground transition-colors">
-                          <Eye className="h-3.5 w-3.5" />
-                          <span className="sr-only">Ver detalle</span>
-                        </Button>
-                      </Link>
+                      <div className="flex items-center justify-end gap-1">
+                        {myCodes.has(product.code) && (
+                          <Star className="h-3 w-3 text-primary fill-primary shrink-0" />
+                        )}
+                        <Link href={`/product/${product.code}`}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-primary hover:text-primary-foreground transition-colors">
+                            <Eye className="h-3.5 w-3.5" />
+                            <span className="sr-only">Ver detalle</span>
+                          </Button>
+                        </Link>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-20 text-center">
+                  <TableCell colSpan={9} className="py-20 text-center">
                     <div className="flex flex-col items-center gap-2.5 text-muted-foreground">
                       <Search className="h-8 w-8 opacity-20" />
                       <p className="font-medium text-sm">Sin resultados</p>
@@ -568,5 +648,42 @@ export function ProductTable() {
         )}
       </div>
     </div>
+
+      {/* Floating export bar */}
+      {pendingCodes.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-foreground text-background rounded-full shadow-xl px-5 py-2.5 border border-background/10">
+          <span className="text-sm font-medium whitespace-nowrap">
+            {pendingCodes.size} seleccionado{pendingCodes.size !== 1 ? "s" : ""}
+          </span>
+          <div className="w-px h-4 bg-background/20" />
+          <Button
+            size="sm"
+            className="h-8 rounded-full bg-primary hover:bg-primary/90 text-white text-xs font-semibold gap-1.5"
+            onClick={handleExport}
+            disabled={exporting}
+          >
+            {exporting && <Loader2 className="h-3 w-3 animate-spin" />}
+            <Star className="h-3 w-3" />
+            Exportar a Nuestros Productos
+          </Button>
+          <button
+            className="text-background/50 hover:text-background transition-colors text-sm leading-none"
+            onClick={() => setPendingCodes(new Set())}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Export success toast */}
+      {exportedCount > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-emerald-600 text-white rounded-full shadow-xl px-5 py-2.5">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span className="text-sm font-medium">
+            {exportedCount} producto{exportedCount !== 1 ? "s" : ""} agregado{exportedCount !== 1 ? "s" : ""} a Nuestros Productos
+          </span>
+        </div>
+      )}
+    </>
   )
 }
