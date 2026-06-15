@@ -433,7 +433,7 @@ export function MisProductosTable() {
                                 c ? { ...c, value: e.target.value } : null
                               )
                             }
-                            onBlur={commitEdit}
+                            onBlur={() => setTimeout(commitEdit, 150)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") commitEdit()
                               if (e.key === "Escape") setEditingCell(null)
@@ -522,7 +522,7 @@ export function MisProductosTable() {
                                 c ? { ...c, value: e.target.value } : null
                               )
                             }
-                            onBlur={commitEdit}
+                            onBlur={() => setTimeout(commitEdit, 150)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") commitEdit()
                               if (e.key === "Escape") setEditingCell(null)
@@ -575,7 +575,7 @@ export function MisProductosTable() {
                                 c ? { ...c, value: e.target.value } : null
                               )
                             }
-                            onBlur={commitEdit}
+                            onBlur={() => setTimeout(commitEdit, 150)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") commitEdit()
                               if (e.key === "Escape") setEditingCell(null)
