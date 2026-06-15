@@ -43,7 +43,7 @@ type EditableField = "publication_name" | "published_price" | "publication_link"
 type SemaforoColor = "verde" | "amarillo" | "rojo"
 
 function calcPrecioMinimo(costo: number, dolar: number, margen: number): number {
-  return (((costo * dolar) * 1.155) + 8000) * margen
+  return ((costo * dolar) * 1.155 * margen) + 8000
 }
 
 function getSemaforo(
@@ -323,7 +323,7 @@ export function MisProductosTable() {
               {products.length === 1 ? "producto" : "productos"}
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
-              Precio mínimo = (( Costo × T/C BNA ) × 1,155 + $8.000) × Margen
+              Precio mínimo = (( Costo × T/C BNA ) × 1,155 × Margen) + $8.000
             </p>
           </div>
           <Button
