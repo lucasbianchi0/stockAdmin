@@ -13,6 +13,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   Eye,
   Trash2,
   ExternalLink,
@@ -33,6 +39,7 @@ interface MyProduct {
   price: number
   currency: string
   sku: string
+  iva: number
   publication_name: string | null
   published_price: number | null
   publication_link: string | null
@@ -42,8 +49,18 @@ interface MyProduct {
 type EditableField = "publication_name" | "published_price" | "publication_link"
 type SemaforoColor = "verde" | "amarillo" | "rojo"
 
-function calcPrecioMinimo(costo: number, dolar: number, margen: number): number {
-  return ((costo * dolar) * 1.155 * margen) + 8000
+function calcPrecioMinimo(
+  costo: number,
+  dolar: number,
+  margen: number,
+  iva: number
+): number {
+  return ((costo * dolar) * 1.155 * margen * (1 + iva)) + 8000
+}
+
+function formatIva(iva: number): string {
+  if (!iva) return "—"
+  return `${(iva * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`
 }
 
 function getSemaforo(
@@ -115,6 +132,58 @@ function SemaforoBadge({ color, detail }: { color: SemaforoColor; detail: string
         {labels[color]}
       </span>
       <span className="text-[11px] text-muted-foreground">{detail}</span>
+    </div>
+  )
+}
+
+function fmtNum(value: number, decimals = 0): string {
+  return value.toLocaleString("es-AR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })
+}
+
+function PrecioMinimoTooltip({
+  costo,
+  currency,
+  dolar,
+  margen,
+  iva,
+  minPrice,
+}: {
+  costo: number
+  currency: string
+  dolar: number
+  margen: number
+  iva: number
+  minPrice: number
+}) {
+  const ivaFactor = 1 + iva
+  return (
+    <div className="space-y-2 font-mono">
+      <p className="font-sans text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+        Cálculo del precio mínimo
+      </p>
+      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px]">
+        <span className="text-slate-400">Costo</span>
+        <span className="text-right">{currency} {fmtNum(costo, 2)}</span>
+        <span className="text-slate-400">T/C BNA</span>
+        <span className="text-right">$ {fmtNum(dolar, 2)}</span>
+        <span className="text-slate-400">Coef. fijo</span>
+        <span className="text-right">1,155</span>
+        <span className="text-slate-400">Margen</span>
+        <span className="text-right">{fmtNum(margen, 2)}</span>
+        <span className="text-slate-400">IVA</span>
+        <span className="text-right">{formatIva(iva)} (×{fmtNum(ivaFactor, 3)})</span>
+        <span className="text-slate-400">Envío</span>
+        <span className="text-right">$ 8.000</span>
+      </div>
+      <div className="border-t border-slate-700 pt-1.5 text-[11px] leading-relaxed">
+        <p className="text-slate-300">
+          (( {fmtNum(costo, 2)} × {fmtNum(dolar, 2)} ) × 1,155 × {fmtNum(margen, 2)} × {fmtNum(ivaFactor, 3)}) + 8.000
+        </p>
+        <p className="mt-1 font-semibold text-emerald-300">= {formatARS(minPrice)}</p>
+      </div>
     </div>
   )
 }
@@ -323,7 +392,7 @@ export function MisProductosTable() {
               {products.length === 1 ? "producto" : "productos"}
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
-              Precio mínimo = (( Costo × T/C BNA ) × 1,155 × Margen) + $8.000
+              Precio mínimo = (( Costo × T/C BNA ) × 1,155 × Margen × (1 + IVA)) + $8.000
             </p>
           </div>
           <Button
@@ -366,6 +435,9 @@ export function MisProductosTable() {
                   <TableHead className="w-[140px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
                     Costo
                   </TableHead>
+                  <TableHead className="w-[80px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
+                    IVA
+                  </TableHead>
                   <TableHead className="w-[140px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3 hidden md:table-cell">
                     SKU
                   </TableHead>
@@ -390,7 +462,7 @@ export function MisProductosTable() {
                 {products.map((product, idx) => {
                   const minPrice =
                     dolarNum > 0
-                      ? calcPrecioMinimo(product.price, dolarNum, margenNum)
+                      ? calcPrecioMinimo(product.price, dolarNum, margenNum, product.iva)
                       : null
                   const semaforo =
                     minPrice !== null
@@ -491,6 +563,13 @@ export function MisProductosTable() {
                         </span>
                       </TableCell>
 
+                      {/* IVA */}
+                      <TableCell className="py-3">
+                        <span className="font-mono text-sm font-medium text-muted-foreground">
+                          {formatIva(product.iva)}
+                        </span>
+                      </TableCell>
+
                       {/* SKU */}
                       <TableCell className="py-3 hidden md:table-cell">
                         <span className="font-mono text-xs text-muted-foreground">
@@ -501,9 +580,25 @@ export function MisProductosTable() {
                       {/* Precio Mínimo */}
                       <TableCell className="py-3">
                         {minPrice !== null ? (
-                          <span className="text-sm font-semibold text-foreground">
-                            {formatARS(minPrice)}
-                          </span>
+                          <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-sm font-semibold text-foreground cursor-help border-b border-dashed border-muted-foreground/40">
+                                  {formatARS(minPrice)}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" align="start" className="max-w-none">
+                                <PrecioMinimoTooltip
+                                  costo={product.price}
+                                  currency={product.currency}
+                                  dolar={dolarNum}
+                                  margen={margenNum}
+                                  iva={product.iva}
+                                  minPrice={minPrice}
+                                />
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         ) : (
                           <span className="text-xs text-muted-foreground">
                             Sin cotización

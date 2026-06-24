@@ -14,7 +14,7 @@ export async function GET() {
 
     const { data: prodRows, error: prodErr } = await supabase
       .from("products")
-      .select("code, name, brand, stock, price, currency, sku")
+      .select("code, name, brand, stock, price, currency, sku, iva")
       .in("code", codes)
 
     if (prodErr) return Response.json({ error: prodErr.message }, { status: 500 })
@@ -33,6 +33,7 @@ export async function GET() {
       price: 0,
       currency: "USD",
       sku: "",
+      iva: 0,
       ...(prodMap.get(r.code) ?? {}),
     }))
 
