@@ -7,6 +7,9 @@
 @theme {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* Accedra accent — used by the Content Studio (brand-green retains its
+     legacy utility name but maps to Accedra's corporate blue). */
+  --color-brand-green: #2b6ac8;
 }
 
 :root {
