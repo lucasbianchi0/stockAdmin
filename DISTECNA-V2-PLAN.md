@@ -262,16 +262,26 @@ confundirlos con compras reales.
 Esta es la migración de fondo, y es **lo que hace que los pedidos funcionen con todo el
 catálogo** en lugar de solo con los productos presentes en QA.
 
-**Archivo a reescribir:** `supabase/functions/sync-products/index.ts`
+**Archivos a reescribir — hay DOS implementaciones del sync, casi idénticas:**
 
-Hoy hace 3.434 llamadas a V1 (una de listado + una de detalle por producto) con
+| Archivo | Cuándo corre |
+|---|---|
+| `scripts/sync-products.mjs` | **El que realmente sincroniza.** Cron diario de GitHub Actions (`.github/workflows/sync-products.yml`, 3am UTC) |
+| `supabase/functions/sync-products/index.ts` | Edge function, on-demand: solo si la tabla está vacía o al tocar "Actualizar" |
+
+Las dos usan el mismo `BATCH_SIZE = 35` y `UPSERT_CHUNK = 500`. **Hay que migrar las dos, o
+mejor, unificarlas en una sola** para no mantener lógica duplicada.
+
+Hoy hacen 3.434 llamadas a V1 (una de listado + una de detalle por producto) con
 `unsafeIgnoreTls` porque el certificado de V1 es autofirmado.
+
+**Duración medida:** ~29 a 39 minutos por corrida completa.
 
 ### Pasos
 
-1. **Login JWT una sola vez, con renovación cada 55 minutos.** Acá la renovación **no es
-   opcional**: el sync de 3.433 productos tarda más de una hora, así que el token vence a
-   mitad de camino sí o sí.
+1. **Login JWT, con renovación cada 55 minutos.** El sync tarda ~30 min, así que el token de
+   1 hora normalmente **no** alcanza a vencer — pero conviene igual, porque las corridas más
+   largas que vi llegaron a 39 minutos y cualquier degradación de la API acerca el margen.
 
 2. **Listado paginado:** `GET /v2/Product?search=&limit=500&offset=N`. Son 7 páginas en lugar
    de una sola llamada. Ya probado contra QA: devuelve los 3.078 correctamente.
@@ -392,7 +402,9 @@ sin decir cuál es el problema.
 | `src/components/orders-table.tsx` | Historial en `/orders` |
 | `src/components/mis-productos-table.tsx` | Selección, cantidad y barra de pedido |
 | `supabase/migrations/20260729_orders.sql` | Tablas `orders`, `order_items`, columna `products.type` |
-| `supabase/functions/sync-products/index.ts` | Sync del catálogo — **todavía en V1** |
+| `scripts/sync-products.mjs` | Sync del catálogo que corre por cron — **todavía en V1** |
+| `.github/workflows/sync-products.yml` | Cron diario, 3am UTC, que ejecuta el script de arriba |
+| `supabase/functions/sync-products/index.ts` | Segunda copia del sync, on-demand — **todavía en V1** |
 
 ### Producto de prueba de QA
 
