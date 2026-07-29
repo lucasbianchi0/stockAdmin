@@ -11,7 +11,7 @@ const navigation = [
   { name: "Inventario", href: "/", icon: LayoutGrid, available: true },
   { name: "Nuestros Productos", href: "/mis-productos", icon: Star, available: true },
   { name: "Creación de contenido", href: "/contenido", icon: Sparkles, available: true },
-  { name: "Pedidos", href: "/orders", icon: ShoppingCart, available: false },
+  { name: "Pedidos", href: "/orders", icon: ShoppingCart, available: true },
   { name: "Clientes", href: "/customers", icon: Users, available: false },
   { name: "Reportes", href: "/reports", icon: BarChart3, available: false },
   { name: "Configuración", href: "/settings", icon: Settings, available: false },

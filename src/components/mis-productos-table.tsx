@@ -20,6 +20,12 @@ import {
 } from "@/components/ui/tooltip"
 import { formatIva, normalizeIva } from "@/lib/iva"
 import {
+  OrderDialog,
+  type DeliveryAddress,
+  type OrderDraftItem,
+  type PaymentTerm,
+} from "@/components/order-dialog"
+import {
   Eye,
   Trash2,
   ExternalLink,
@@ -30,6 +36,8 @@ import {
   DollarSign,
   PackageOpen,
   Check,
+  ShoppingCart,
+  X,
 } from "lucide-react"
 
 interface MyProduct {
@@ -200,6 +208,17 @@ export function MisProductosTable() {
   } | null>(null)
   const [deletingCode, setDeletingCode] = useState<string | null>(null)
 
+  // Pedidos: cantidad por codigo seleccionado. Un codigo presente en el Map esta
+  // seleccionado; su valor es la cantidad a pedir.
+  const [selected, setSelected] = useState<Map<string, number>>(new Map())
+  const [showOrderDialog, setShowOrderDialog] = useState(false)
+  const [checkout, setCheckout] = useState<{
+    configured: boolean
+    environment: string | null
+    paymentTerm: PaymentTerm | null
+    addresses: DeliveryAddress[]
+  } | null>(null)
+
   const fetchAll = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -225,6 +244,41 @@ export function MisProductosTable() {
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  // El contexto de Distecna se carga aparte: si la API V2 no responde, la tabla
+  // tiene que seguir funcionando igual — solo se deshabilitan los pedidos.
+  useEffect(() => {
+    fetch("/api/distecna/checkout")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) return
+        setCheckout({
+          configured: Boolean(d.configured),
+          environment: d.environment ?? null,
+          paymentTerm: d.paymentTerm ?? null,
+          addresses: d.addresses ?? [],
+        })
+      })
+      .catch(() => {})
+  }, [])
+
+  const toggleSelect = useCallback((code: string) => {
+    setSelected((prev) => {
+      const next = new Map(prev)
+      if (next.has(code)) next.delete(code)
+      else next.set(code, 1)
+      return next
+    })
+  }, [])
+
+  const setQuantity = useCallback((code: string, qty: number) => {
+    setSelected((prev) => {
+      if (!prev.has(code)) return prev
+      const next = new Map(prev)
+      next.set(code, qty)
+      return next
+    })
   }, [])
 
   useEffect(() => {
@@ -286,6 +340,18 @@ export function MisProductosTable() {
 
   const margenNum = parseFloat(margen) || 1.3
   const dolarNum = dolar ?? 0
+
+  const orderItems: OrderDraftItem[] = products
+    .filter((p) => selected.has(p.code))
+    .map((p) => ({
+      code: p.code,
+      name: p.publication_name ?? p.name,
+      quantity: selected.get(p.code) ?? 1,
+      price: p.price ?? 0,
+      currency: p.currency,
+    }))
+  const orderUnits = orderItems.reduce((acc, i) => acc + i.quantity, 0)
+  const orderTotal = orderItems.reduce((acc, i) => acc + i.price * i.quantity, 0)
 
   if (loading) {
     return (
@@ -419,8 +485,31 @@ export function MisProductosTable() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50/80 hover:bg-slate-50/80 border-b">
+                  <TableHead className="w-10 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      aria-label="Seleccionar todos"
+                      className="h-3.5 w-3.5 rounded border-muted-foreground/40 accent-primary cursor-pointer align-middle"
+                      checked={selected.size > 0 && selected.size === products.length}
+                      ref={(el) => {
+                        if (el)
+                          el.indeterminate =
+                            selected.size > 0 && selected.size < products.length
+                      }}
+                      onChange={(e) =>
+                        setSelected(
+                          e.target.checked
+                            ? new Map(products.map((p) => [p.code, 1]))
+                            : new Map()
+                        )
+                      }
+                    />
+                  </TableHead>
                   <TableHead className="w-10 text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3 text-center">
                     N°
+                  </TableHead>
+                  <TableHead className="w-[110px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
+                    Cantidad
                   </TableHead>
                   <TableHead className="min-w-[220px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
                     Publicación
@@ -480,14 +569,53 @@ export function MisProductosTable() {
                     editingCell.field === "publication_link"
                   const isDeleting = deletingCode === product.code
 
+                  const isSelected = selected.has(product.code)
+                  const quantity = selected.get(product.code) ?? 1
+
                   return (
                     <TableRow
                       key={product.code}
-                      className="hover:bg-primary/[0.03] transition-colors border-b border-border/60"
+                      className={`transition-colors border-b border-border/60 ${
+                        isSelected ? "bg-primary/[0.06]" : "hover:bg-primary/[0.03]"
+                      }`}
                     >
+                      {/* Selección para pedido */}
+                      <TableCell className="py-3 text-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`Seleccionar ${product.code}`}
+                          className="h-3.5 w-3.5 rounded border-muted-foreground/40 accent-primary cursor-pointer align-middle"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(product.code)}
+                        />
+                      </TableCell>
+
                       {/* N° */}
                       <TableCell className="py-3 text-xs text-muted-foreground font-medium text-center">
                         {idx + 1}
+                      </TableCell>
+
+                      {/* Cantidad a pedir */}
+                      <TableCell className="py-3">
+                        <Input
+                          type="number"
+                          min="1"
+                          value={isSelected ? quantity : ""}
+                          disabled={!isSelected}
+                          onChange={(e) =>
+                            setQuantity(
+                              product.code,
+                              Math.max(1, parseInt(e.target.value, 10) || 1)
+                            )
+                          }
+                          placeholder="—"
+                          className="h-7 w-[70px] text-sm text-center tabular-nums disabled:opacity-40"
+                        />
+                        {isSelected && quantity > product.stock && (
+                          <p className="text-[10px] text-amber-600 mt-0.5 leading-tight">
+                            &gt; stock ({product.stock})
+                          </p>
+                        )}
                       </TableCell>
 
                       {/* Publicación */}
@@ -760,6 +888,71 @@ export function MisProductosTable() {
           </div>
         )}
       </div>
+
+      {/* Barra de pedido — aparece al seleccionar, fija abajo para que quede a mano
+          en mobile sin tener que volver arriba. */}
+      {selected.size > 0 && (
+        <>
+          <div className="h-24 sm:h-20" aria-hidden />
+          <div className="fixed bottom-0 left-0 right-0 z-40 border-t bg-card/95 backdrop-blur shadow-[0_-4px_16px_rgba(15,23,42,0.08)]">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <button
+                  onClick={() => setSelected(new Map())}
+                  className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+                  aria-label="Limpiar selección"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold leading-tight">
+                    {selected.size}{" "}
+                    {selected.size === 1 ? "producto" : "productos"} ·{" "}
+                    {orderUnits} {orderUnits === 1 ? "unidad" : "unidades"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
+                    Total estimado U$S{" "}
+                    {orderTotal.toLocaleString("es-AR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                    {checkout?.environment === "qa" && (
+                      <span className="ml-2 inline-flex items-center rounded px-1.5 py-0.5 bg-amber-100 text-amber-800 font-semibold text-[10px] uppercase tracking-wide">
+                        QA
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <Button
+                className="h-10 gap-2 w-full sm:w-auto shrink-0"
+                disabled={!checkout?.configured}
+                onClick={() => setShowOrderDialog(true)}
+              >
+                <ShoppingCart className="h-4 w-4" />
+                Generar pedido
+              </Button>
+            </div>
+            {!checkout?.configured && (
+              <p className="px-4 sm:px-6 pb-3 text-[11px] text-amber-700">
+                Distecna V2 no está configurado en este entorno, así que no se pueden
+                generar pedidos todavía.
+              </p>
+            )}
+          </div>
+        </>
+      )}
+
+      {showOrderDialog && (
+        <OrderDialog
+          items={orderItems}
+          paymentTerm={checkout?.paymentTerm ?? null}
+          addresses={checkout?.addresses ?? []}
+          environment={checkout?.environment ?? null}
+          onClose={() => setShowOrderDialog(false)}
+          onSuccess={() => setSelected(new Map())}
+        />
+      )}
     </div>
   )
 }
