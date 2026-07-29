@@ -18,6 +18,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { formatIva, normalizeIva } from "@/lib/iva"
 import {
   Eye,
   Trash2,
@@ -55,12 +56,7 @@ function calcPrecioMinimo(
   margen: number,
   iva: number
 ): number {
-  return ((costo * dolar) * 1.155 * margen * (1 + iva)) + 8000
-}
-
-function formatIva(iva: number): string {
-  if (!iva) return "—"
-  return `${(iva * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`
+  return ((costo * dolar) * 1.155 * margen * (1 + normalizeIva(iva))) + 8000
 }
 
 function getSemaforo(
@@ -158,7 +154,7 @@ function PrecioMinimoTooltip({
   iva: number
   minPrice: number
 }) {
-  const ivaFactor = 1 + iva
+  const ivaFactor = 1 + normalizeIva(iva)
   return (
     <div className="space-y-2 font-mono">
       <p className="font-sans text-[11px] font-semibold uppercase tracking-wide text-slate-300">

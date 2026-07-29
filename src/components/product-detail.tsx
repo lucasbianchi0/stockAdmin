@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import type { Product } from "@/types/product"
+import { formatIva } from "@/lib/iva"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AlertCircle, ChevronLeft, ChevronRight, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -197,8 +198,10 @@ export function ProductDetail({ code }: { code: string }) {
     )
   }
 
-  const ivaPercent = product.iva ? `${(product.iva * 100).toFixed(0)}%` : "—"
-  const iiPercent = product.ii ? `${(product.ii * 100).toFixed(0)}%` : "0%"
+  const ivaPercent = formatIva(product.iva)
+  const iiPercent = product.ii
+    ? `${(product.ii * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`
+    : "0%"
   const priceFormatted = product.price
     ? `${product.currency} ${product.price.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     : "—"

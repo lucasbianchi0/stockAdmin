@@ -33,6 +33,7 @@ import {
   Star,
 } from "lucide-react"
 import type { Product } from "@/types/product"
+import { formatIva } from "@/lib/iva"
 
 type SortField = "name" | "code" | "sku" | "stock" | "price" | "iva" | "ii"
 type SortDir = "asc" | "desc"
@@ -111,7 +112,7 @@ function formatPrice(price: number, currency: string) {
 
 function formatPercent(val: number) {
   if (val === undefined || val === null) return "-"
-  return `${(val * 100).toFixed(0)}%`
+  return `${(val * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`
 }
 
 export function ProductTable() {
@@ -581,7 +582,7 @@ export function ProductTable() {
                       {formatPrice(product.price, product.currency)}
                     </TableCell>
                     <TableCell className="py-3 text-sm text-muted-foreground hidden sm:table-cell">
-                      {formatPercent(product.iva)}
+                      {formatIva(product.iva, "-")}
                     </TableCell>
                     <TableCell className="py-3 text-sm text-muted-foreground hidden sm:table-cell">
                       {formatPercent(product.ii)}
