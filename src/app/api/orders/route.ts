@@ -150,7 +150,13 @@ export async function POST(req: Request) {
     } catch (err) {
       // Guardamos el intento fallido: sin endpoint de consulta, si no lo
       // registramos nosotros no queda rastro de que se intento pedir.
-      const message = err instanceof Error ? err.message : "Error desconocido"
+      let message = err instanceof Error ? err.message : "Error desconocido"
+      // Ante falta de stock Distecna responde 400 con un texto generico que no
+      // dice cual es el problema. Le agregamos la pista.
+      if (err instanceof DistecnaError && err.status === 400 && /^error al crear el pedido\.?$/i.test(message)) {
+        message =
+          "Distecna rechazó el pedido. Suele ser por falta de stock para las cantidades pedidas — revisá la disponibilidad de cada producto."
+      }
       await supabase.from("orders").insert({
         status: "error",
         payment_term_id: paymentTermId,
