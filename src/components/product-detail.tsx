@@ -5,35 +5,64 @@ import Image from "next/image"
 import type { Product } from "@/types/product"
 import { formatIva } from "@/lib/iva"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { AlertCircle, ChevronLeft, ChevronRight, Package } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states"
+import { ChevronLeft, ChevronRight, Package } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 function DetailRow({ label, value }: { label: string; value?: string | null }) {
   return (
-    <div className="flex items-center justify-between py-2.5 border-b last:border-0 gap-4">
-      <dt className="text-xs font-medium text-muted-foreground shrink-0">{label}</dt>
-      <dd className="text-sm font-medium text-right">{value || "—"}</dd>
+    <div className="flex items-center justify-between gap-4 border-b border-line-soft py-2.5 last:border-0">
+      <dt className="shrink-0 text-[11.5px] font-medium uppercase tracking-[0.04em] text-ink-muted">
+        {label}
+      </dt>
+      <dd
+        className={cn(
+          "text-right text-[13px] font-medium text-ink",
+          value && "font-mono"
+        )}
+      >
+        {value || <span className="font-sans text-ink-faint">—</span>}
+      </dd>
     </div>
   )
 }
 
 function StockBadge({ stock }: { stock: number }) {
-  if (stock <= 0)
-    return (
-      <span className="inline-flex items-center rounded-md bg-red-50 px-3 py-1 text-sm font-semibold text-red-700 ring-1 ring-inset ring-red-600/20">
-        Sin stock
-      </span>
-    )
+  if (stock <= 0) return <Badge tone="danger" size="lg">Sin stock</Badge>
   if (stock < 10)
-    return (
-      <span className="inline-flex items-center rounded-md bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20">
-        Stock bajo · {stock} und.
-      </span>
-    )
+    return <Badge tone="warning" size="lg">Stock bajo · {stock} und.</Badge>
+  return <Badge tone="success" size="lg">{stock} disponibles</Badge>
+}
+
+/** Métrica del hero. El rótulo en versalita y la cifra grande en peso 700:
+ *  el contraste de peso es lo que la vuelve legible de un vistazo. */
+function Metric({
+  label,
+  value,
+  suffix,
+  accent,
+}: {
+  label: string
+  value: string | number
+  suffix?: string
+  accent?: boolean
+}) {
   return (
-    <span className="inline-flex items-center rounded-md bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
-      {stock} disponibles
-    </span>
+    <div className="px-4 py-3.5 sm:px-6 sm:py-4">
+      <p className="eyebrow">{label}</p>
+      <p
+        className={cn(
+          "num mt-1.5 font-bold leading-none",
+          accent ? "text-[22px] text-brand-600 sm:text-[26px]" : "text-[20px] text-ink"
+        )}
+      >
+        {value}
+        {suffix && (
+          <span className="ml-1 text-[12px] font-normal text-ink-muted">{suffix}</span>
+        )}
+      </p>
+    </div>
   )
 }
 
@@ -42,9 +71,9 @@ function ImageGallery({ images, name }: { images: string[]; name?: string }) {
 
   if (!images || images.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center aspect-square rounded-xl bg-muted/50 text-muted-foreground gap-3 border border-dashed">
-        <Package className="h-14 w-14 opacity-15" />
-        <p className="text-sm text-muted-foreground/60">Sin imagen</p>
+      <div className="flex aspect-square flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-line-strong bg-surface-muted">
+        <Package className="h-10 w-10 text-ink-faint/50" strokeWidth={1.4} />
+        <p className="text-[12px] text-ink-faint">Sin imagen</p>
       </div>
     )
   }
@@ -54,29 +83,31 @@ function ImageGallery({ images, name }: { images: string[]; name?: string }) {
 
   return (
     <div className="space-y-3">
-      <div className="relative aspect-square rounded-xl overflow-hidden bg-white border">
+      <div className="group relative aspect-square overflow-hidden rounded-xl border border-line bg-white">
         <Image
           src={images[current]}
-          alt={name ? `${name} - imagen ${current + 1}` : `Imagen ${current + 1}`}
+          alt={name ? `${name} — imagen ${current + 1}` : `Imagen ${current + 1}`}
           fill
-          className="object-contain p-4"
+          className="object-contain p-5"
           sizes="(max-width: 768px) 100vw, 400px"
         />
         {images.length > 1 && (
           <>
             <button
               onClick={prev}
-              className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/90 backdrop-blur-sm p-1.5 shadow-md hover:bg-white transition-colors border border-border/50"
+              aria-label="Imagen anterior"
+              className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full border border-line bg-white/95 p-1.5 opacity-0 shadow-e2 backdrop-blur transition-all duration-200 hover:bg-white group-hover:opacity-100 focus-visible:opacity-100"
             >
-              <ChevronLeft className="h-3.5 w-3.5 text-foreground" />
+              <ChevronLeft className="h-3.5 w-3.5 text-ink" />
             </button>
             <button
               onClick={next}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/90 backdrop-blur-sm p-1.5 shadow-md hover:bg-white transition-colors border border-border/50"
+              aria-label="Imagen siguiente"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full border border-line bg-white/95 p-1.5 opacity-0 shadow-e2 backdrop-blur transition-all duration-200 hover:bg-white group-hover:opacity-100 focus-visible:opacity-100"
             >
-              <ChevronRight className="h-3.5 w-3.5 text-foreground" />
+              <ChevronRight className="h-3.5 w-3.5 text-ink" />
             </button>
-            <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 rounded-full bg-black/30 backdrop-blur-sm px-2.5 py-0.5 text-xs font-medium text-white">
+            <div className="num absolute bottom-2.5 left-1/2 -translate-x-1/2 rounded-full bg-navy-900/70 px-2.5 py-0.5 text-[10.5px] font-medium text-white backdrop-blur-sm">
               {current + 1} / {images.length}
             </div>
           </>
@@ -89,13 +120,15 @@ function ImageGallery({ images, name }: { images: string[]; name?: string }) {
             <button
               key={i}
               onClick={() => setCurrent(i)}
-              className={`relative h-14 w-14 shrink-0 rounded-lg overflow-hidden border-2 transition-all duration-150 ${
+              aria-label={`Ver imagen ${i + 1}`}
+              className={cn(
+                "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 bg-white transition-all duration-150",
                 i === current
-                  ? "border-primary shadow-sm"
-                  : "border-transparent hover:border-border bg-muted/30"
-              }`}
+                  ? "border-brand-500 shadow-e1"
+                  : "border-line hover:border-line-strong"
+              )}
             >
-              <Image src={img} alt={`Miniatura ${i + 1}`} fill className="object-contain p-1" sizes="56px" />
+              <Image src={img} alt="" fill className="object-contain p-1" sizes="56px" />
             </button>
           ))}
         </div>
@@ -126,74 +159,24 @@ export function ProductDetail({ code }: { code: string }) {
     fetchProduct()
   }, [code])
 
-  if (loading) {
-    return (
-      <div className="space-y-5 animate-pulse">
-        {/* Hero skeleton */}
-        <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-          <div className="px-6 pt-5 pb-4 border-b bg-muted/10">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 space-y-2.5">
-                <div className="flex gap-2">
-                  <div className="h-5 w-20 bg-muted rounded-full" />
-                  <div className="h-5 w-16 bg-muted/70 rounded-full" />
-                </div>
-                <div className="h-6 w-2/3 bg-muted rounded" />
-              </div>
-              <div className="h-7 w-28 bg-muted rounded-md shrink-0" />
-            </div>
-          </div>
-          <div className="px-6 py-4 flex items-center gap-0 divide-x divide-border">
-            {[[28, 28], [20, 20], [20, 20], [20, 20]].map(([h, w], i) => (
-              <div key={i} className={`${i === 0 ? "pr-6" : "px-6"} space-y-1.5`}>
-                <div className="h-2.5 w-10 bg-muted rounded" />
-                <div className="bg-muted rounded" style={{ height: h, width: w * 3 }} />
-              </div>
-            ))}
-          </div>
-        </div>
-        {/* Grid skeleton */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <div className="rounded-xl border bg-card shadow-sm p-4">
-            <div className="h-2.5 w-16 bg-muted rounded mb-3" />
-            <div className="aspect-square bg-muted/50 rounded-xl" />
-            <div className="flex gap-2 mt-3">
-              {[0,1,2].map(i => <div key={i} className="h-14 w-14 bg-muted/50 rounded-lg" />)}
-            </div>
-          </div>
-          <div className="lg:col-span-2 rounded-xl border bg-card shadow-sm overflow-hidden">
-            <div className="px-5 pt-4 pb-3 border-b flex gap-2 bg-muted/10">
-              {[28, 24, 20].map((w, i) => <div key={i} className="h-8 bg-muted rounded-md" style={{ width: w * 4 }} />)}
-            </div>
-            <div className="px-5 py-4">
-              {[180, 220, 140, 160, 200, 170].map((w, i) => (
-                <div key={i} className="flex justify-between py-2.5 border-b last:border-0">
-                  <div className="h-3 w-16 bg-muted rounded" />
-                  <div className="h-3 bg-muted/70 rounded" style={{ width: w / 3 * 2 }} />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <DetailSkeleton />
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-32 gap-3">
-        <AlertCircle className="h-11 w-11 text-destructive" />
-        <p className="text-destructive font-medium">{error}</p>
-        <Button variant="outline" onClick={() => window.location.reload()}>Reintentar</Button>
+      <div className="panel">
+        <ErrorState message={error} onRetry={() => window.location.reload()} />
       </div>
     )
   }
 
   if (!product) {
     return (
-      <div className="flex flex-col items-center justify-center py-32 gap-3 text-muted-foreground">
-        <Package className="h-11 w-11 opacity-20" />
-        <p className="text-sm">Producto no encontrado</p>
+      <div className="panel">
+        <EmptyState
+          icon={Package}
+          title="Producto no encontrado"
+          description={`No hay ningún producto con el código ${code} en el catálogo.`}
+        />
       </div>
     )
   }
@@ -208,89 +191,64 @@ export function ProductDetail({ code }: { code: string }) {
 
   return (
     <div className="space-y-5">
-
-      {/* Hero card */}
-      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-        <div className="px-4 sm:px-6 pt-5 pb-4 border-b bg-gradient-to-r from-primary/[0.04] to-transparent">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
+      {/* Hero */}
+      <div className="panel overflow-hidden">
+        <div className="border-b border-line bg-gradient-to-br from-brand-50/70 via-surface to-surface px-5 py-5 sm:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
                 {product.category && (
-                  <span className="text-[11px] font-semibold tracking-wide uppercase text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">
+                  <Badge tone="brand" size="sm" className="uppercase tracking-[0.06em]">
                     {product.category}
-                  </span>
+                  </Badge>
                 )}
                 {product.brand && (
-                  <span className="text-[11px] font-semibold tracking-wide uppercase text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full">
+                  <Badge tone="neutral" size="sm" className="uppercase tracking-[0.06em]">
                     {product.brand}
-                  </span>
+                  </Badge>
                 )}
               </div>
-              <h1 className="text-xl font-bold tracking-tight leading-snug">
+              <h1 className="text-[22px] font-semibold leading-snug tracking-[-0.025em] text-ink">
                 {product.name || "Producto sin nombre"}
               </h1>
               {product.subBrand && product.subBrand !== product.brand && (
-                <p className="text-sm text-muted-foreground mt-0.5">{product.subBrand}</p>
+                <p className="mt-1 text-[13px] text-ink-muted">{product.subBrand}</p>
               )}
             </div>
             <StockBadge stock={product.stock} />
           </div>
         </div>
 
-        {/* Key metrics row */}
-        <div className="grid grid-cols-2 sm:flex sm:items-center sm:divide-x sm:divide-border border-t sm:border-t-0 divide-y sm:divide-y-0 [&>div]:p-4 sm:[&>div]:p-0">
-          <div className="sm:pr-6 sm:py-4 border-r sm:border-r-0">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">Precio</p>
-            <p className="text-xl sm:text-2xl font-bold text-primary tracking-tight">{priceFormatted}</p>
-          </div>
-          <div className="sm:px-6 sm:py-4">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">IVA</p>
-            <p className="text-xl font-bold tracking-tight">{ivaPercent}</p>
-          </div>
-          {product.ii > 0 && (
-            <div className="sm:px-6 sm:py-4 border-r sm:border-r-0">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">Imp. Int.</p>
-              <p className="text-xl font-bold tracking-tight">{iiPercent}</p>
-            </div>
-          )}
-          <div className={`sm:px-6 sm:py-4 ${product.ii > 0 ? "" : "border-r sm:border-r-0"}`}>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">Stock</p>
-            <p className="text-xl font-bold tracking-tight">{product.stock ?? 0} <span className="text-sm font-normal text-muted-foreground">und.</span></p>
-          </div>
-          <div className="sm:pl-6 sm:py-4">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-0.5">Moneda</p>
-            <p className="text-xl font-bold tracking-tight">{product.currency || "—"}</p>
-          </div>
+        {/* Métricas */}
+        <div className="grid grid-cols-2 divide-line sm:flex sm:divide-x [&>div]:border-b [&>div]:border-line sm:[&>div]:border-b-0 [&>div:nth-child(odd)]:border-r sm:[&>div:nth-child(odd)]:border-r-0">
+          <Metric label="Precio" value={priceFormatted} accent />
+          <Metric label="IVA" value={ivaPercent} />
+          {product.ii > 0 && <Metric label="Imp. int." value={iiPercent} />}
+          <Metric label="Stock" value={product.stock ?? 0} suffix="und." />
+          <Metric label="Moneda" value={product.currency || "—"} />
         </div>
       </div>
 
-      {/* Content grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-
-        {/* Image gallery */}
+      {/* Contenido */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="lg:col-span-1">
-          <div className="rounded-xl border bg-card shadow-sm p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">Imágenes</p>
+          <div className="panel p-4">
+            <p className="eyebrow mb-3">Imágenes</p>
             <ImageGallery images={product.images ?? []} name={product.name} />
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="lg:col-span-2">
-          <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+          <div className="panel overflow-hidden">
             <Tabs defaultValue="details">
-              <div className="px-5 pt-4 border-b bg-muted/10">
-                <TabsList className="h-9 bg-transparent p-0 gap-1">
-                  <TabsTrigger value="details" className="h-8 px-4 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm rounded-md">
-                    Identificación
-                  </TabsTrigger>
-                  <TabsTrigger value="description" className="h-8 px-4 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm rounded-md">
-                    Descripción
-                  </TabsTrigger>
-                  <TabsTrigger value="attributes" className="h-8 px-4 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm rounded-md">
+              <div className="border-b border-line bg-surface-subtle px-5 py-3">
+                <TabsList>
+                  <TabsTrigger value="details">Identificación</TabsTrigger>
+                  <TabsTrigger value="description">Descripción</TabsTrigger>
+                  <TabsTrigger value="attributes">
                     Atributos
                     {product.attributes && product.attributes.length > 0 && (
-                      <span className="ml-1.5 text-[10px] font-bold bg-primary/15 text-primary px-1.5 py-0.5 rounded-full">
+                      <span className="num rounded-full bg-brand-100 px-1.5 py-0.5 text-[9.5px] font-bold text-brand-700">
                         {product.attributes.length}
                       </span>
                     )}
@@ -298,7 +256,7 @@ export function ProductDetail({ code }: { code: string }) {
                 </TabsList>
               </div>
 
-              <TabsContent value="details" className="px-5 py-4 mt-0">
+              <TabsContent value="details" className="mt-0 px-5 py-3">
                 <dl>
                   <DetailRow label="Código" value={product.code} />
                   <DetailRow label="SKU" value={product.sku} />
@@ -309,39 +267,98 @@ export function ProductDetail({ code }: { code: string }) {
                 </dl>
               </TabsContent>
 
-              <TabsContent value="description" className="px-5 py-4 mt-0">
+              <TabsContent value="description" className="mt-0 px-5 py-4">
                 {product.description || product.fullDescription ? (
                   <div className="space-y-4">
                     {product.description && (
-                      <p className="text-sm leading-relaxed text-foreground">{product.description}</p>
+                      <p className="text-[13.5px] leading-[1.7] text-ink-secondary">
+                        {product.description}
+                      </p>
                     )}
                     {product.fullDescription && (
                       <div
-                        className="text-sm leading-relaxed text-muted-foreground prose prose-sm max-w-none border-t pt-4"
+                        className="border-t border-line pt-4 text-[13px] leading-[1.7] text-ink-muted [&_a]:text-brand-600 [&_a]:underline [&_li]:mt-1 [&_p]:mt-2.5 [&_strong]:font-semibold [&_strong]:text-ink-secondary [&_ul]:list-disc [&_ul]:pl-5"
                         dangerouslySetInnerHTML={{ __html: product.fullDescription }}
                       />
                     )}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground/60 py-8 text-center">Sin descripción disponible</p>
+                  <p className="py-10 text-center text-[12.5px] text-ink-faint">
+                    Sin descripción disponible
+                  </p>
                 )}
               </TabsContent>
 
-              <TabsContent value="attributes" className="px-5 py-4 mt-0">
+              <TabsContent value="attributes" className="mt-0 px-5 py-3">
                 {product.attributes && product.attributes.length > 0 ? (
                   <dl>
                     {product.attributes.map((attr, i) => (
-                      <div key={i} className="flex items-center justify-between py-2.5 border-b last:border-0 gap-4">
-                        <dt className="text-xs font-medium text-muted-foreground shrink-0">{attr.name}</dt>
-                        <dd className="text-sm font-medium text-right">{attr.value}</dd>
-                      </div>
+                      <DetailRow key={i} label={attr.name} value={attr.value} />
                     ))}
                   </dl>
                 ) : (
-                  <p className="text-sm text-muted-foreground/60 py-8 text-center">Sin atributos disponibles</p>
+                  <p className="py-10 text-center text-[12.5px] text-ink-faint">
+                    Sin atributos disponibles
+                  </p>
                 )}
               </TabsContent>
             </Tabs>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DetailSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="panel overflow-hidden">
+        <div className="border-b border-line px-5 py-5 sm:px-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 space-y-3">
+              <div className="flex gap-2">
+                <Skeleton className="h-4 w-20 rounded-md" />
+                <Skeleton className="h-4 w-16 rounded-md opacity-70" />
+              </div>
+              <Skeleton className="h-6 w-2/3" />
+            </div>
+            <Skeleton className="h-8 w-32 rounded-md" />
+          </div>
+        </div>
+        <div className="flex divide-x divide-line">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="flex-1 space-y-2.5 px-6 py-4">
+              <Skeleton className="h-2 w-12" />
+              <Skeleton className="h-5 w-20" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <div className="panel p-4">
+          <Skeleton className="mb-3 h-2 w-16" />
+          <Skeleton className="aspect-square rounded-xl" />
+          <div className="mt-3 flex gap-2">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-14 w-14 rounded-lg" />
+            ))}
+          </div>
+        </div>
+        <div className="panel overflow-hidden lg:col-span-2">
+          <div className="flex gap-2 border-b border-line bg-surface-subtle px-5 py-3">
+            {[112, 96, 80].map((w, i) => (
+              <Skeleton key={i} className="h-8 rounded-md" style={{ width: w }} />
+            ))}
+          </div>
+          <div className="px-5 py-3">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex justify-between border-b border-line-soft py-3 last:border-0">
+                <Skeleton className="h-2.5 w-16" />
+                <Skeleton className="h-2.5 w-28 opacity-70" />
+              </div>
+            ))}
           </div>
         </div>
       </div>

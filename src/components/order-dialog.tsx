@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
 import {
   AlertCircle,
   CheckCircle2,
@@ -49,6 +51,31 @@ function fmtUsd(n: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
+}
+
+/** Aviso con ícono. Los tres estados (QA, warning, error) compartían markup casi
+ *  idéntico repetido cuatro veces en el archivo. */
+function Aviso({
+  tone,
+  children,
+}: {
+  tone: "warning" | "danger"
+  children: React.ReactNode
+}) {
+  const Icon = tone === "warning" ? TriangleAlert : AlertCircle
+  return (
+    <div
+      className={cn(
+        "flex gap-2.5 rounded-lg border p-3",
+        tone === "warning"
+          ? "border-warning-line bg-warning-soft text-warning-text"
+          : "border-danger-line bg-danger-soft text-danger-text"
+      )}
+    >
+      <Icon className="mt-px h-4 w-4 shrink-0" />
+      <div className="text-[12px] leading-relaxed">{children}</div>
+    </div>
+  )
 }
 
 export function OrderDialog({
@@ -107,24 +134,37 @@ export function OrderDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+    >
       <div
-        className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-navy-950/55 backdrop-blur-[3px] animate-in fade-in-0 duration-200"
         onClick={() => !submitting && onClose()}
       />
 
-      <div className="relative w-full sm:max-w-lg max-h-[92vh] sm:max-h-[85vh] flex flex-col rounded-t-2xl sm:rounded-2xl border bg-card shadow-2xl">
+      <div className="relative flex max-h-[92vh] w-full flex-col rounded-t-2xl border border-line bg-surface shadow-e4 animate-in slide-in-from-bottom-6 fade-in-0 duration-250 sm:max-h-[85vh] sm:max-w-lg sm:rounded-2xl sm:zoom-in-95 sm:slide-in-from-bottom-0">
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 px-5 sm:px-6 py-4 border-b shrink-0">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-5 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <ShoppingCart className="h-4 w-4 text-primary" />
+            <div
+              className={cn(
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                result ? "bg-success-soft text-success-text" : "bg-brand-50 text-brand-600"
+              )}
+            >
+              {result ? (
+                <CheckCircle2 className="h-[18px] w-[18px]" strokeWidth={2} />
+              ) : (
+                <ShoppingCart className="h-[18px] w-[18px]" strokeWidth={1.9} />
+              )}
             </div>
             <div>
-              <h2 className="text-base font-bold tracking-tight">
+              <h2 className="text-[15px] font-semibold tracking-[-0.015em] text-ink">
                 {result ? "Pedido generado" : "Confirmar pedido"}
               </h2>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
+              <p className="mt-0.5 text-[11.5px] text-ink-muted">
                 {items.length} {items.length === 1 ? "producto" : "productos"} · {units}{" "}
                 {units === 1 ? "unidad" : "unidades"}
               </p>
@@ -133,7 +173,7 @@ export function OrderDialog({
           <button
             onClick={onClose}
             disabled={submitting}
-            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors shrink-0"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-40"
             aria-label="Cerrar"
           >
             <X className="h-4 w-4" />
@@ -141,69 +181,54 @@ export function OrderDialog({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-4">
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
           {result ? (
             <div className="space-y-4">
-              <div className="flex flex-col items-center text-center gap-3 py-4">
-                <div className="h-14 w-14 rounded-full bg-emerald-50 flex items-center justify-center">
-                  <CheckCircle2 className="h-7 w-7 text-emerald-600" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                    Número de pedido
-                  </p>
-                  <p className="mt-1 text-xl font-bold font-mono tracking-tight">
-                    {result.salesOrderId}
-                  </p>
-                </div>
-              </div>
-
-              {result.warning && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex gap-2.5">
-                  <TriangleAlert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-900 leading-relaxed">
-                    {result.warning}
-                  </p>
-                </div>
-              )}
-
-              <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Distecna no expone un endpoint para consultar el estado de un pedido, así
-                  que este número es todo lo que devuelve. El seguimiento sale de su portal.
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-line bg-surface-subtle py-6 text-center">
+                <p className="eyebrow">Número de pedido</p>
+                <p className="num font-mono text-[24px] font-bold leading-none text-ink">
+                  {result.salesOrderId}
                 </p>
               </div>
+
+              {result.warning && <Aviso tone="warning">{result.warning}</Aviso>}
+
+              <p className="rounded-lg border border-line bg-surface-subtle p-3 text-[12px] leading-relaxed text-ink-muted">
+                Distecna no expone un endpoint para consultar el estado de un pedido, así que
+                este número es todo lo que devuelve. El seguimiento sale de su portal.
+              </p>
             </div>
           ) : (
             <>
               {isQa && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex gap-2.5">
-                  <TriangleAlert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                  <div className="text-xs text-amber-900 leading-relaxed">
-                    <span className="font-semibold">Entorno de homologación (QA).</span>{" "}
-                    Este pedido no llega al depósito de Distecna: no se factura, no se paga
-                    y no descuenta stock real.
-                  </div>
-                </div>
+                <Aviso tone="warning">
+                  <span className="font-semibold">Entorno de homologación (QA).</span> Este
+                  pedido no llega al depósito de Distecna: no se factura, no se paga y no
+                  descuenta stock real.
+                </Aviso>
               )}
 
-              {/* Items */}
-              <div className="rounded-lg border divide-y overflow-hidden">
-                {items.map((i) => (
-                  <div key={i.code} className="p-3 flex items-start justify-between gap-3">
+              {/* Ítems */}
+              <div className="overflow-hidden rounded-lg border border-line">
+                {items.map((i, idx) => (
+                  <div
+                    key={i.code}
+                    className={cn(
+                      "flex items-start justify-between gap-3 p-3",
+                      idx > 0 && "border-t border-line-soft"
+                    )}
+                  >
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium leading-tight truncate">
+                      <p className="truncate text-[12.5px] font-medium leading-tight text-ink">
                         {i.name || i.code}
                       </p>
-                      <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
-                        {i.code}
-                      </p>
+                      <p className="mt-1 font-mono text-[10.5px] text-ink-muted">{i.code}</p>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-semibold tabular-nums">
+                    <div className="shrink-0 text-right">
+                      <p className="num font-mono text-[12.5px] font-semibold text-ink">
                         {fmtUsd(i.price * i.quantity)}
                       </p>
-                      <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
+                      <p className="num mt-1 text-[10.5px] text-ink-muted">
                         {i.quantity} × {fmtUsd(i.price)}
                       </p>
                     </div>
@@ -214,17 +239,17 @@ export function OrderDialog({
               {/* Dirección */}
               {addresses.length > 0 && (
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                  <p className="eyebrow flex items-center gap-1.5">
                     <MapPin className="h-3 w-3" />
                     Dirección de entrega
-                  </label>
+                  </p>
                   {addresses.length === 1 ? (
-                    <p className="mt-1.5 text-sm">{addresses[0].name}</p>
+                    <p className="mt-1.5 text-[13px] text-ink">{addresses[0].name}</p>
                   ) : (
                     <select
                       value={addressId}
                       onChange={(e) => setAddressId(e.target.value)}
-                      className="mt-1.5 w-full h-9 rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="mt-1.5 h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-[13px] text-ink transition-colors hover:border-n-400 focus:outline-none"
                     >
                       {addresses.map((a) => (
                         <option key={a.id} value={a.id}>
@@ -238,68 +263,63 @@ export function OrderDialog({
 
               {/* Condición de pago */}
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  Condición de pago
-                </p>
-                <p className="mt-1.5 text-sm">
+                <p className="eyebrow">Condición de pago</p>
+                <p className="mt-1.5 text-[13px] text-ink">
                   {paymentTerm ? (
                     paymentTerm.name.trim()
                   ) : (
-                    <span className="text-muted-foreground">
-                      Default de la cuenta
-                    </span>
+                    <span className="text-ink-muted">Default de la cuenta</span>
                   )}
                 </p>
               </div>
 
-              {error && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 flex gap-2.5">
-                  <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-                  <p className="text-xs text-destructive leading-relaxed">{error}</p>
-                </div>
-              )}
+              {error && <Aviso tone="danger">{error}</Aviso>}
             </>
           )}
         </div>
 
         {/* Footer */}
-        <div className="border-t px-5 sm:px-6 py-4 shrink-0 bg-muted/20 rounded-b-2xl">
+        <div className="shrink-0 rounded-b-2xl border-t border-line bg-surface-subtle px-5 py-4 sm:px-6">
           {result ? (
-            <Button onClick={onClose} className="w-full h-10">
+            <Button onClick={onClose} size="lg" className="w-full">
               Listo
             </Button>
           ) : (
             <>
-              <div className="flex items-baseline justify-between mb-3">
-                <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  Total estimado
-                </span>
-                <span className="text-lg font-bold tracking-tight tabular-nums">
+              <div className="mb-2 flex items-baseline justify-between">
+                <span className="eyebrow">Total estimado</span>
+                <span className="num font-mono text-[18px] font-bold text-ink">
                   {fmtUsd(total)}
+                  {isQa && (
+                    <Badge tone="warning" size="sm" className="ml-2 align-middle">
+                      QA
+                    </Badge>
+                  )}
                 </span>
               </div>
-              <p className="text-[11px] text-muted-foreground mb-3 leading-relaxed">
-                Calculado con el costo de nuestro catálogo. Distecna factura con su precio
-                al momento del pedido.
+              <p className="mb-3.5 text-[11px] leading-relaxed text-ink-muted">
+                Calculado con el costo de nuestro catálogo. Distecna factura con su precio al
+                momento del pedido.
               </p>
-              <div className="flex flex-col-reverse sm:flex-row gap-2">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
                 <Button
                   variant="outline"
+                  size="lg"
                   onClick={onClose}
                   disabled={submitting}
-                  className="flex-1 h-10"
+                  className="flex-1"
                 >
                   Cancelar
                 </Button>
-                <Button onClick={submit} disabled={submitting} className="flex-1 h-10 gap-2">
+                <Button onClick={submit} disabled={submitting} size="lg" className="flex-1">
                   {submitting ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Enviando...
+                      <Loader2 className="animate-spin" />
+                      Enviando…
                     </>
                   ) : (
                     <>
-                      <ShoppingCart className="h-4 w-4" />
+                      <ShoppingCart />
                       Generar pedido
                     </>
                   )}

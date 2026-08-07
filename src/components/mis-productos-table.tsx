@@ -12,6 +12,9 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Badge, Dot } from "@/components/ui/badge"
+import { StatCard } from "@/components/ui/stat-card"
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
 import {
   Tooltip,
   TooltipContent,
@@ -19,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { formatIva, normalizeIva } from "@/lib/iva"
+import { cn } from "@/lib/utils"
 import {
   OrderDialog,
   type DeliveryAddress,
@@ -29,7 +33,6 @@ import {
   Eye,
   Trash2,
   ExternalLink,
-  AlertCircle,
   Loader2,
   RefreshCw,
   TrendingUp,
@@ -38,6 +41,7 @@ import {
   Check,
   ShoppingCart,
   X,
+  Plus,
 } from "lucide-react"
 
 interface MyProduct {
@@ -83,7 +87,7 @@ function getSemaforoDetail(
   publishedPrice: number | null,
   minPrice: number
 ): string {
-  if (publishedPrice !== null && publishedPrice <= minPrice) return "Precio ≤ Mínimo"
+  if (publishedPrice !== null && publishedPrice <= minPrice) return "Precio ≤ mínimo"
   if (stock >= 30) return "Stock ≥ 30"
   if (stock >= 10) return `Stock ${stock} (10–29)`
   if (stock > 0) return `Stock ${stock} (1–9)`
@@ -91,51 +95,43 @@ function getSemaforoDetail(
 }
 
 function formatARS(value: number): string {
-  return `$ ${value.toLocaleString("es-AR", {
+  return `$ ${value.toLocaleString("es-AR", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
 }
 
 function StockBadge({ stock }: { stock: number }) {
-  if (stock <= 0)
-    return (
-      <span className="inline-flex items-center rounded-md bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-600/20">
-        Sin stock
-      </span>
-    )
-  if (stock < 10)
-    return (
-      <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20">
-        {stock}
-      </span>
-    )
-  return (
-    <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
-      {stock}
-    </span>
-  )
+  if (stock <= 0) return <Badge tone="danger" size="sm">Sin stock</Badge>
+  if (stock < 10) return <Badge tone="warning" size="sm" className="num">{stock}</Badge>
+  return <Badge tone="success" size="sm" className="num">{stock}</Badge>
 }
 
+/**
+ * Semáforo: punto de color + etiqueta + causa. El punto solo no alcanza —
+ * "rojo" puede venir de precio bajo o de falta de stock, y son dos acciones
+ * distintas. Y el color solo tampoco es accesible.
+ */
 function SemaforoBadge({ color, detail }: { color: SemaforoColor; detail: string }) {
-  const styles: Record<SemaforoColor, string> = {
-    verde: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
-    amarillo: "bg-amber-50 text-amber-700 ring-amber-600/20",
-    rojo: "bg-red-50 text-red-700 ring-red-600/20",
-  }
-  const labels: Record<SemaforoColor, string> = {
-    verde: "Verde",
-    amarillo: "Amarillo",
-    rojo: "Rojo",
-  }
+  const tone = { verde: "success", amarillo: "warning", rojo: "danger" } as const
+  const label = { verde: "Verde", amarillo: "Amarillo", rojo: "Rojo" }
+
   return (
-    <div className="flex flex-col gap-0.5">
-      <span
-        className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${styles[color]}`}
-      >
-        {labels[color]}
+    <div className="flex flex-col gap-1">
+      <span className="flex items-center gap-1.5">
+        <Dot tone={tone[color]} />
+        <span
+          className={cn(
+            "text-[11.5px] font-semibold",
+            color === "verde" && "text-success-text",
+            color === "amarillo" && "text-warning-text",
+            color === "rojo" && "text-danger-text"
+          )}
+        >
+          {label[color]}
+        </span>
       </span>
-      <span className="text-[11px] text-muted-foreground">{detail}</span>
+      <span className="text-[10.5px] leading-none text-ink-muted">{detail}</span>
     </div>
   )
 }
@@ -164,31 +160,44 @@ function PrecioMinimoTooltip({
 }) {
   const ivaFactor = 1 + normalizeIva(iva)
   return (
-    <div className="space-y-2 font-mono">
-      <p className="font-sans text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+    <div className="space-y-2">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.11em] text-white/45">
         Cálculo del precio mínimo
       </p>
-      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px]">
-        <span className="text-slate-400">Costo</span>
-        <span className="text-right">{currency} {fmtNum(costo, 2)}</span>
-        <span className="text-slate-400">T/C BNA</span>
-        <span className="text-right">$ {fmtNum(dolar, 2)}</span>
-        <span className="text-slate-400">Coef. fijo</span>
-        <span className="text-right">1,155</span>
-        <span className="text-slate-400">Margen</span>
-        <span className="text-right">{fmtNum(margen, 2)}</span>
-        <span className="text-slate-400">IVA</span>
-        <span className="text-right">{formatIva(iva)} (×{fmtNum(ivaFactor, 3)})</span>
-        <span className="text-slate-400">Envío</span>
-        <span className="text-right">$ 8.000</span>
+      <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-[11px] tabular-nums">
+        <span className="text-white/45">Costo</span>
+        <span className="text-right text-white/90">{currency} {fmtNum(costo, 2)}</span>
+        <span className="text-white/45">T/C BNA</span>
+        <span className="text-right text-white/90">$ {fmtNum(dolar, 2)}</span>
+        <span className="text-white/45">Coef. fijo</span>
+        <span className="text-right text-white/90">1,155</span>
+        <span className="text-white/45">Margen</span>
+        <span className="text-right text-white/90">{fmtNum(margen, 2)}</span>
+        <span className="text-white/45">IVA</span>
+        <span className="text-right text-white/90">{formatIva(iva)} (×{fmtNum(ivaFactor, 3)})</span>
+        <span className="text-white/45">Envío</span>
+        <span className="text-right text-white/90">$ 8.000</span>
       </div>
-      <div className="border-t border-slate-700 pt-1.5 text-[11px] leading-relaxed">
-        <p className="text-slate-300">
-          (( {fmtNum(costo, 2)} × {fmtNum(dolar, 2)} ) × 1,155 × {fmtNum(margen, 2)} × {fmtNum(ivaFactor, 3)}) + 8.000
+      <div className="border-t border-white/10 pt-2 font-mono text-[10.5px] leading-relaxed">
+        <p className="text-white/55">
+          (({fmtNum(costo, 2)} × {fmtNum(dolar, 2)}) × 1,155 × {fmtNum(margen, 2)} × {fmtNum(ivaFactor, 3)}) + 8.000
         </p>
-        <p className="mt-1 font-semibold text-emerald-300">= {formatARS(minPrice)}</p>
+        <p className="mt-1 text-[12px] font-semibold text-emerald-300">
+          = {formatARS(minPrice)}
+        </p>
       </div>
     </div>
+  )
+}
+
+/** Celda editable in-place: en reposo se lee como texto, al hover insinúa que
+ *  se puede tocar. Un input visible por fila convertiría la tabla en formulario. */
+function CeldaEditableVacia({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-ink-faint transition-colors group-hover:text-brand-600">
+      <Plus className="h-3 w-3" />
+      {label}
+    </span>
   )
 }
 
@@ -353,143 +362,104 @@ export function MisProductosTable() {
   const orderUnits = orderItems.reduce((acc, i) => acc + i.quantity, 0)
   const orderTotal = orderItems.reduce((acc, i) => acc + i.price * i.quantity, 0)
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
-  }
+  if (loading) return <LoadingState label="Cargando productos y cotización…" />
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-32 gap-3">
-        <AlertCircle className="h-10 w-10 text-destructive" />
-        <p className="text-destructive font-medium">{error}</p>
-        <Button variant="outline" onClick={fetchAll}>
-          Reintentar
-        </Button>
+      <div className="panel">
+        <ErrorState message={error} onRetry={fetchAll} />
       </div>
     )
   }
 
   return (
     <div className="space-y-5">
-      {/* Config cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Dólar BNA */}
-        <div className="rounded-xl border bg-card p-5 shadow-sm border-l-4 border-l-emerald-500">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                T/C BNA Venta
-              </p>
-              <p className="mt-1.5 text-2xl font-bold tracking-tight text-emerald-600">
-                {dolarNum > 0 ? (
-                  formatARS(dolarNum)
-                ) : (
-                  <span className="text-muted-foreground text-lg">—</span>
-                )}
-              </p>
-              {dolarUpdatedAt && (
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Actualizado:{" "}
-                  {new Date(dolarUpdatedAt).toLocaleString("es-AR", {
-                    dateStyle: "short",
-                    timeStyle: "short",
-                  })}
-                </p>
-              )}
-            </div>
-            <div className="h-9 w-9 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-              <DollarSign className="h-4 w-4 text-emerald-600" />
-            </div>
-          </div>
-        </div>
+      {/* Parámetros del cálculo */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <StatCard
+          label="T/C BNA venta"
+          value={dolarNum > 0 ? formatARS(dolarNum) : <span className="text-ink-faint">—</span>}
+          hint={
+            dolarUpdatedAt
+              ? `Actualizado ${new Date(dolarUpdatedAt).toLocaleString("es-AR", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                })}`
+              : undefined
+          }
+          icon={DollarSign}
+          tone="success"
+        />
 
-        {/* Margen Accedra */}
-        <div className="rounded-xl border bg-card p-5 shadow-sm border-l-4 border-l-primary">
-          <div className="flex items-start justify-between">
-            <div className="flex-1 mr-3">
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Margen Accedra
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Multiplicador del precio mínimo
-              </p>
-              <div className="flex items-center gap-2 mt-2.5">
-                <Input
-                  value={margenInput}
-                  onChange={(e) => setMargenInput(e.target.value)}
-                  onBlur={saveMargen}
-                  onKeyDown={(e) => e.key === "Enter" && saveMargen()}
-                  className="h-8 w-24 text-sm font-semibold"
-                  type="number"
-                  step="0.01"
-                  min="1"
-                />
-                {margenSaving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                ) : margenInput !== margen ? (
-                  <Button size="sm" className="h-8 text-xs gap-1" onClick={saveMargen}>
-                    <Check className="h-3 w-3" />
-                    Guardar
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <TrendingUp className="h-4 w-4 text-primary" />
-            </div>
+        <StatCard label="Margen Accedra" icon={TrendingUp} tone="brand">
+          <p className="mt-1 text-[11.5px] text-ink-muted">
+            Multiplicador del precio mínimo
+          </p>
+          <div className="mt-2.5 flex items-center gap-2">
+            <Input
+              value={margenInput}
+              onChange={(e) => setMargenInput(e.target.value)}
+              onBlur={saveMargen}
+              onKeyDown={(e) => e.key === "Enter" && saveMargen()}
+              className="num h-8 w-24 text-[15px] font-semibold"
+              type="number"
+              step="0.01"
+              min="1"
+              aria-label="Margen Accedra"
+            />
+            {margenSaving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-ink-muted" />
+            ) : margenInput !== margen ? (
+              <Button size="sm" onClick={saveMargen}>
+                <Check />
+                Guardar
+              </Button>
+            ) : null}
           </div>
-        </div>
+        </StatCard>
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-        <div className="px-5 py-3.5 border-b bg-muted/20 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold">
-              {products.length}{" "}
-              {products.length === 1 ? "producto" : "productos"}
+      {/* Tabla */}
+      <div className="panel overflow-hidden">
+        <div className="panel-header">
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-ink">
+              {products.length} {products.length === 1 ? "producto" : "productos"}
             </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
-              Precio mínimo = (( Costo × T/C BNA ) × 1,155 × Margen × (1 + IVA)) + $8.000
+            <p className="mt-1 truncate font-mono text-[10.5px] text-ink-muted">
+              Precio mínimo = ((Costo × T/C BNA) × 1,155 × Margen × (1 + IVA)) + $8.000
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchAll}
-            className="h-8 gap-1.5 text-xs shrink-0"
-          >
-            <RefreshCw className="h-3 w-3" />
+          <Button variant="outline" size="sm" onClick={fetchAll}>
+            <RefreshCw />
             Actualizar
           </Button>
         </div>
 
         {products.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
-            <PackageOpen className="h-10 w-10 opacity-20" />
-            <p className="font-medium text-sm">No hay productos todavía</p>
-            <p className="text-xs">
-              Seleccioná productos desde{" "}
-              <Link href="/" className="text-primary hover:underline">
-                Inventario
-              </Link>{" "}
-              y exportalos acá.
-            </p>
-          </div>
+          <EmptyState
+            icon={PackageOpen}
+            title="No hay productos todavía"
+            description={
+              <>
+                Seleccioná productos desde{" "}
+                <Link href="/" className="font-medium text-brand-600 hover:underline">
+                  Inventario
+                </Link>{" "}
+                y exportalos acá.
+              </>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-slate-50/80 hover:bg-slate-50/80 border-b">
-                  <TableHead className="w-10 py-3 text-center">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-10 text-center">
                     <input
                       type="checkbox"
                       aria-label="Seleccionar todos"
-                      className="h-3.5 w-3.5 rounded border-muted-foreground/40 accent-primary cursor-pointer align-middle"
+                      className="checkbox"
                       checked={selected.size > 0 && selected.size === products.length}
                       ref={(el) => {
                         if (el)
@@ -505,44 +475,21 @@ export function MisProductosTable() {
                       }
                     />
                   </TableHead>
-                  <TableHead className="w-10 text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3 text-center">
-                    N°
-                  </TableHead>
-                  <TableHead className="w-[110px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
-                    Cantidad
-                  </TableHead>
-                  <TableHead className="min-w-[220px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
-                    Publicación
-                  </TableHead>
-                  <TableHead className="w-[90px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
-                    Stock
-                  </TableHead>
-                  <TableHead className="w-[140px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
-                    Costo
-                  </TableHead>
-                  <TableHead className="w-[80px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
-                    IVA
-                  </TableHead>
-                  <TableHead className="w-[140px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3 hidden md:table-cell">
-                    SKU
-                  </TableHead>
-                  <TableHead className="min-w-[190px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
-                    Precio Mínimo
-                  </TableHead>
-                  <TableHead className="w-[160px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
-                    Precio Publicado
-                  </TableHead>
-                  <TableHead className="w-[130px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
-                    Semáforo
-                  </TableHead>
-                  <TableHead className="min-w-[170px] text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3 hidden lg:table-cell">
-                    Link Publicación
-                  </TableHead>
-                  <TableHead className="w-[90px] text-right text-[11px] font-semibold tracking-wide uppercase text-muted-foreground py-3">
-                    Acciones
-                  </TableHead>
+                  <TableHead className="w-9 text-center">N°</TableHead>
+                  <TableHead className="w-[100px]">Cantidad</TableHead>
+                  <TableHead className="min-w-[230px]">Publicación</TableHead>
+                  <TableHead className="w-[85px]">Stock</TableHead>
+                  <TableHead className="w-[125px] text-right">Costo</TableHead>
+                  <TableHead className="w-[70px] text-right">IVA</TableHead>
+                  <TableHead className="hidden w-[130px] md:table-cell">SKU</TableHead>
+                  <TableHead className="w-[160px] text-right">Precio mínimo</TableHead>
+                  <TableHead className="w-[150px] text-right">Precio publicado</TableHead>
+                  <TableHead className="w-[125px]">Semáforo</TableHead>
+                  <TableHead className="hidden min-w-[160px] lg:table-cell">Link</TableHead>
+                  <TableHead className="w-[112px] text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
                 {products.map((product, idx) => {
                   const minPrice =
@@ -575,28 +522,25 @@ export function MisProductosTable() {
                   return (
                     <TableRow
                       key={product.code}
-                      className={`transition-colors border-b border-border/60 ${
-                        isSelected ? "bg-primary/[0.06]" : "hover:bg-primary/[0.03]"
-                      }`}
+                      className={cn(isSelected && "bg-brand-50/70 hover:bg-brand-50")}
                     >
                       {/* Selección para pedido */}
-                      <TableCell className="py-3 text-center">
+                      <TableCell className="text-center">
                         <input
                           type="checkbox"
                           aria-label={`Seleccionar ${product.code}`}
-                          className="h-3.5 w-3.5 rounded border-muted-foreground/40 accent-primary cursor-pointer align-middle"
+                          className="checkbox"
                           checked={isSelected}
                           onChange={() => toggleSelect(product.code)}
                         />
                       </TableCell>
 
-                      {/* N° */}
-                      <TableCell className="py-3 text-xs text-muted-foreground font-medium text-center">
+                      <TableCell className="num text-center text-[11.5px] font-medium text-ink-faint">
                         {idx + 1}
                       </TableCell>
 
                       {/* Cantidad a pedir */}
-                      <TableCell className="py-3">
+                      <TableCell>
                         <Input
                           type="number"
                           min="1"
@@ -609,109 +553,94 @@ export function MisProductosTable() {
                             )
                           }
                           placeholder="—"
-                          className="h-7 w-[70px] text-sm text-center tabular-nums disabled:opacity-40"
+                          className="num h-7 w-[68px] text-center text-[12.5px]"
                         />
                         {isSelected && quantity > product.stock && (
-                          <p className="text-[10px] text-amber-600 mt-0.5 leading-tight">
+                          <p className="mt-1 text-[10px] font-medium leading-none text-warning-text">
                             &gt; stock ({product.stock})
                           </p>
                         )}
                       </TableCell>
 
                       {/* Publicación */}
-                      <TableCell className="py-3 max-w-[220px]">
+                      <TableCell className="max-w-[230px]">
                         {isEditingPub ? (
                           <Input
                             autoFocus
                             value={editingCell.value}
                             onChange={(e) =>
-                              setEditingCell((c) =>
-                                c ? { ...c, value: e.target.value } : null
-                              )
+                              setEditingCell((c) => (c ? { ...c, value: e.target.value } : null))
                             }
                             onBlur={() => setTimeout(commitEdit, 150)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") commitEdit()
                               if (e.key === "Escape") setEditingCell(null)
                             }}
-                            className="h-7 text-sm"
+                            className="h-7"
                             placeholder="Nombre de publicación…"
                           />
                         ) : (
                           <div
-                            className="cursor-pointer group"
+                            className="group -mx-1.5 cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-brand-50"
                             onClick={() =>
-                              startEdit(
-                                product.code,
-                                "publication_name",
-                                product.publication_name
-                              )
+                              startEdit(product.code, "publication_name", product.publication_name)
                             }
                           >
                             {product.publication_name ? (
-                              <span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors block truncate">
+                              <span className="block truncate text-[13px] font-medium text-ink transition-colors group-hover:text-brand-700">
                                 {product.publication_name}
                               </span>
                             ) : (
-                              <div>
-                                <span className="text-sm font-medium text-foreground/80 block truncate">
+                              <>
+                                <span className="block truncate text-[13px] font-medium text-ink-secondary">
                                   {product.name ?? product.code}
                                 </span>
                                 {product.brand && (
-                                  <span className="text-xs text-muted-foreground block">
+                                  <span className="block truncate text-[11px] text-ink-muted">
                                     {product.brand}
                                   </span>
                                 )}
-                                <span className="text-[11px] text-primary/50 group-hover:text-primary transition-colors">
-                                  + Agregar nombre de publicación
-                                </span>
-                              </div>
+                                <CeldaEditableVacia label="Agregar nombre de publicación" />
+                              </>
                             )}
                           </div>
                         )}
                       </TableCell>
 
-                      {/* Stock */}
-                      <TableCell className="py-3">
+                      <TableCell>
                         <StockBadge stock={product.stock} />
                       </TableCell>
 
-                      {/* Costo */}
-                      <TableCell className="py-3">
-                        <span className="font-mono text-sm font-semibold text-red-600">
-                          {product.currency}{" "}
-                          {product.price?.toLocaleString("es-AR", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
+                      {/* Costo — el dato de entrada del cálculo, en tinta secundaria */}
+                      <TableCell className="num text-right font-mono text-[12.5px] font-medium text-ink-secondary">
+                        {product.currency}{" "}
+                        {product.price?.toLocaleString("es-AR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </TableCell>
 
-                      {/* IVA */}
-                      <TableCell className="py-3">
-                        <span className="font-mono text-sm font-medium text-muted-foreground">
-                          {formatIva(product.iva)}
-                        </span>
+                      <TableCell className="num text-right font-mono text-[12px] text-ink-muted">
+                        {formatIva(product.iva)}
                       </TableCell>
 
-                      {/* SKU */}
-                      <TableCell className="py-3 hidden md:table-cell">
-                        <span className="font-mono text-xs text-muted-foreground">
+                      <TableCell className="hidden md:table-cell">
+                        <span className="font-mono text-[11.5px] text-ink-muted">
                           {product.sku || "—"}
                         </span>
                       </TableCell>
 
-                      {/* Precio Mínimo */}
-                      <TableCell className="py-3">
+                      {/* Precio mínimo */}
+                      <TableCell className="text-right">
                         {minPrice !== null ? (
                           <TooltipProvider delayDuration={150}>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="text-sm font-semibold text-foreground cursor-help border-b border-dashed border-muted-foreground/40">
+                                <span className="num cursor-help border-b border-dashed border-ink-faint font-mono text-[12.5px] font-semibold text-ink">
                                   {formatARS(minPrice)}
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent side="top" align="start" className="max-w-none">
+                              <TooltipContent side="left" align="center" className="max-w-none">
                                 <PrecioMinimoTooltip
                                   costo={product.price}
                                   currency={product.currency}
@@ -724,93 +653,76 @@ export function MisProductosTable() {
                             </Tooltip>
                           </TooltipProvider>
                         ) : (
-                          <span className="text-xs text-muted-foreground">
-                            Sin cotización
-                          </span>
+                          <span className="text-[11.5px] text-ink-faint">Sin cotización</span>
                         )}
                       </TableCell>
 
-                      {/* Precio Publicado */}
-                      <TableCell className="py-3">
+                      {/* Precio publicado */}
+                      <TableCell className="text-right">
                         {isEditingPrice ? (
                           <Input
                             autoFocus
                             value={editingCell.value}
                             onChange={(e) =>
-                              setEditingCell((c) =>
-                                c ? { ...c, value: e.target.value } : null
-                              )
+                              setEditingCell((c) => (c ? { ...c, value: e.target.value } : null))
                             }
                             onBlur={() => setTimeout(commitEdit, 150)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") commitEdit()
                               if (e.key === "Escape") setEditingCell(null)
                             }}
-                            className="h-7 text-sm w-36"
+                            className="num h-7 w-full text-right"
                             type="number"
                             placeholder="0.00"
                           />
                         ) : (
                           <div
-                            className="cursor-pointer group"
+                            className="group -mx-1.5 cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-brand-50"
                             onClick={() =>
-                              startEdit(
-                                product.code,
-                                "published_price",
-                                product.published_price
-                              )
+                              startEdit(product.code, "published_price", product.published_price)
                             }
                           >
                             {product.published_price !== null ? (
-                              <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                              <span className="num font-mono text-[12.5px] font-semibold text-ink transition-colors group-hover:text-brand-700">
                                 {formatARS(product.published_price)}
                               </span>
                             ) : (
-                              <span className="text-[11px] text-primary/50 group-hover:text-primary transition-colors">
-                                + Ingresar precio
-                              </span>
+                              <CeldaEditableVacia label="Ingresar precio" />
                             )}
                           </div>
                         )}
                       </TableCell>
 
-                      {/* Semáforo */}
-                      <TableCell className="py-3">
+                      <TableCell>
                         {semaforo && semaforoDetail ? (
                           <SemaforoBadge color={semaforo} detail={semaforoDetail} />
                         ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-[11.5px] text-ink-faint">—</span>
                         )}
                       </TableCell>
 
                       {/* Link */}
-                      <TableCell className="py-3 hidden lg:table-cell max-w-[170px]">
+                      <TableCell className="hidden max-w-[170px] lg:table-cell">
                         {isEditingLink ? (
                           <Input
                             autoFocus
                             value={editingCell.value}
                             onChange={(e) =>
-                              setEditingCell((c) =>
-                                c ? { ...c, value: e.target.value } : null
-                              )
+                              setEditingCell((c) => (c ? { ...c, value: e.target.value } : null))
                             }
                             onBlur={() => setTimeout(commitEdit, 150)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") commitEdit()
                               if (e.key === "Escape") setEditingCell(null)
                             }}
-                            className="h-7 text-xs"
-                            placeholder="https://..."
+                            className="h-7 text-[11.5px]"
+                            placeholder="https://…"
                           />
                         ) : (
                           <div
-                            className="flex items-center gap-1 group cursor-pointer"
+                            className="group -mx-1.5 flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 transition-colors hover:bg-brand-50"
                             onClick={() =>
-                              startEdit(
-                                product.code,
-                                "publication_link",
-                                product.publication_link
-                              )
+                              startEdit(product.code, "publication_link", product.publication_link)
                             }
                           >
                             {product.publication_link ? (
@@ -819,66 +731,59 @@ export function MisProductosTable() {
                                   href={product.publication_link}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-xs text-primary hover:underline truncate"
+                                  className="truncate text-[11.5px] text-brand-600 hover:underline"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   {product.publication_link.replace(/^https?:\/\//, "")}
                                 </a>
-                                <ExternalLink className="h-3 w-3 text-primary shrink-0" />
+                                <ExternalLink className="h-3 w-3 shrink-0 text-brand-500" />
                               </>
                             ) : (
-                              <span className="text-[11px] text-primary/50 group-hover:text-primary transition-colors">
-                                + Agregar link
-                              </span>
+                              <CeldaEditableVacia label="Agregar link" />
                             )}
                           </div>
                         )}
                       </TableCell>
 
                       {/* Acciones */}
-                      <TableCell className="py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Link href={`/product/${product.code}`}>
+                      <TableCell className="text-right">
+                        {isDeleting ? (
+                          <div className="flex items-center justify-end gap-1">
                             <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 rounded-lg hover:bg-primary hover:text-primary-foreground transition-colors"
+                              variant="destructive"
+                              size="xs"
+                              onClick={() => handleDelete(product.code)}
                             >
-                              <Eye className="h-3.5 w-3.5" />
-                              <span className="sr-only">Ver detalle</span>
+                              Borrar
                             </Button>
-                          </Link>
-                          {isDeleting ? (
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                className="h-7 text-xs px-2"
-                                onClick={() => handleDelete(product.code)}
-                              >
-                                Confirmar
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 text-xs px-2"
-                                onClick={() => setDeletingCode(null)}
-                              >
-                                Cancelar
-                              </Button>
-                            </div>
-                          ) : (
+                            <Button variant="ghost" size="xs" onClick={() => setDeletingCode(null)}>
+                              Cancelar
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              asChild
+                              variant="ghost"
+                              size="icon-sm"
+                              className="hover:bg-brand-600 hover:text-white"
+                            >
+                              <Link href={`/product/${product.code}`}>
+                                <Eye />
+                                <span className="sr-only">Ver detalle</span>
+                              </Link>
+                            </Button>
                             <Button
                               variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 rounded-lg hover:bg-red-50 hover:text-red-600 transition-colors"
+                              size="icon-sm"
+                              className="hover:bg-danger-soft hover:text-danger-text"
                               onClick={() => setDeletingCode(product.code)}
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <Trash2 />
                               <span className="sr-only">Eliminar</span>
                             </Button>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
@@ -889,54 +794,52 @@ export function MisProductosTable() {
         )}
       </div>
 
-      {/* Barra de pedido — aparece al seleccionar, fija abajo para que quede a mano
-          en mobile sin tener que volver arriba. */}
+      {/* Barra de pedido — fija abajo para que quede a mano en mobile sin tener
+          que volver arriba. */}
       {selected.size > 0 && (
         <>
           <div className="h-24 sm:h-20" aria-hidden />
-          <div className="fixed bottom-0 left-0 right-0 z-40 border-t bg-card/95 backdrop-blur shadow-[0_-4px_16px_rgba(15,23,42,0.08)]">
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-line bg-surface/85 backdrop-blur-xl shadow-[0_-8px_24px_-12px_oklch(0.215_0.032_257/0.18)] animate-in slide-in-from-bottom-4 duration-200">
+            <div className="mx-auto flex max-w-[1600px] flex-col gap-3 px-5 py-3 sm:flex-row sm:items-center sm:px-8">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
                 <button
                   onClick={() => setSelected(new Map())}
-                  className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                   aria-label="Limpiar selección"
                 >
                   <X className="h-4 w-4" />
                 </button>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold leading-tight">
-                    {selected.size}{" "}
-                    {selected.size === 1 ? "producto" : "productos"} ·{" "}
+                  <p className="text-[13px] font-semibold leading-tight text-ink">
+                    {selected.size} {selected.size === 1 ? "producto" : "productos"} ·{" "}
                     {orderUnits} {orderUnits === 1 ? "unidad" : "unidades"}
                   </p>
-                  <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
+                  <p className="num mt-0.5 flex items-center gap-2 text-[11.5px] text-ink-muted">
                     Total estimado U$S{" "}
                     {orderTotal.toLocaleString("es-AR", {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
                     {checkout?.environment === "qa" && (
-                      <span className="ml-2 inline-flex items-center rounded px-1.5 py-0.5 bg-amber-100 text-amber-800 font-semibold text-[10px] uppercase tracking-wide">
-                        QA
-                      </span>
+                      <Badge tone="warning" size="sm">QA</Badge>
                     )}
                   </p>
                 </div>
               </div>
               <Button
-                className="h-10 gap-2 w-full sm:w-auto shrink-0"
+                size="lg"
+                className="w-full shrink-0 sm:w-auto"
                 disabled={!checkout?.configured}
                 onClick={() => setShowOrderDialog(true)}
               >
-                <ShoppingCart className="h-4 w-4" />
+                <ShoppingCart />
                 Generar pedido
               </Button>
             </div>
             {!checkout?.configured && (
-              <p className="px-4 sm:px-6 pb-3 text-[11px] text-amber-700">
-                Distecna V2 no está configurado en este entorno, así que no se pueden
-                generar pedidos todavía.
+              <p className="px-5 pb-3 text-[11px] text-warning-text sm:px-8">
+                Distecna V2 no está configurado en este entorno, así que no se pueden generar
+                pedidos todavía.
               </p>
             )}
           </div>

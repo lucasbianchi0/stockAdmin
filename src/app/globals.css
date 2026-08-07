@@ -4,38 +4,144 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACCEDRA · SISTEMA DE DISEÑO
+   ───────────────────────────────────────────────────────────────────────────
+   Base: escala neutra fría de 14 pasos (método Radix Colors) + un solo acento
+   de marca. Métrica tipográfica y espacial al estilo Geist (Vercel).
+
+   Tres reglas que sostienen todo lo demás:
+
+   1. El fondo NO es blanco. La app vive sobre --n-100 y las superficies son
+      blanco puro: la separación se lee sin necesidad de bordes gruesos ni
+      sombras pesadas. Todo lo que "flota" es más claro que su fondo.
+   2. Un acento y nada más. El azul de marca marca acción y estado activo.
+      Los semáforos (verde/ámbar/rojo) son datos, no decoración.
+   3. La jerarquía la hace el peso y el color del texto, no el tamaño.
+      Cuatro pesos (400/500/600/700) y cuatro niveles de tinta alcanzan.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Neutros ──────────────────────────────────────────────────────────────
+     Un solo tono (hue 255, azulado) para que grises y marca convivan sin que
+     aparezca el gris "sucio" que sale de mezclar neutros cálidos con azul. */
+  --n-0:   oklch(1 0 0);
+  --n-25:  oklch(0.990 0.002 255);
+  --n-50:  oklch(0.978 0.004 255);
+  --n-100: oklch(0.962 0.006 255);
+  --n-150: oklch(0.945 0.008 255);
+  --n-200: oklch(0.922 0.010 255);
+  --n-300: oklch(0.878 0.013 255);
+  --n-400: oklch(0.760 0.018 256);
+  --n-500: oklch(0.640 0.022 256);
+  --n-600: oklch(0.478 0.026 256);
+  --n-700: oklch(0.400 0.028 257);
+  --n-800: oklch(0.300 0.030 257);
+  --n-900: oklch(0.215 0.032 257);
+  --n-950: oklch(0.160 0.032 258);
+
+  /* ── Navy: la marca sobre superficies oscuras (sidebar, login) ─────────── */
+  --navy-950: #060E1A;
+  --navy-900: #0B1628;
+  --navy-850: #101D33;
+  --navy-800: #16253F;
+  --navy-700: #1E3050;
+
+  /* ── Marca: azul corporativo Accedra (#2b6ac8 = brand-600) ─────────────── */
+  --brand-50:  oklch(0.968 0.014 258);
+  --brand-100: oklch(0.934 0.034 258);
+  --brand-200: oklch(0.882 0.064 258);
+  --brand-300: oklch(0.798 0.104 258);
+  --brand-400: oklch(0.668 0.148 258);
+  --brand-500: oklch(0.578 0.170 258);
+  --brand-600: oklch(0.517 0.163 258);
+  --brand-700: oklch(0.452 0.145 258);
+  --brand-800: oklch(0.375 0.115 258);
+  --brand-900: oklch(0.292 0.082 258);
+
+  /* ── Estado: cada uno con relleno, línea, tinta y sólido ────────────────
+     Cuatro piezas por color evitan el ring-1 ring-inset a mano en cada badge
+     y garantizan que el texto siempre pase contraste sobre su propio relleno. */
+  --success-soft:  oklch(0.962 0.033 165);
+  --success-line:  oklch(0.884 0.072 165);
+  --success-text:  oklch(0.462 0.100 162);
+  --success:       oklch(0.585 0.140 162);
+
+  --warning-soft:  oklch(0.970 0.045 88);
+  --warning-line:  oklch(0.896 0.088 84);
+  --warning-text:  oklch(0.498 0.110 66);
+  --warning:       oklch(0.740 0.155 70);
+
+  --danger-soft:   oklch(0.963 0.026 22);
+  --danger-line:   oklch(0.890 0.058 22);
+  --danger-text:   oklch(0.505 0.180 25);
+  --danger:        oklch(0.585 0.215 25);
+
+  /* ── Semánticos (nombres shadcn, sobre la escala nueva) ─────────────────── */
+  --background: var(--n-100);
+  --foreground: var(--n-900);
+  --card: var(--n-0);
+  --card-foreground: var(--n-900);
+  --popover: var(--n-0);
+  --popover-foreground: var(--n-900);
+  --primary: var(--brand-600);
+  --primary-foreground: oklch(0.995 0 0);
+  --secondary: var(--n-100);
+  --secondary-foreground: var(--n-800);
+  --muted: var(--n-100);
+  --muted-foreground: var(--n-600);
+  --accent: var(--n-150);
+  --accent-foreground: var(--n-900);
+  --destructive: var(--danger);
+  --destructive-foreground: oklch(0.995 0 0);
+  --border: var(--n-200);
+  --input: var(--n-300);
+  --ring: var(--brand-500);
+
+  /* ── Superficies y tinta con nombre propio ──────────────────────────────── */
+  --surface: var(--n-0);
+  --surface-subtle: var(--n-50);
+  --surface-muted: var(--n-100);
+  --surface-sunken: var(--n-150);
+  --line: var(--n-200);
+  --line-soft: oklch(0.922 0.010 255 / 0.7);
+  --line-strong: var(--n-300);
+  --ink: var(--n-900);
+  --ink-secondary: var(--n-700);
+  --ink-muted: var(--n-600);
+  --ink-subtle: var(--n-500);
+  --ink-faint: var(--n-400);
+
+  /* ── Radios ─────────────────────────────────────────────────────────────── */
+  --radius: 0.625rem;
+
+  /* ── Sombras: capas de baja opacidad teñidas de navy ─────────────────────
+     Dos capas siempre — una corta de contacto y una larga de difusión. Una
+     sola capa es lo que hace que una sombra se lea barata. */
+  --elevation-1: 0 1px 2px -1px oklch(0.215 0.032 257 / 0.10),
+                 0 1px 3px 0 oklch(0.215 0.032 257 / 0.05);
+  --elevation-2: 0 2px 4px -2px oklch(0.215 0.032 257 / 0.10),
+                 0 6px 12px -3px oklch(0.215 0.032 257 / 0.07);
+  --elevation-3: 0 4px 8px -4px oklch(0.215 0.032 257 / 0.12),
+                 0 16px 32px -8px oklch(0.215 0.032 257 / 0.12);
+  --elevation-4: 0 8px 16px -8px oklch(0.215 0.032 257 / 0.16),
+                 0 32px 64px -16px oklch(0.215 0.032 257 / 0.20);
+  --elevation-inset: inset 0 1px 0 0 oklch(1 0 0 / 0.08);
+}
+
 @theme {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  /* Accedra accent — used by the Content Studio (brand-green retains its
-     legacy utility name but maps to Accedra's corporate blue). */
+  /* Tipografía: Geist para texto y Geist Mono para todo dato literal
+     (códigos, SKU, importes). El mono no es decorativo — alinea columnas. */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Acento del Content Studio: conserva su nombre histórico. */
   --color-brand-green: #2b6ac8;
 }
 
-:root {
-  --background: oklch(0.985 0.003 254);
-  --foreground: oklch(0.13 0.02 254);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.13 0.02 254);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.13 0.02 254);
-  --primary: oklch(0.52 0.165 254);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.96 0.008 254);
-  --secondary-foreground: oklch(0.13 0.02 254);
-  --muted: oklch(0.96 0.006 254);
-  --muted-foreground: oklch(0.52 0.02 254);
-  --accent: oklch(0.94 0.012 254);
-  --accent-foreground: oklch(0.13 0.02 254);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.90 0.008 254);
-  --input: oklch(0.90 0.008 254);
-  --ring: oklch(0.52 0.165 254);
-  --radius: 0.5rem;
-}
-
 @theme inline {
+  /* Semánticos shadcn */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -55,17 +161,219 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 2px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 2px);
-  --radius-xl: calc(var(--radius) + 6px);
+
+  /* Escala neutra cruda */
+  --color-n-0: var(--n-0);
+  --color-n-25: var(--n-25);
+  --color-n-50: var(--n-50);
+  --color-n-100: var(--n-100);
+  --color-n-150: var(--n-150);
+  --color-n-200: var(--n-200);
+  --color-n-300: var(--n-300);
+  --color-n-400: var(--n-400);
+  --color-n-500: var(--n-500);
+  --color-n-600: var(--n-600);
+  --color-n-700: var(--n-700);
+  --color-n-800: var(--n-800);
+  --color-n-900: var(--n-900);
+  --color-n-950: var(--n-950);
+
+  /* Superficies, líneas y tinta */
+  --color-surface: var(--surface);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-ink-faint: var(--ink-faint);
+
+  /* Marca */
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+
+  /* Navy */
+  --color-navy-950: var(--navy-950);
+  --color-navy-900: var(--navy-900);
+  --color-navy-850: var(--navy-850);
+  --color-navy-800: var(--navy-800);
+  --color-navy-700: var(--navy-700);
+
+  /* Estado */
+  --color-success-soft: var(--success-soft);
+  --color-success-line: var(--success-line);
+  --color-success-text: var(--success-text);
+  --color-success: var(--success);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-line: var(--warning-line);
+  --color-warning-text: var(--warning-text);
+  --color-warning: var(--warning);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-line: var(--danger-line);
+  --color-danger-text: var(--danger-text);
+  --color-danger: var(--danger);
+
+  /* Radios: 6 · 8 · 10 · 14 · 18 · 24 */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: var(--radius);
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+  --radius-3xl: 1.5rem;
+
+  /* Elevación con nombre — evita improvisar sombras en cada componente */
+  --shadow-e1: var(--elevation-1);
+  --shadow-e2: var(--elevation-2);
+  --shadow-e3: var(--elevation-3);
+  --shadow-e4: var(--elevation-4);
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
+    /* Fondo con una veta de luz apenas perceptible arriba a la izquierda: le
+       saca el plano muerto al gris sin que se lea como "gradiente". */
+    background-image: radial-gradient(
+      120rem 60rem at 12% -20%,
+      oklch(1 0 0 / 0.75),
+      transparent 60%
+    );
+    background-attachment: fixed;
+    font-feature-settings: "cv11", "ss01";
+    font-variant-ligatures: contextual common-ligatures;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Los títulos van apretados: en pesos altos el tracking por defecto los
+     desarma. Los números, siempre tabulares, para que las columnas no bailen. */
+  h1, h2, h3, h4 {
+    letter-spacing: -0.021em;
+  }
+
+  th, td, input[type="number"] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Foco único en toda la app: halo de marca, nunca el outline del navegador. */
+  :focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--surface),
+      0 0 0 4px oklch(0.578 0.170 258 / 0.45);
+    border-radius: var(--radius-md);
+  }
+
+  ::selection {
+    background: oklch(0.578 0.170 258 / 0.22);
+  }
+
+  /* Scrollbars finas: en un backoffice con tablas anchas la barra gruesa del
+     sistema se come el aire del layout. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--n-300) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--n-300);
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--n-400);
+  }
+
+  /* Las flechitas del number input rompen la grilla de las celdas editables. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer components {
+  /* ── Panel: la superficie estándar. Todo bloque de contenido es un panel. ── */
+  .panel {
+    @apply rounded-xl border border-line bg-surface shadow-e1;
+  }
+
+  .panel-header {
+    @apply flex items-center justify-between gap-3 border-b border-line px-5 py-3.5;
+  }
+
+  .panel-footer {
+    @apply border-t border-line bg-surface-subtle px-5 py-3.5;
+  }
+
+  /* ── Eyebrow: micro-etiqueta en versalita. El recurso que más levanta la
+     percepción de "producto terminado" y el más fácil de arruinar: sin
+     tracking generoso se lee como un grito. ── */
+  .eyebrow {
+    @apply text-[10px] font-semibold uppercase tracking-[0.11em] text-ink-subtle;
+  }
+
+  /* ── Cifra: importes, stock, KPIs. Tabular y apretada. ── */
+  .num {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  /* ── Fila de tabla con transición uniforme ── */
+  .row-hover {
+    @apply transition-colors duration-150 hover:bg-brand-50/60;
+  }
+
+  /* ── Divisor vertical de toolbar ── */
+  .toolbar-divider {
+    @apply h-4 w-px shrink-0 bg-line;
+  }
+
+  /* ── Checkbox nativo, presentable ── */
+  .checkbox {
+    @apply h-[15px] w-[15px] cursor-pointer rounded-[4px] border-line-strong align-middle accent-[var(--brand-600)] transition-opacity disabled:cursor-default disabled:opacity-45;
+  }
+}
+
+/* Respeta la preferencia del sistema: nada de animaciones decorativas. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

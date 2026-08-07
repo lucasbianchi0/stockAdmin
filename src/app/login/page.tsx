@@ -6,7 +6,7 @@ import Image from "next/image"
 import { createSupabaseBrowser } from "@/lib/supabase-browser"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Loader2 } from "lucide-react"
+import { AlertCircle, Loader2 } from "lucide-react"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -34,58 +34,103 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0B1628] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="bg-white rounded-xl px-6 py-4 shadow-sm mb-8 mx-auto w-fit">
-          <Image
-            src="/logo-accedra.jpg"
-            alt="Accedra IT Solutions"
-            width={140}
-            height={36}
-            className="object-contain"
-            priority
-          />
-        </div>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-navy-950 px-4">
+      {/* Fondo: dos focos de luz de marca muy abiertos y una grilla apenas
+          visible. Es lo único decorativo de toda la app y va justamente donde
+          no hay datos que leer. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "radial-gradient(60rem 40rem at 50% -10%, rgba(43,106,200,0.28), transparent 65%), radial-gradient(50rem 30rem at 85% 110%, rgba(43,106,200,0.14), transparent 60%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.35]"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)",
+          backgroundSize: "56px 56px",
+          maskImage: "radial-gradient(50rem 40rem at 50% 40%, black, transparent 75%)",
+          WebkitMaskImage: "radial-gradient(50rem 40rem at 50% 40%, black, transparent 75%)",
+        }}
+      />
 
-        <div className="bg-card rounded-2xl border shadow-xl p-8">
-          <h1 className="text-xl font-bold text-foreground mb-1">Iniciar sesión</h1>
-          <p className="text-sm text-muted-foreground mb-6">Ingresá tus credenciales para continuar</p>
+      <div className="relative w-full max-w-[380px]">
+        <Image
+          src="/brand/accedra-logo-blanco.svg"
+          alt="Accedra IT Solutions"
+          width={1073}
+          height={160}
+          className="mx-auto mb-8 h-[26px] w-auto"
+          priority
+          unoptimized
+        />
 
-          <form onSubmit={handleLogin} className="space-y-4">
+        <div className="rounded-2xl border border-white/10 bg-surface p-7 shadow-e4">
+          <h1 className="text-[19px] font-semibold tracking-[-0.025em] text-ink">
+            Iniciar sesión
+          </h1>
+          <p className="mt-1 text-[12.5px] text-ink-muted">
+            Ingresá tus credenciales para continuar
+          </p>
+
+          <form onSubmit={handleLogin} className="mt-6 space-y-4">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Email</label>
+              <label
+                htmlFor="email"
+                className="block text-[12px] font-medium text-ink-secondary"
+              >
+                Email
+              </label>
               <Input
+                id="email"
                 type="email"
                 placeholder="tu@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoFocus
+                autoComplete="email"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Contraseña</label>
+              <label
+                htmlFor="password"
+                className="block text-[12px] font-medium text-ink-secondary"
+              >
+                Contraseña
+              </label>
               <Input
+                id="password"
                 type="password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
               />
             </div>
 
             {error && (
-              <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">
-                {error}
-              </p>
+              <div className="flex items-center gap-2 rounded-lg border border-danger-line bg-danger-soft px-3 py-2.5">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 text-danger-text" />
+                <p className="text-[12px] font-medium text-danger-text">{error}</p>
+              </div>
             )}
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Ingresar"}
+            <Button type="submit" size="lg" className="w-full" disabled={loading}>
+              {loading ? <Loader2 className="animate-spin" /> : "Ingresar"}
             </Button>
           </form>
         </div>
+
+        <p className="mt-6 text-center text-[11px] text-white/25">
+          Accedra IT Solutions · Backoffice
+        </p>
       </div>
     </div>
   )
