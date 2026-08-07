@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Informe de campañas — Accedra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#070E18; --panel:#0E1B30; --panel-2:#14263F;
+    --linea:rgba(255,255,255,.09); --linea-2:rgba(255,255,255,.05);
+    --txt:#EAF1FB; --txt-2:#9FB3CE; --txt-3:#64789A; --vacio:#3E5171;
+    --azul:#2B6FD4; --azul-claro:#5AA2F5;
+    --verde:#34D399; --rojo:#F87171; --ambar:#FBBF24;
+    --firma:rgb(124,108,246); --net:rgb(59,130,246); --seg:rgb(16,185,129);
+    --cons:rgb(6,182,212); --soft:rgb(180,92,242);
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+         font:15.5px/1.6 Inter,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+         -webkit-font-smoothing:antialiased; }
+  .hoja { max-width:940px; margin:0 auto; padding:44px 40px 100px; }
+  h1,h2,.display { font-family:"Space Grotesk",Inter,sans-serif; letter-spacing:-.01em; }
+
+  header { display:flex; justify-content:space-between; align-items:flex-end;
+           padding-bottom:22px; border-bottom:1px solid var(--linea); margin-bottom:24px; }
+  .logo { font-family:"Space Grotesk"; font-size:21px; font-weight:700; letter-spacing:-.02em; }
+  .logo span { color:var(--azul-claro); }
+  .kicker { font-size:11px; font-weight:600; letter-spacing:.16em; text-transform:uppercase;
+            color:var(--txt-3); margin-top:6px; }
+  header .der { text-align:right; }
+  header h1 { font-size:22px; margin:0; font-weight:600; }
+  header .fecha { font-size:12.5px; color:var(--txt-3); margin-top:4px; }
+
+  h2 { font-size:11px; font-weight:700; letter-spacing:.16em; text-transform:uppercase;
+       color:var(--txt-3); margin:38px 0 14px; display:flex; align-items:baseline; gap:12px; }
+  h2 .sub { font-family:Inter; font-size:12px; font-weight:400; letter-spacing:0;
+            text-transform:none; color:var(--txt-3); opacity:.8; }
+
+  /* ── Aviso de plantilla ── */
+  .aviso { display:flex; gap:14px; align-items:flex-start; background:rgba(43,111,212,.10);
+           border:1px solid rgba(43,111,212,.32); border-radius:12px;
+           padding:16px 19px; margin-bottom:26px; }
+  .aviso .ico { color:var(--azul-claro); font-size:16px; line-height:1.4; }
+  .aviso p { margin:0; font-size:14px; color:#CFE0F7; }
+  .aviso strong { color:var(--azul-claro); }
+
+  /* ── Fila 1: indicadores principales ── */
+  .principales { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .p { background:var(--panel); border:1px solid var(--linea); border-radius:14px;
+       padding:22px 20px; position:relative; overflow:hidden; }
+  .p::before { content:""; position:absolute; inset:0 0 auto 0; height:2px;
+               background:linear-gradient(90deg,var(--azul),transparent); opacity:.4; }
+  .p .rot { font-size:11px; text-transform:uppercase; letter-spacing:.09em;
+            color:var(--txt-3); margin-bottom:12px; }
+  .p .val { font-family:"Space Grotesk"; font-size:30px; font-weight:700;
+            letter-spacing:-.03em; line-height:1; color:var(--vacio); }
+  .p .pie { font-size:12px; color:var(--txt-3); margin-top:9px; }
+
+  /* ── Fila 2: indicadores de calidad ── */
+  .calidad { display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
+             background:var(--linea); border:1px solid var(--linea); border-radius:14px; overflow:hidden; }
+  .c { background:var(--panel); padding:18px 20px; }
+  .c .rot { font-size:11px; text-transform:uppercase; letter-spacing:.09em;
+            color:var(--txt-3); margin-bottom:10px; }
+  .c .val { font-family:"Space Grotesk"; font-size:23px; font-weight:700;
+            letter-spacing:-.02em; line-height:1; color:var(--vacio); }
+  .c .meta { font-size:11.5px; color:var(--txt-3); margin-top:7px; }
+  @media (max-width:760px){ .principales,.calidad{grid-template-columns:repeat(2,1fr);} }
+
+  /* ── Tablas ── */
+  table { width:100%; border-collapse:collapse; font-size:14.5px; }
+  th { text-align:left; font-size:10.5px; letter-spacing:.11em; text-transform:uppercase;
+       color:var(--txt-3); padding:0 14px 11px 0; font-weight:700;
+       border-bottom:1px solid var(--linea); white-space:nowrap; }
+  td { padding:14px 14px 14px 0; border-bottom:1px solid var(--linea-2); vertical-align:middle; }
+  td.n,th.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  tr:last-child td { border-bottom:none; }
+  .sol { display:flex; align-items:center; gap:10px; font-weight:600; }
+  .punto { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .na { color:var(--vacio); font-variant-numeric:tabular-nums; }
+  .sangria { padding-left:26px; font-weight:500; color:var(--txt-2); font-size:14px; }
+  .barra { height:5px; border-radius:3px; background:rgba(255,255,255,.05); min-width:56px; }
+  .tag { font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+         color:var(--txt-3); border:1px solid var(--linea); border-radius:20px;
+         padding:2px 9px; margin-left:8px; }
+  .marca-fila { background:rgba(255,255,255,.02); }
+
+  /* ── Texto pendiente de escribir ── */
+  .pendiente { color:var(--vacio); font-style:italic; }
+
+  /* ── Análisis (abajo) ── */
+  .analisis { margin-top:56px; padding-top:34px; border-top:2px solid var(--linea); }
+  .analisis h3 { font-family:"Space Grotesk"; font-size:19px; margin:0 0 6px; font-weight:600; }
+  .analisis .lead { color:var(--txt-2); margin:0 0 26px; font-size:15px; }
+  .nota { font-size:13.5px; color:var(--txt-2); background:var(--panel);
+          border:1px solid var(--linea); border-radius:12px; padding:15px 18px; margin-top:16px; }
+  .nota strong { color:var(--txt); }
+
+  footer { margin-top:48px; padding-top:18px; border-top:1px solid var(--linea);
+           color:var(--txt-3); font-size:12.5px; }
+
+  @media print {
+    :root { --bg:#fff; --panel:#fff; --panel-2:#f6f8fb; --linea:#dde3ec; --linea-2:#eef2f7;
+            --txt:#0E1B30; --txt-2:#42556f; --txt-3:#7d8ea5; --vacio:#B3C0D2; }
+    body{background:#fff;} .hoja{padding:0;max-width:none;}
+    .p,.calidad,.nota{break-inside:avoid;} .analisis{break-before:page;}
+  }
+</style>
+</head>
+<body>
+<div class="hoja">
+
+<header>
+  <div>
+    <div class="logo">accedra<span>.</span></div>
+    <div class="kicker">Campañas de Google</div>
+  </div>
+  <div class="der">
+    <h1>[Mes] [Año]</h1>
+    <div class="fecha">Emitido el [fecha]</div>
+  </div>
+</header>
+
+<div class="aviso">
+  <div class="ico">◆</div>
+  <p><strong>Plantilla sin datos.</strong> Todos los valores figuran como <code>n/a</code>
+     porque todavía no hay un mes medido. Sirve para ver la estructura del informe, no para
+     mostrar resultados. Al generar un informe real, cada casilla se completa con el dato
+     correspondiente — y las que sigan sin dato quedan en <code>n/a</code> con el motivo al
+     lado, nunca estimadas.</p>
+</div>
+
+<!-- ══════════ ARRIBA: SOLO INDICADORES ══════════ -->
+
+<h2>Resultado del mes</h2>
+<div class="principales">
+  <div class="p">
+    <div class="rot">Invertimos</div>
+    <div class="val">n/a</div>
+    <div class="pie">sin datos del período</div>
+  </div>
+  <div class="p">
+    <div class="rot">Consultas</div>
+    <div class="val">n/a</div>
+    <div class="pie">la medición está inactiva</div>
+  </div>
+  <div class="p">
+    <div class="rot">Costo por consulta</div>
+    <div class="val">n/a</div>
+    <div class="pie">requiere consultas medidas</div>
+  </div>
+  <div class="p">
+    <div class="rot">Clientes nuevos</div>
+    <div class="val">n/a</div>
+    <div class="pie">ciclo de venta: 3 a 6 meses</div>
+  </div>
+</div>
+
+<h2>Calidad de la inversión <span class="sub">estos cuatro se mueven rápido: dicen si vamos bien antes de que haya suficientes consultas</span></h2>
+<div class="calidad">
+  <div class="c">
+    <div class="rot">Términos relevantes</div>
+    <div class="val">n/a</div>
+    <div class="meta">de las búsquedas donde aparecimos</div>
+  </div>
+  <div class="c">
+    <div class="rot">Gasto sin resultado</div>
+    <div class="val">n/a</div>
+    <div class="meta">objetivo: bajar de 30%</div>
+  </div>
+  <div class="c">
+    <div class="rot">CTR</div>
+    <div class="val">n/a</div>
+    <div class="meta">promedio del rubro: 2,5%</div>
+  </div>
+  <div class="c">
+    <div class="rot">Costo por clic</div>
+    <div class="val">n/a</div>
+    <div class="meta">sobre los clics del período</div>
+  </div>
+</div>
+
+<h2>Por iniciativa</h2>
+<table>
+  <tr>
+    <th>Solución / Industria</th>
+    <th class="n">Inversión</th>
+    <th>Reparto</th>
+    <th class="n">Clics</th>
+    <th class="n">Consultas</th>
+    <th class="n">$ / consulta</th>
+    <th class="n">Demanda<br>perdida</th>
+    <th class="n">Índice</th>
+  </tr>
+
+  <tr>
+    <td><div class="sol"><span class="punto" style="background:var(--firma)"></span>Firma Biométrica</div></td>
+    <td class="n na">n/a</td><td><div class="barra"></div></td>
+    <td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td>
+    <td class="n na">n/a</td><td class="n na">n/a</td>
+  </tr>
+  <tr><td class="sangria">· una fila por industria</td>
+      <td class="n na">n/a</td><td></td><td class="n na">n/a</td><td class="n na">n/a</td>
+      <td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td></tr>
+
+  <tr>
+    <td><div class="sol"><span class="punto" style="background:var(--net)"></span>Networking</div></td>
+    <td class="n na">n/a</td><td><div class="barra"></div></td>
+    <td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td>
+    <td class="n na">n/a</td><td class="n na">n/a</td>
+  </tr>
+  <tr>
+    <td><div class="sol"><span class="punto" style="background:var(--seg)"></span>Seguridad</div></td>
+    <td class="n na">n/a</td><td><div class="barra"></div></td>
+    <td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td>
+    <td class="n na">n/a</td><td class="n na">n/a</td>
+  </tr>
+  <tr>
+    <td><div class="sol"><span class="punto" style="background:var(--cons)"></span>Consultoría</div></td>
+    <td class="n na">n/a</td><td><div class="barra"></div></td>
+    <td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td>
+    <td class="n na">n/a</td><td class="n na">n/a</td>
+  </tr>
+  <tr>
+    <td><div class="sol"><span class="punto" style="background:var(--soft)"></span>Software &amp; AI</div></td>
+    <td class="n na">n/a</td><td><div class="barra"></div></td>
+    <td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td>
+    <td class="n na">n/a</td><td class="n na">n/a</td>
+  </tr>
+
+  <tr class="marca-fila">
+    <td><div class="sol" style="color:var(--txt-2)">
+        <span class="punto" style="background:var(--txt-3)"></span>Marca
+        <span class="tag">aparte del total</span></div></td>
+    <td class="n na">n/a</td><td></td><td class="n na">n/a</td><td class="n na">n/a</td>
+    <td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td>
+  </tr>
+</table>
+
+<div class="nota">
+  <strong>Índice:</strong> cuánto aporta cada solución en consultas comparado con cuánto
+  consume en inversión. Arriba de 1 rinde más de lo que cuesta; abajo de 1 la sostienen las
+  otras. Es el número que decide el reparto del mes siguiente.<br><br>
+
+  <strong>Demanda perdida:</strong> qué porcentaje de las búsquedas relevantes no vimos por
+  quedarnos sin presupuesto. Es la señal de dónde conviene poner más plata.<br><br>
+
+  <strong>Etiqueta "revisar landing":</strong> aparece en una industria cuando recibe tráfico
+  normal pero convierte peor que el resto. Ahí el problema es la página, no la campaña — y la
+  acción es corregir la landing, no apagar la pauta.<br><br>
+
+  <strong>La marca va aparte a propósito:</strong> quien busca "Accedra" ya nos conoce, así que
+  convierte barato por definición. Sumarla al total inflaría los números y taparía cómo rinde
+  la captación real.
+</div>
+
+<!-- ══════════ ABAJO: ANÁLISIS ══════════ -->
+
+<div class="analisis">
+  <h3>Análisis · [mes] contra [mes anterior]</h3>
+  <p class="lead pendiente">[Una o dos frases de contexto: qué tuvo de particular el período.]</p>
+
+  <table>
+    <tr><th>Indicador</th><th class="n">[mes ant.]</th><th class="n">[mes]</th><th class="n">Variación</th></tr>
+    <tr><td>Inversión</td><td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td></tr>
+    <tr><td>Consultas</td><td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td></tr>
+    <tr><td>Costo por consulta</td><td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td></tr>
+    <tr><td>Términos relevantes</td><td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td></tr>
+    <tr><td>Gasto sin resultado</td><td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td></tr>
+    <tr><td>CTR</td><td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td></tr>
+    <tr><td>Costo por clic</td><td class="n na">n/a</td><td class="n na">n/a</td><td class="n na">n/a</td></tr>
+  </table>
+
+  <div class="nota pendiente">
+    [Lectura del mes: dos o tres párrafos interpretando los indicadores. Explican qué
+    significan los números, no los repiten, y dicen siempre si algo es bueno o malo y contra
+    qué se compara.]
+  </div>
+
+  <h2>Qué hicimos y qué esperábamos</h2>
+  <table>
+    <tr><th>Acción</th><th>Esperábamos</th><th class="n">Resultado</th></tr>
+    <tr><td class="pendiente">[una fila por acción registrada el mes anterior]</td>
+        <td class="pendiente">[la hipótesis, tal como se anotó antes de ejecutarla]</td>
+        <td class="n na">n/a</td></tr>
+  </table>
+
+  <h2>Qué proponemos para el mes que viene</h2>
+  <table>
+    <tr><th>Acción</th><th>Esperamos que</th></tr>
+    <tr><td class="pendiente">[máximo 3, ordenadas por impacto esperado]</td>
+        <td class="pendiente">[qué esperamos que pase, con un número]</td></tr>
+  </table>
+
+  <div class="nota pendiente">
+    [Advertencias de lectura de este informe: pocos datos, cambio de estructura, medición
+    parcial. Si no hay ninguna, esta caja se saca.]
+  </div>
+</div>
+
+<footer>
+  Inversión, clics y consultas: exportación mensual de Google Ads ·
+  Clientes nuevos: carga manual del equipo comercial
+</footer>
+
+</div>
+</body>
+</html>
