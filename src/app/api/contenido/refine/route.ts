@@ -1,3 +1,4 @@
+import { exigirModulo } from "@/lib/guard-api"
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { ACCEDRA_BRAND_CONTEXT, BRAND_PROMPT_MAX_LEN, sanitizeBrief, sanitizeText } from "@/lib/contenido-context"
@@ -16,6 +17,9 @@ const SECTION_LABELS: Record<string, string> = {
 }
 
 export async function POST(req: Request) {
+  const sinPermiso = await exigirModulo("marketing")
+  if (sinPermiso) return sinPermiso
+
   let body: unknown
   try {
     body = await req.json()

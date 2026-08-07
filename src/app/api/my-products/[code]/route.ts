@@ -1,9 +1,13 @@
+import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ code: string }> }
 ) {
+  const sinPermiso = await exigirModulo("productos")
+  if (sinPermiso) return sinPermiso
+
   const { code } = await params
   try {
     const body = await req.json()
@@ -28,6 +32,9 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ code: string }> }
 ) {
+  const sinPermiso = await exigirModulo("productos")
+  if (sinPermiso) return sinPermiso
+
   const { code } = await params
   try {
     const { error } = await supabase.from("my_products").delete().eq("code", code)

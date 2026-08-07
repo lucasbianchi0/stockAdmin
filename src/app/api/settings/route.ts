@@ -1,6 +1,10 @@
+import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 
 export async function GET() {
+  const sinPermiso = await exigirModulo("administracion")
+  if (sinPermiso) return sinPermiso
+
   const { data, error } = await supabase.from("settings").select("key, value")
   if (error) return Response.json({ error: error.message }, { status: 500 })
   const settings: Record<string, string> = {}
@@ -9,6 +13,9 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
+  const sinPermiso = await exigirModulo("administracion")
+  if (sinPermiso) return sinPermiso
+
   try {
     const body = await req.json()
     const entries = Object.entries(body as Record<string, unknown>).map(([key, value]) => ({

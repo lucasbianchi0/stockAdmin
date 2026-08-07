@@ -1,6 +1,10 @@
+import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 
 export async function GET() {
+  const sinPermiso = await exigirModulo("productos")
+  if (sinPermiso) return sinPermiso
+
   try {
     const { data: myRows, error: myErr } = await supabase
       .from("my_products")
@@ -45,6 +49,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const sinPermiso = await exigirModulo("productos")
+  if (sinPermiso) return sinPermiso
+
   try {
     const { codes } = await req.json()
     if (!Array.isArray(codes) || codes.length === 0) {

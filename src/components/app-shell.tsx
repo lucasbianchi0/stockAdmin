@@ -6,8 +6,15 @@ import { usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
 
 import { Sidebar } from "./sidebar"
+import type { Modulo } from "@/lib/permisos"
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  modulos,
+}: {
+  children: React.ReactNode
+  modulos: Modulo[]
+}) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
 
@@ -15,13 +22,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setSidebarOpen(false)
   }, [pathname])
 
-  if (pathname === "/login") {
+  if (pathname === "/login" || pathname === "/sin-acceso") {
     return <>{children}</>
   }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar />
+      <Sidebar modulos={modulos} />
 
       {/* Overlay mobile */}
       {sidebarOpen && (
@@ -31,7 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setSidebarOpen(false)}
           />
           <div className="absolute left-0 top-0 h-full shadow-e4 animate-in slide-in-from-left-full duration-250">
-            <Sidebar mobile />
+            <Sidebar mobile modulos={modulos} />
           </div>
           <button
             onClick={() => setSidebarOpen(false)}

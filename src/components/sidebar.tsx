@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -15,6 +15,7 @@ import {
 
 import { createSupabaseBrowser } from "@/lib/supabase-browser"
 import { cn } from "@/lib/utils"
+import type { Modulo } from "@/lib/permisos"
 
 type NavItem = {
   name: string
@@ -28,7 +29,7 @@ type NavItem = {
 }
 
 type Grupo = {
-  id: string
+  id: Modulo
   titulo: string
   icon: LucideIcon
   items: NavItem[]
@@ -80,9 +81,11 @@ const grupoActivo = (grupo: Grupo, pathname: string) =>
 
 interface SidebarProps {
   mobile?: boolean
+  /** Módulos habilitados del usuario. Filtra qué grupos se dibujan. */
+  modulos: Modulo[]
 }
 
-export function Sidebar({ mobile }: SidebarProps = {}) {
+export function Sidebar({ mobile, modulos }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -91,16 +94,23 @@ export function Sidebar({ mobile }: SidebarProps = {}) {
    * servidor y cliente, así que no hay ni parpadeo ni mismatch de hidratación.
    * Abierto sólo el grupo donde estás — con todo abierto el plegado no sirve de nada.
    */
+  // useMemo para que la identidad del array no cambie en cada render: sin eso
+  // el efecto de abajo se dispara siempre y el linter tiene razón en quejarse.
+  const grupos = useMemo(
+    () => GRUPOS.filter((g) => modulos.includes(g.id)),
+    [modulos]
+  )
+
   const [abiertos, setAbiertos] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(GRUPOS.map((g) => [g.id, grupoActivo(g, pathname)]))
+    Object.fromEntries(grupos.map((g) => [g.id, grupoActivo(g, pathname)]))
   )
 
   // Al navegar, el grupo de destino se abre solo. No cierra los otros: si el
   // usuario los abrió a mano, cerrárselos en cada click se siente hostil.
   useEffect(() => {
-    const activo = GRUPOS.find((g) => grupoActivo(g, pathname))
+    const activo = grupos.find((g) => grupoActivo(g, pathname))
     if (activo) setAbiertos((prev) => (prev[activo.id] ? prev : { ...prev, [activo.id]: true }))
-  }, [pathname])
+  }, [pathname, grupos])
 
   const handleLogout = async () => {
     const supabase = createSupabaseBrowser()
@@ -126,7 +136,7 @@ export function Sidebar({ mobile }: SidebarProps = {}) {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
-        {GRUPOS.map((grupo) => (
+        {grupos.map((grupo) => (
           <GrupoNav
             key={grupo.id}
             grupo={grupo}

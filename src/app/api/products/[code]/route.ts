@@ -1,9 +1,13 @@
+import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ code: string }> }
 ) {
+  const sinPermiso = await exigirModulo("productos")
+  if (sinPermiso) return sinPermiso
+
   const { code } = await params
 
   const { data, error } = await supabase

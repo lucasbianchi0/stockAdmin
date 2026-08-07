@@ -1,3 +1,4 @@
+import { exigirModulo } from "@/lib/guard-api"
 import { NextResponse } from "next/server"
 import OpenAI from "openai"
 
@@ -28,6 +29,9 @@ const GPT_SIZE: Record<SizeKind, "1024x1024" | "1024x1536" | "1536x1024"> = {
 }
 
 export async function POST(req: Request) {
+  const sinPermiso = await exigirModulo("marketing")
+  if (sinPermiso) return sinPermiso
+
   let body: unknown
   try {
     body = await req.json()

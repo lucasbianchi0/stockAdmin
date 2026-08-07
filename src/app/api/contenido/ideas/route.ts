@@ -1,3 +1,4 @@
+import { exigirModulo } from "@/lib/guard-api"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
 import {
@@ -20,6 +21,9 @@ import {
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function POST(req: Request) {
+  const sinPermiso = await exigirModulo("marketing")
+  if (sinPermiso) return sinPermiso
+
   let body: unknown
   try {
     body = await req.json()

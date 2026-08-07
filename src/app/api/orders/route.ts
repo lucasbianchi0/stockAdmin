@@ -1,3 +1,4 @@
+import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import {
   createOrder,
@@ -51,6 +52,9 @@ async function resolveTypes(
 }
 
 export async function GET() {
+  const sinPermiso = await exigirModulo("productos")
+  if (sinPermiso) return sinPermiso
+
   const { data: orders, error } = await supabase
     .from("orders")
     .select("*")
@@ -81,6 +85,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const sinPermiso = await exigirModulo("productos")
+  if (sinPermiso) return sinPermiso
+
   if (!isDistecnaConfigured()) {
     return Response.json(
       { error: "Distecna V2 no está configurado en este entorno." },

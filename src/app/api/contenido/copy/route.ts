@@ -1,3 +1,4 @@
+import { exigirModulo } from "@/lib/guard-api"
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import {
@@ -25,6 +26,9 @@ const VALID_IDEA_FORMATS = new Set(["imagen", "carrusel", "reel", "story", "arti
 const VISUAL_BASE = `clean corporate background (light #F4F6F9 or deep navy #0B1628), #2B6AC8 blue accents, 1080x1080px, "Accedra" wordmark bottom right with "accedra.com.ar" below it, premium corporate tech aesthetic, professional and minimal`
 
 export async function POST(req: Request) {
+  const sinPermiso = await exigirModulo("marketing")
+  if (sinPermiso) return sinPermiso
+
   let body: unknown
   try { body = await req.json() } catch {
     return NextResponse.json({ error: "Body inválido" }, { status: 400 })

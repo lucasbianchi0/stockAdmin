@@ -4,6 +4,8 @@ import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { AppShell } from "@/components/app-shell"
 import { Toaster } from "sonner"
+import { createSupabaseServer } from "@/lib/supabase-server"
+import { accesoDeUsuario } from "@/lib/permisos"
 
 /**
  * Geist es la única familia del sistema. Se carga con todos los pesos porque la
@@ -34,15 +36,22 @@ export const viewport: Viewport = {
   themeColor: "#0B1628",
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // Los módulos se resuelven acá, en el servidor, sólo para dibujar la sidebar.
+  // No es el control de acceso —ese vive en el middleware y en cada handler de
+  // API—: es para no mostrarle puertas a alguien que no las puede abrir.
+  const supabase = await createSupabaseServer()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { modulos } = accesoDeUsuario(user)
+
   return (
     <html lang="es" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased" suppressHydrationWarning>
-        <AppShell>{children}</AppShell>
+        <AppShell modulos={modulos}>{children}</AppShell>
         <Toaster
           position="top-center"
           richColors

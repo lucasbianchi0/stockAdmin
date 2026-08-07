@@ -1,3 +1,4 @@
+import { exigirModulo } from "@/lib/guard-api"
 import {
   getDeliveryAddresses,
   getPaymentTerm,
@@ -9,6 +10,9 @@ import {
 // cuenta. Los dos son opcionales en POST /v2/Order, asi que un fallo parcial no
 // bloquea nada — el pedido se puede mandar con los defaults de la cuenta.
 export async function GET() {
+  const sinPermiso = await exigirModulo("productos")
+  if (sinPermiso) return sinPermiso
+
   if (!isDistecnaConfigured()) {
     return Response.json({
       configured: false,

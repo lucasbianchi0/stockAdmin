@@ -1,3 +1,4 @@
+import { exigirModulo } from "@/lib/guard-api"
 import { Agent, fetch as undiciFetch } from "undici"
 
 const API_URL = process.env.API_URL!
@@ -6,6 +7,9 @@ const API_KEY = process.env.API_KEY ?? ""
 const agent = new Agent({ connect: { rejectUnauthorized: false } })
 
 export async function GET() {
+  const sinPermiso = await exigirModulo("productos")
+  if (sinPermiso) return sinPermiso
+
   if (!API_URL || !API_KEY) {
     return Response.json({ error: "Missing API configuration" }, { status: 500 })
   }

@@ -1,7 +1,11 @@
+import { exigirModulo } from "@/lib/guard-api"
 let cache: { venta: number; updatedAt: string; fetchedAt: number } | null = null
 const TTL_MS = 60 * 60 * 1000
 
 export async function GET() {
+  const sinPermiso = await exigirModulo("productos")
+  if (sinPermiso) return sinPermiso
+
   try {
     if (cache && Date.now() - cache.fetchedAt < TTL_MS) {
       return Response.json({ venta: cache.venta, updatedAt: cache.updatedAt, cached: true })
