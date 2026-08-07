@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Diagnóstico histórico 2017–2026 — Accedra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Template del informe — versión impresa (PDF). Misma estructura que el
+     informe mensual: indicadores arriba, análisis abajo. */
+  @page { size: A4; margin: 14mm 13mm; }
+  :root {
+    --txt:#0E1B30; --txt-2:#42556F; --txt-3:#7D8EA5;
+    --linea:#DDE3EC; --linea-2:#EEF2F7; --panel:#F7F9FC;
+    --azul:#2B6AC8; --azul-claro:#5AA2F5;
+    --verde:#0E9F6E; --rojo:#D64545; --ambar:#C98A1B;
+    --firma:#7C6CF6; --net:#3B82F6; --seg:#10B981; --cons:#06B6D4; --soft:#B45CF2;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; color:var(--txt); background:#fff;
+         font:10.5pt/1.55 Inter,-apple-system,system-ui,sans-serif;
+         -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  h1,h2,h3,.display { font-family:"Space Grotesk",Inter,sans-serif; letter-spacing:-.015em; }
+
+  header { display:flex; justify-content:space-between; align-items:flex-end;
+           border-bottom:2px solid var(--txt); padding-bottom:11px; margin-bottom:20px; }
+  .logo { font-family:"Space Grotesk"; font-size:16pt; font-weight:700; letter-spacing:-.03em; }
+  .logo span { color:var(--azul); }
+  .kicker { font-size:7pt; font-weight:600; letter-spacing:.18em; text-transform:uppercase;
+            color:var(--txt-3); margin-top:3px; }
+  header .der { text-align:right; }
+  header h1 { font-size:14pt; margin:0; font-weight:600; }
+  header .fecha { font-size:8pt; color:var(--txt-3); margin-top:2px; }
+
+  h2 { font-size:7.5pt; font-weight:700; letter-spacing:.16em; text-transform:uppercase;
+       color:var(--txt-3); margin:22px 0 9px; break-after:avoid; }
+  h2 .sub { font-family:Inter; font-size:8pt; font-weight:400; letter-spacing:0;
+            text-transform:none; color:var(--txt-3); margin-left:10px; }
+
+  .titular { background:linear-gradient(135deg,rgba(43,106,200,.10),rgba(43,106,200,.02));
+             border-left:3px solid var(--azul); border-radius:0 8px 8px 0;
+             padding:14px 17px; margin-bottom:20px; break-inside:avoid; }
+  .titular p { margin:0; font-size:11pt; line-height:1.5; font-family:"Space Grotesk"; font-weight:500; }
+
+  .principales { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .p { border:1px solid var(--linea); border-radius:8px; padding:12px 13px; break-inside:avoid; }
+  .p .rot { font-size:7pt; text-transform:uppercase; letter-spacing:.1em; color:var(--txt-3); margin-bottom:7px; }
+  .p .val { font-family:"Space Grotesk"; font-size:17pt; font-weight:700; letter-spacing:-.035em; line-height:1; }
+  .p .pie { font-size:7.5pt; color:var(--txt-3); margin-top:5px; }
+
+  .calidad { display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
+             background:var(--linea); border:1px solid var(--linea); border-radius:8px;
+             overflow:hidden; break-inside:avoid; }
+  .c { background:#fff; padding:11px 13px; }
+  .c .rot { font-size:7pt; text-transform:uppercase; letter-spacing:.1em; color:var(--txt-3); margin-bottom:6px; }
+  .c .val { font-family:"Space Grotesk"; font-size:13.5pt; font-weight:700; letter-spacing:-.025em; line-height:1; }
+  .c .meta { font-size:7.5pt; color:var(--txt-3); margin-top:4px; }
+
+  table { width:100%; border-collapse:collapse; font-size:9.5pt; break-inside:avoid; }
+  th { text-align:left; font-size:7pt; letter-spacing:.12em; text-transform:uppercase;
+       color:var(--txt-3); padding:0 8px 7px 0; font-weight:700; border-bottom:1px solid var(--linea); }
+  td { padding:8px 8px 8px 0; border-bottom:1px solid var(--linea-2); vertical-align:middle; }
+  td.n,th.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  tr:last-child td { border-bottom:none; }
+  .sol { display:flex; align-items:center; gap:7px; font-weight:600; }
+  .punto { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .idx { font-family:"Space Grotesk"; font-weight:700; font-size:10.5pt; }
+  .barra { height:4px; border-radius:2px; background:#EEF2F7; overflow:hidden; min-width:44px; }
+  .barra i { display:block; height:100%; border-radius:2px; }
+  .apagado td { color:var(--txt-3); }
+
+  .bien{color:var(--verde);} .mal{color:var(--rojo);} .neutro{color:var(--txt-3);}
+
+  .analisis { margin-top:26px; padding-top:18px; border-top:2px solid var(--linea); break-before:page; }
+  .analisis h3 { font-size:13pt; margin:0 0 4px; font-weight:600; }
+  .analisis .lead { color:var(--txt-2); margin:0 0 16px; font-size:10pt; }
+  .analisis p { margin:0 0 11px; }
+  .nota { font-size:9pt; color:var(--txt-2); background:var(--panel);
+          border:1px solid var(--linea); border-radius:8px; padding:11px 13px;
+          margin-top:11px; break-inside:avoid; }
+  .nota strong { color:var(--txt); }
+
+  .destacado { background:linear-gradient(135deg,rgba(214,69,69,.07),rgba(214,69,69,.02));
+               border-left:3px solid var(--rojo); border-radius:0 8px 8px 0;
+               padding:15px 18px; margin:14px 0; break-inside:avoid; }
+  .destacado .cifra { font-family:"Space Grotesk"; font-size:26pt; font-weight:700;
+                      letter-spacing:-.04em; color:var(--rojo); line-height:1; }
+  .destacado p { margin:7px 0 0; font-size:10pt; }
+
+  footer { margin-top:22px; padding-top:10px; border-top:1px solid var(--linea);
+           color:var(--txt-3); font-size:7.5pt; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">accedra<span>.</span></div>
+    <div class="kicker">Campañas de Google</div>
+  </div>
+  <div class="der">
+    <h1>Diagnóstico histórico</h1>
+    <div class="fecha">Octubre 2017 – Agosto 2026 · emitido el 7 de agosto de 2026</div>
+  </div>
+</header>
+
+<!-- ══════ INDICADORES ══════ -->
+
+<div class="titular">
+  <p><strong>En nueve años se invirtieron $2,2 millones y nueve de cada diez pesos fueron a
+     búsquedas que nunca generaron una consulta.</strong> El problema no fue el presupuesto ni
+     los anuncios: fue la puntería. Y durante buena parte del período no hubo forma de saberlo,
+     porque la medición estaba apagada.</p>
+</div>
+
+<h2>Nueve años de inversión</h2>
+<div class="principales">
+  <div class="p">
+    <div class="rot">Invertimos</div>
+    <div class="val">$ 2.199.271</div>
+    <div class="pie">en 7 campañas</div>
+  </div>
+  <div class="p">
+    <div class="rot">Clics recibidos</div>
+    <div class="val">43.628</div>
+    <div class="pie">sobre 1.725.662 impresiones</div>
+  </div>
+  <div class="p">
+    <div class="rot">Consultas</div>
+    <div class="val">139</div>
+    <div class="pie">0,32% de los clics</div>
+  </div>
+  <div class="p">
+    <div class="rot">Costo por consulta</div>
+    <div class="val">$ 15.822</div>
+    <div class="pie">promedio de los 9 años</div>
+  </div>
+</div>
+
+<h2>Calidad de la inversión <span class="sub">estos indicadores no dependen de la moneda: se comparan a nueve años</span></h2>
+<div class="calidad">
+  <div class="c">
+    <div class="rot">Gasto sin resultado</div>
+    <div class="val mal">90,1%</div>
+    <div class="meta">$1.175.166 de $1.303.906</div>
+  </div>
+  <div class="c">
+    <div class="rot">Términos que convirtieron</div>
+    <div class="val mal">62</div>
+    <div class="meta">de 7.435 con gasto</div>
+  </div>
+  <div class="c">
+    <div class="rot">CTR</div>
+    <div class="val">2,53%</div>
+    <div class="meta">promedio del rubro: 2,5%</div>
+  </div>
+  <div class="c">
+    <div class="rot">Costo por clic</div>
+    <div class="val">$ 50</div>
+    <div class="meta">promedio nominal del período</div>
+  </div>
+</div>
+
+<h2>Por iniciativa</h2>
+<table>
+  <tr>
+    <th>Solución</th><th class="n">Inversión</th><th>Reparto</th>
+    <th class="n">Clics</th><th class="n">Consultas</th><th class="n">$ / consulta</th><th class="n">Índice</th>
+  </tr>
+  <tr>
+    <td><div class="sol"><span class="punto" style="background:var(--firma)"></span>Firma Biométrica</div></td>
+    <td class="n">$ 1.429.433</td>
+    <td><div class="barra"><i style="width:65%;background:var(--firma)"></i></div></td>
+    <td class="n">19.104</td><td class="n">130</td><td class="n">$ 10.996</td>
+    <td class="n idx bien">1,44</td>
+  </tr>
+  <tr>
+    <td><div class="sol"><span class="punto" style="background:var(--net)"></span>Networking</div></td>
+    <td class="n">$ 719.124</td>
+    <td><div class="barra"><i style="width:33%;background:var(--net)"></i></div></td>
+    <td class="n">18.409</td><td class="n">6</td><td class="n">$ 119.854</td>
+    <td class="n idx mal">0,13</td>
+  </tr>
+  <tr>
+    <td><div class="sol"><span class="punto" style="background:var(--cons)"></span>Consultoría</div></td>
+    <td class="n">$ 24.520</td>
+    <td><div class="barra"><i style="width:1.1%;background:var(--cons)"></i></div></td>
+    <td class="n">2.765</td><td class="n">0</td><td class="n">—</td>
+    <td class="n idx mal">0</td>
+  </tr>
+  <tr class="apagado">
+    <td><div class="sol"><span class="punto" style="background:var(--seg)"></span>Seguridad</div></td>
+    <td class="n">$ 2.312</td>
+    <td><div class="barra"><i style="width:0.5%;background:var(--seg)"></i></div></td>
+    <td class="n">309</td><td class="n">0</td><td class="n">—</td>
+    <td class="n idx">sin datos</td>
+  </tr>
+  <tr class="apagado">
+    <td><div class="sol"><span class="punto" style="background:var(--soft)"></span>Software &amp; AI</div></td>
+    <td class="n">$ 0</td><td><div class="barra"></div></td>
+    <td class="n">0</td><td class="n">0</td><td class="n">—</td>
+    <td class="n idx">nunca se promocionó</td>
+  </tr>
+  <tr>
+    <td><div class="sol" style="color:var(--txt-2)"><span class="punto" style="background:var(--txt-3)"></span>Display y remarketing</div></td>
+    <td class="n">$ 23.882</td>
+    <td><div class="barra"><i style="width:1.1%;background:#7D8EA5"></i></div></td>
+    <td class="n">3.041</td><td class="n">3</td><td class="n">$ 7.961</td>
+    <td class="n idx neutro">—</td>
+  </tr>
+</table>
+
+<!-- ══════ ANÁLISIS ══════ -->
+
+<div class="analisis">
+  <h3>Análisis</h3>
+  <p class="lead">Qué pasó en nueve años de inversión, y qué explica los números de arriba.</p>
+
+  <div class="destacado">
+    <div class="cifra">90,1%</div>
+    <p><strong>Nueve de cada diez pesos se gastaron en búsquedas que nunca generaron una
+       consulta.</strong> De $1.303.906 atribuidos a términos concretos, $1.175.166 fueron a
+       7.373 búsquedas con cero resultados. Sólo 62 términos convirtieron alguna vez.</p>
+  </div>
+
+  <p>El problema nunca fue el presupuesto ni los anuncios: fue la puntería. La cuenta operó
+     casi siempre con <strong>concordancia amplia</strong>, que es el modo en que Google decide
+     por su cuenta en qué otras búsquedas mostrar el aviso. Cuanto más genérica la palabra
+     clave, más lejos se va — y las palabras eran muy genéricas.</p>
+
+  <p>La prueba está en el mismo término con distinta configuración. La palabra clave
+     <em>firma electronica</em> en amplia costó <strong>$43.944 por consulta</strong>; ese
+     mismo texto buscado de forma exacta costó <strong>$6.205</strong>. Siete veces más barato.
+     Y esa sola palabra clave en amplia consumió el <strong>34% de todo lo invertido en la
+     historia de la cuenta</strong>.</p>
+
+  <p>Los tres casos más caros muestran a dónde fue el dinero. <strong>$171.079</strong> se
+     gastaron en la búsqueda <em>gde</em>, que es el sistema de expedientes electrónicos del
+     Estado argentino: empleados públicos buscando cómo entrar a su trámite, no empresas
+     buscando un proveedor. <strong>$54.090</strong> se gastaron en el nombre de un competidor,
+     cuyo buscador ya había elegido a otro. Y <strong>$18.500</strong> se pagaron por la propia
+     marca "Accedra" comprada al precio más caro, mezclada dentro de una campaña genérica en
+     lugar de tener la suya.</p>
+
+  <h2>Qué dice el desglose por iniciativa</h2>
+
+  <p><strong>Firma Biométrica es el motor y no hay discusión.</strong> Se llevó el 65% de la
+     inversión y produjo el 94% de las consultas. Su índice de eficiencia es 1,44: aporta
+     bastante más de lo que consume.</p>
+
+  <p><strong>Networking se llevó un tercio del presupuesto y devolvió el 4% de las
+     consultas.</strong> Índice 0,13. Cada consulta costó $119.854 contra los $10.996 de
+     Firma: once veces más. Ahora bien, todo ese dinero se gastó en términos genéricos con
+     concordancia amplia — <em>cableado de redes</em> sola consumió $153.033 para una única
+     consulta. No es evidencia de que el vertical no funcione; es evidencia de que nunca se
+     probó bien.</p>
+
+  <p><strong>Dos soluciones nunca se probaron.</strong> Seguridad recibió $2.312 en nueve años
+     y Software &amp; AI, nada. No sabemos si funcionan — y no saberlo también es un resultado,
+     porque son dos apuestas que la empresa nunca hizo.</p>
+
+  <h2>La medición</h2>
+
+  <p>Hay una advertencia que atraviesa todo lo anterior: <strong>la etiqueta de conversiones
+     está inactiva.</strong> Las 139 consultas de este informe son históricas; en los últimos
+     meses la cuenta registra cero, y no porque no lleguen consultas sino porque nadie las
+     cuenta.</p>
+
+  <p>Tampoco se sabe con certeza qué contaban esas 139: pueden haber sido formularios
+     enviados, clics a WhatsApp o visitas a una página de gracias. Y ninguna de ellas sabe si
+     terminó en un cliente ni por cuánta plata, porque eso nunca se midió: la información de
+     Google termina en el formulario enviado.</p>
+
+  <div class="nota">
+    <strong>Sobre comparar montos.</strong> Este informe cubre nueve años de inflación
+    argentina, así que las cifras en pesos de 2018 y de 2026 no son comparables entre sí. Los
+    indicadores confiables para leer el período completo son las proporciones — el porcentaje
+    de gasto sin resultado, el índice de eficiencia y el CTR — porque no dependen de la moneda.
+  </div>
+
+  <h2>Plan de acción propuesto <span class="sub">todavía no ejecutado</span></h2>
+  <table>
+    <tr><th>Acción</th><th>Qué esperamos</th></tr>
+    <tr><td>Pausar la campaña de Networking en su forma actual</td>
+        <td>Liberar ~$21.000 mensuales que hoy rinden 11 veces peor</td></tr>
+    <tr><td>Excluir 52 búsquedas que gastaron $461.018 sin una sola consulta</td>
+        <td>Bajar el gasto sin resultado del 90% a menos del 60%</td></tr>
+    <tr><td>Instalar la medición de conversiones</td>
+        <td>Volver a saber cuántas consultas llegan y de dónde</td></tr>
+    <tr><td>Reestructurar las campañas por solución e industria</td>
+        <td>Bajar el costo por consulta apuntando a búsquedas específicas</td></tr>
+    <tr><td>Separar una campaña de marca</td>
+        <td>Dejar de pagar "Accedra" a precio de término genérico</td></tr>
+  </table>
+
+  <div class="nota">
+    <strong>Este documento es la línea de base.</strong> Todo lo que se informe de acá en
+    adelante se compara contra estos números.
+  </div>
+</div>
+
+<footer>
+  Fuente: exportación completa de la cuenta 300-886-7811 (oct 2017 – ago 2026), procesada con
+  <code>scripts/ads/analizar.mjs</code> · Los importes son nominales, sin ajuste por inflación
+</footer>
+
+</body>
+</html>

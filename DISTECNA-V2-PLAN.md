@@ -67,26 +67,27 @@ No es un bug, es esta limitación.
 ## 3. EL MAIL A ENVIAR
 
 **Para:** `api@distecna.com`
-**Asunto:** `Consulta técnica - Integración API V2 - Host de producción no resuelve - Accedra IT Solutions`
+**Asunto:** `Consulta técnica - Integración API V2 - Host de producción no resuelve - Accedra SA`
 
-> Copiar desde acá. Los campos entre `[corchetes]` hay que completarlos.
+> Copiar y pegar tal cual, ya está completo.
 
 ---
 
 Buenos días,
 
-Somos **Accedra IT Solutions** y estamos integrando nuestra plataforma con la API V2,
-siguiendo la *Guía de Homologación e Integración API V2* (versión 2.1, abril 2026).
+Mi nombre es **Lucas Bianchi** y colaboro con la firma **Accedra SA** como responsable técnico
+de la integración de su plataforma con la API V2 de Distecna, siguiendo la *Guía de
+Homologación e Integración API V2* (versión 2.1, abril 2026).
 
 Ya completamos la mayor parte del checklist de validación en el entorno QA y tenemos tres
 consultas que nos impiden avanzar a producción.
 
 **Datos de contacto técnico**
 
-- Empresa: Accedra IT Solutions
-- Responsable técnico: [TU NOMBRE]
-- Email: [TU EMAIL]
-- Teléfono: [TU TELÉFONO]
+- Empresa: Accedra SA
+- Responsable técnico de la integración: Lucas Bianchi (colaborador externo)
+- Email: lucmbianchi2000@gmail.com
+- Teléfono: 11 2457 1928
 - Usuario de homologación utilizado: `distecna_api@distecna.com`
 
 ---
@@ -138,18 +139,6 @@ guía, o está previsto en el roadmap? Hoy, una vez creado el pedido, el `salesO
 
 ---
 
-**Consulta 4 — Cobertura del catálogo en producción**
-
-Observamos que el catálogo de QA tiene 3.078 productos, mientras que la API V1
-(`api.distecna.com:8096`) nos devuelve 3.433. Varios códigos que sí están en V1 no aparecen en
-QA (por ejemplo `TPLHX520-1-PACK` y `LOG981-001411-1`).
-
-¿Nos confirman que el catálogo de **V2 en producción** incluye la totalidad de los productos
-que hoy expone la V1? Lo necesitamos porque el campo `type` —obligatorio para crear pedidos—
-solo lo devuelve la V2, y sin él no podemos generar pedidos de esos productos.
-
----
-
 **Estado de nuestra homologación**
 
 Para su referencia, ya validamos exitosamente en QA:
@@ -169,8 +158,9 @@ Pedidos de prueba generados en QA: `PED-158154-L6J7C3`, `PED-158155-G9P5B5`,
 Quedamos a disposición para cualquier dato adicional que necesiten.
 
 Saludos cordiales,
-[TU NOMBRE]
-Accedra IT Solutions
+Lucas Bianchi
+Colaborador técnico — Accedra SA
+lucmbianchi2000@gmail.com — 11 2457 1928
 
 ---
 
