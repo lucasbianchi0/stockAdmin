@@ -1,38 +1,45 @@
 // ─── Brand identity ─────────────────────────────────────────────────────────
-// Everything here is Accedra-specific. It's the single source of truth for the
-// brand context injected into every AI generation and for the design-system tab.
+// Nada de marca se define acá: todo se DERIVA de `@/lib/brand-kit`, que es la
+// fuente única. Antes este archivo tenía su propia copia de la paleta, del tono
+// y del prompt, y ya había divergido —seguía usando el azul viejo #2B6AC8 y
+// listaba Inter como única tipografía— mientras el Brand Kit decía otra cosa.
 
-export const BRAND_NAME = "Accedra"
-export const BRAND_DOMAIN = "accedra.com.ar"
-export const ACCENT_HEX = "#2B6AC8"
+import {
+  BLOQUES_CONTEXTO,
+  COMPOSICION,
+  EMPRESA,
+  PALETA,
+  PROMPTS,
+  REGLAS_LOGO,
+  TIPOGRAFIA,
+  armarPrompt,
+} from "@/lib/brand-kit"
 
-export const ACCEDRA_BRAND_CONTEXT = `
-Sos el social media manager de Accedra, una empresa argentina de servicios y soluciones de tecnología (IT) con sede en Buenos Aires.
+export const BRAND_NAME = EMPRESA.nombreComercial
+export const BRAND_DOMAIN = EMPRESA.dominio
 
-Qué es Accedra: un integrador tecnológico B2B que provee infraestructura, servicios y proyectos integrales de informática para aplicaciones de misión crítica. Le vende a empresas medianas y grandes — nunca a consumidores finales.
+const color = (nombre: string) => PALETA.find((c) => c.nombre === nombre)!
 
-Qué hace:
-- Networking e infraestructura: switching, routing, wireless, telefonía IP, cableado estructurado, contingencia.
-- Ciberseguridad: soluciones Cisco, Palo Alto, Umbrella, Cloud Security.
-- Firma digital y biométrica (su diferenciador): firma digital biométrica, factoring digital, eSignAnyWhere, gestión de identidad.
-- Consultoría y colaboración: Power BI, Dynamics 365, SharePoint, Office 365, gestión documental.
-- Servicios gestionados: monitoreo, soporte técnico y mesa de ayuda.
+const AZUL = color("Azul Accedra")
+const NAVY_FONDO = color("Navy fondo")
+const GRIS_SUPERFICIE = color("Gris superficie")
 
-Partners: Cisco, Microsoft, Dell EMC, Palo Alto Networks, Nutanix, APC, IBM, Namirial, Gemalto.
-Clientes de referencia: Mapfre, Andreani y Finning — cuentas enterprise que funcionan como prueba social fuerte.
+export const ACCENT_HEX = AZUL.hex
 
-Identidad de marca:
-- Nombre: Accedra
-- Dominio: accedra.com.ar
-- Posicionamiento: especialistas en tecnología de misión crítica, con alto valor humano y la cercanía de una PyME.
-- Color primario: #2B6AC8 (azul corporativo)
-- Estilo visual: corporativo, sobrio, profesional, moderno y limpio — transmite confianza y expertise técnica.
-- Tono de voz: profesional pero ameno y humano, español argentino, serio sin ser acartonado, claro y directo. Nada de jerga vacía ni humo.
+/**
+ * El contexto de marca que se inyecta en cada generación.
+ *
+ * Es el prompt de la disciplina "Contenido" del Brand Kit: identidad,
+ * servicios, buyer personas, tono con pares mal/bien, boilerplate, prueba
+ * social citable y los claims prohibidos. Reemplaza al resumen escrito a mano
+ * que vivía en este archivo — el mismo que decía "profesional pero ameno" y
+ * nada más, que es demasiado poco para corregir a un modelo.
+ */
+export const ACCEDRA_BRAND_CONTEXT = armarPrompt(
+  PROMPTS.find((p) => p.id === "contenido") ?? PROMPTS[0]
+)
 
-Objetivo de comunicación: construir presencia digital con una imagen seria y confiable, mostrando quiénes son y qué hacen. LinkedIn es el canal prioritario por ser un negocio B2B.
-`.trim()
-
-// Kept as an alias so any leftover reference keeps working.
+// Alias histórico, para no romper referencias sueltas.
 export const REFII_BRAND_CONTEXT = ACCEDRA_BRAND_CONTEXT
 
 export const PLATFORM_LABELS: Record<string, string> = {
@@ -132,7 +139,11 @@ export const VALID_AUDIENCES = new Set(["decisores", "negocio", "ambos"])
 export const VALID_OBJECTIVES = new Set(["awareness", "conversion", "educacion", "prueba_social"])
 
 export const BRIEF_MAX_LEN = 500
-export const BRAND_PROMPT_MAX_LEN = 2000
+// El contexto de marca pasó de un resumen de 450 palabras al prompt completo de
+// la disciplina "Contenido" del kit (~12.600 caracteres). Con el tope viejo de
+// 2.000, cualquiera que abriera el editor y guardara se llevaba el prompt
+// cortado a un tercio sin ningún aviso.
+export const BRAND_PROMPT_MAX_LEN = 16000
 export const MAX_SLIDES = 10
 export const MIN_SLIDES = 2
 export const DEFAULT_SLIDES = 5
@@ -158,63 +169,81 @@ export const VALID_PLAN_FORMATS = new Set([
   "mixto", "imagen", "carrusel", "reel", "story", "video", "articulo",
 ])
 
-// Visual base string reused in image prompts (kept in English for DALL-E / Midjourney).
-export const IMAGE_PROMPT_BASE = `clean corporate white background #F4F6F9 (or deep navy #0B1628 for dark variants), #2B6AC8 blue accents, 1080x1080px, "Accedra" wordmark bottom right, "accedra.com.ar" below it, premium corporate tech aesthetic, professional, minimal, lots of negative space`
+/**
+ * Base visual para prompts de imagen. En inglés porque es donde rinden los
+ * modelos, y con los hex del kit interpolados: si mañana cambia el azul, cambia
+ * acá solo. La versión anterior tenía los colores escritos a mano y por eso
+ * seguía pidiendo el azul viejo mucho después de que la marca lo cambiara.
+ */
+export const IMAGE_PROMPT_BASE = `clean corporate background (light ${GRIS_SUPERFICIE.hex} or deep navy ${NAVY_FONDO.hex}), ${AZUL.hex} blue accents used once and only once, 1080x1080px, "Accedra" wordmark bottom right with "accedra.com.ar" below it, premium corporate tech aesthetic, professional, minimal, lots of negative space`
 
+/** El bloque de estilo que se le pega a TODA imagen para que la serie sea una. */
+export const IMAGE_STYLE_SUFFIX = `
+
+— ESTILO DE MARCA ACCEDRA (aplicar idéntico en toda la serie) —
+${COMPOSICION.promptImagen}
+
+Reglas de composición:
+${COMPOSICION.reglas.map((r) => `- ${r}`).join("\n")}
+
+Paleta (no usar otros colores vivos):
+${PALETA.map((c) => `- ${c.nombre} ${c.hex}: ${c.uso}`).join("\n")}
+
+PROHIBIDO renderizar texto dentro de la imagen: nada de carteles, marcas, nombres de empresa, títulos ni palabras sueltas. Ningún logo, ni de Accedra ni de terceros. El copy y el wordmark se montan después en el diseño.
+Si la escena incluye pantallas, cartelería o documentos, van en blanco o desenfocados.
+Mezcla: ${COMPOSICION.estilo}. Referencias: ${COMPOSICION.referencias}.`
+
+/**
+ * Lo que muestra la pestaña de diseño del estudio. Todo sale del Brand Kit:
+ * esta constante ya no decide nada, solo le da forma de tarjeta a lo que el kit
+ * define.
+ */
 export const DESIGN_SYSTEM = {
-  colors: [
-    { name: "Azul Accedra",    hex: "#2B6AC8", textColor: "#ffffff", usage: "Único accent · CTAs · Highlights · Links" },
-    { name: "Azul Profundo",   hex: "#0B1628", textColor: "#ffffff", usage: "Fondo dark · Backgrounds corporativos" },
-    { name: "Gris Claro",      hex: "#F4F6F9", textColor: "#1a2332", usage: "Fondo claro · Superficies limpias" },
-    { name: "Texto oscuro",    hex: "#1A2332", textColor: "#ffffff", usage: "Texto principal sobre fondos claros" },
-    { name: "Gris muted",      hex: "#7A8699", textColor: "#ffffff", usage: "Textos secundarios · Subtítulos" },
-    { name: "Blanco puro",     hex: "#FFFFFF", textColor: "#0B1628", usage: "Texto y logo sobre fondos dark" },
-  ],
+  colors: PALETA.map((c) => ({
+    name: c.nombre,
+    hex: c.hex,
+    textColor: c.textoSobre,
+    usage: c.uso,
+  })),
   typography: {
-    fontFamilyLabel: "Inter",
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
-    philosophy: "Sobrio y profesional · tracking normal · interlineado amplio · claro · sin bold agresivo",
+    fontFamilyLabel: `${TIPOGRAFIA.display.nombre} + ${TIPOGRAFIA.texto.nombre}`,
+    fontFamily: `${TIPOGRAFIA.texto.nombre}, -apple-system, BlinkMacSystemFont, sans-serif`,
+    philosophy: `${TIPOGRAFIA.display.porque.split(":")[0]} · títulos apretados · interlineado amplio · máximo dos pesos por pieza`,
+    reglas: TIPOGRAFIA.reglas,
     weights: [
-      { value: 300, name: "Light",    sample: "Tecnología de misión crítica, con valor humano." },
       { value: 400, name: "Regular",  sample: "Tecnología de misión crítica, con valor humano." },
       { value: 500, name: "Medium",   sample: "Tecnología de misión crítica, con valor humano." },
       { value: 600, name: "Semibold", sample: "Tecnología de misión crítica, con valor humano." },
       { value: 700, name: "Bold",     sample: "ACCEDRA" },
     ],
-    sizes: [
-      { px: "11px", label: "XS",   use: "Labels, chips" },
-      { px: "13px", label: "SM",   use: "Textos secundarios" },
-      { px: "15px", label: "BASE", use: "Cuerpo de texto" },
-      { px: "20px", label: "LG",   use: "Subtítulos" },
-      { px: "26px", label: "XL",   use: "Títulos" },
-      { px: "36px", label: "2XL",  use: "Titulares" },
-      { px: "52px", label: "3XL",  use: "Hero text" },
-    ],
+    sizes: TIPOGRAFIA.escala.map((e) => ({ px: e.px, label: e.label, use: e.uso })),
   },
   backgrounds: [
-    { name: "Gris Claro", hex: "#F4F6F9", recommended: true,  textColor: "#1a2332", description: "Fondo claro corporativo · limpio y profesional" },
-    { name: "Azul Profundo", hex: "#0B1628", recommended: false, textColor: "#ffffff", description: "Fondo dark corporativo · high-contrast tech" },
+    {
+      name: GRIS_SUPERFICIE.nombre,
+      hex: GRIS_SUPERFICIE.hex,
+      recommended: true,
+      textColor: color("Navy Accedra").hex,
+      description: GRIS_SUPERFICIE.uso,
+    },
+    {
+      name: NAVY_FONDO.nombre,
+      hex: NAVY_FONDO.hex,
+      recommended: false,
+      textColor: color("Gris texto").hex,
+      description: NAVY_FONDO.uso,
+    },
   ],
   composition: {
-    rules: [
-      "Mucho espacio vacío — transmite orden y solidez",
-      "No saturar el canvas: aire arriba, abajo y a los costados",
-      "Concepto o elemento hero centrado o ligeramente desplazado",
-      "Frase simple, clara, con buen tracking y leading",
-      "Azul Accedra como único accent — jamás dos colores vivos",
-      "Sombras suaves, líneas limpias, nada estridente",
-    ],
-    style: "70% corporate tech premium · 20% editorial profesional · 10% enterprise B2B",
-    references: "Microsoft · IBM · Cisco · Linear · Vercel · comunicación enterprise premium",
+    rules: COMPOSICION.reglas,
+    style: COMPOSICION.estilo,
+    references: COMPOSICION.referencias,
   },
   logo: {
-    rules: [
-      "Wordmark 'Accedra' alineado bottom-right",
-      "'accedra.com.ar' debajo del wordmark, misma alineación",
-      "Blanco puro (#FFFFFF) sobre fondos oscuros",
-      "Azul Accedra (#2B6AC8) sobre fondos claros",
-      "Logo sutil — nunca protagonista, siempre prolijo",
-    ],
+    rules: REGLAS_LOGO.si,
+    prohibiciones: REGLAS_LOGO.no,
   },
-  imagePromptFormula: `Premium corporate tech aesthetic, clean light background #F4F6F9, soft even studio light, ultra-clean composition, large negative space, modern sans-serif typography, subtle shadows, matte finish, enterprise B2B feel, blue accent #2B6AC8, photorealistic, much air around subject, professional and trustworthy.`,
+  imagePromptFormula: COMPOSICION.promptImagen,
+  /** Bloques del prompt de marca, por si se quiere ver de dónde sale. */
+  bloques: BLOQUES_CONTEXTO.map((b) => b.nombre),
 }

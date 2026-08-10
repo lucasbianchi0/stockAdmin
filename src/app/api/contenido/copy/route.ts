@@ -17,13 +17,15 @@ import {
   sanitizeBrief,
   sanitizeText,
 } from "@/lib/contenido-context"
+import { IMAGE_PROMPT_BASE } from "@/lib/contenido-context"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 const VALID_IDEA_FORMATS = new Set(["imagen", "carrusel", "reel", "story", "articulo"])
 
 // Shared visual base for image prompts (English, for DALL-E / Midjourney).
-const VISUAL_BASE = `clean corporate background (light #F4F6F9 or deep navy #0B1628), #2B6AC8 blue accents, 1080x1080px, "Accedra" wordmark bottom right with "accedra.com.ar" below it, premium corporate tech aesthetic, professional and minimal`
+// Sale del Brand Kit: los hex escritos a mano acá se quedaron con el azul viejo.
+const VISUAL_BASE = IMAGE_PROMPT_BASE
 
 export async function POST(req: Request) {
   const sinPermiso = await exigirModulo("marketing")

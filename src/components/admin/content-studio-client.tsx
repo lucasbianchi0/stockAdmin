@@ -6,14 +6,19 @@ import {
   CalendarDays, Palette, Type, Film, Layers,
   Plus, Minus, RotateCcw, Save, Download, Image as ImageIcon,
 } from "lucide-react"
+import Image from "next/image"
 import { cn } from "@/lib/utils"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import {
   FORMATS_BY_PLATFORM, BRIEF_MAX_LEN, DESIGN_SYSTEM, REEL_FORMATS,
   MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, BRAND_PROMPT_MAX_LEN,
-  ACCEDRA_BRAND_CONTEXT, VALID_PLAN_FORMATS,
+  ACCEDRA_BRAND_CONTEXT, VALID_PLAN_FORMATS, ACCENT_HEX,
 } from "@/lib/contenido-context"
+import {
+  AUDIENCIA_GUIA, guiaDe, OBJETIVO_GUIA, PLATAFORMA_GUIA,
+} from "@/lib/contenido-guia"
+import { MARCA } from "@/components/admin/platform-icons"
 
 // v1 sin historial: no persistimos las ideas generadas. Stub no-op para
 // mantener los call-sites sin tocar la lógica de generación.
@@ -73,11 +78,13 @@ const EMPTY_COPY: CopyState = {
 
 // ─── Static config ────────────────────────────────────────────────────────────
 
-const PLATFORMS: Array<{ id: Platform; label: string; emoji: string }> = [
-  { id: "instagram", label: "Instagram", emoji: "📸" },
-  { id: "tiktok",    label: "TikTok",    emoji: "🎵" },
-  { id: "linkedin",  label: "LinkedIn",  emoji: "💼" },
-  { id: "facebook",  label: "Facebook",  emoji: "👥" },
+// LinkedIn va primero: para un negocio B2B es el canal de venta y los otros
+// tres son mantenimiento de presencia. El orden de la fila es una recomendación.
+const PLATFORMS: Array<{ id: Platform; label: string }> = [
+  { id: "linkedin",  label: "LinkedIn"  },
+  { id: "instagram", label: "Instagram" },
+  { id: "facebook",  label: "Facebook"  },
+  { id: "tiktok",    label: "TikTok"    },
 ]
 
 const AUDIENCES = [
@@ -283,7 +290,7 @@ function SlidePromptCard({ index, content, isGenerating, onChange, onRefine, ima
         </div>
       )}
       {showRefine && (
-        <div className="flex items-center gap-2 px-3 py-2 border-t border-brand-green/20 bg-[#2B6AC8]/[0.03]">
+        <div className="flex items-center gap-2 px-3 py-2 border-t border-brand-green/20 bg-brand-green/[0.03]">
           <Wand2 className="h-3 w-3 text-brand-green/50 shrink-0" />
           <input
             type="text"
@@ -384,7 +391,7 @@ function CopySectionCard({ label, value, placeholder, rows, isGenerating, onChan
         )}
       </div>
       {showRefine && (
-        <div className="flex items-center gap-2 px-3 py-2.5 border-t border-brand-green/20 bg-[#2B6AC8]/[0.03]">
+        <div className="flex items-center gap-2 px-3 py-2.5 border-t border-brand-green/20 bg-brand-green/[0.03]">
           <Wand2 className="h-3.5 w-3.5 text-brand-green/50 shrink-0" />
           <input
             type="text"
@@ -427,6 +434,52 @@ function SelectorBtn({ active, onClick, children, className }: {
     >
       {children}
     </button>
+  )
+}
+
+/** Etiqueta del peso que tiene un canal para un negocio B2B de infraestructura. */
+function PrioridadCanal({ prioridad }: { prioridad: "alta" | "media" | "baja" }) {
+  const cfg = {
+    alta:  { texto: "Canal principal", cls: "bg-emerald-50 text-emerald-700" },
+    media: { texto: "Secundario",      cls: "bg-zinc-100  text-zinc-500"    },
+    baja:  { texto: "Poco relevante",  cls: "bg-zinc-100  text-zinc-400"    },
+  }[prioridad]
+
+  return (
+    <span className={cn("mt-1.5 rounded px-1.5 py-0.5 text-[10px] font-semibold", cfg.cls)}>
+      {cfg.texto}
+    </span>
+  )
+}
+
+/**
+ * Qué va a salir del formato elegido, separado en los dos trabajos que después
+ * hace gente distinta: la pieza gráfica y el texto.
+ */
+function FichaFormato({ guia }: { guia: { imagen: string; posteo: string } | null }) {
+  if (!guia) {
+    return (
+      <p className="mt-2.5 text-xs leading-relaxed text-zinc-400">
+        Sin formato elegido, la IA propone el que mejor le calce a cada idea.
+      </p>
+    )
+  }
+
+  return (
+    <div className="mt-3 grid gap-3 rounded-xl border border-zinc-200 bg-zinc-50/70 p-3.5 sm:grid-cols-2">
+      <div>
+        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+          <ImageIcon className="h-3 w-3" /> La imagen
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-zinc-600">{guia.imagen}</p>
+      </div>
+      <div>
+        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+          <Type className="h-3 w-3" /> El posteo
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-zinc-600">{guia.posteo}</p>
+      </div>
+    </div>
   )
 }
 
@@ -745,7 +798,7 @@ function DesignSystemView({ promptDraft, onDraftChange, onSave, onReset, saved }
                 className="h-28 flex flex-col items-center justify-center gap-2 relative"
                 style={{ backgroundColor: bg.hex }}
               >
-                <div className="w-12 h-1.5 rounded-full" style={{ backgroundColor: "#2B6AC8" }} />
+                <div className="w-12 h-1.5 rounded-full" style={{ backgroundColor: ACCENT_HEX }} />
                 <span className="text-xs font-bold tracking-wide" style={{ color: bg.textColor }}>
                   Accedra
                 </span>
@@ -872,7 +925,26 @@ function DesignSystemView({ promptDraft, onDraftChange, onSave, onReset, saved }
             <h2 className="text-sm font-bold text-zinc-900">Wordmark y logo</h2>
             <p className="text-xs text-zinc-400">Reglas de uso en publicaciones</p>
           </div>
+          <a
+            href="/marketing/brand#logos"
+            className="ml-auto rounded-lg border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-500 transition-all hover:text-zinc-700"
+          >
+            Descargar en el Brand Kit
+          </a>
         </div>
+
+        {/* Los archivos reales, no la descripción de los archivos. Un manual que
+            describe el logo sin mostrarlo obliga a ir a buscarlo a otro lado, y
+            ahí es donde alguien termina usando el JPG viejo de un mail. */}
+        <div className="mb-4 grid grid-cols-2 gap-2.5">
+          <div className="flex h-20 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 px-6">
+            <Image src="/brand/accedra-logo-navy.svg" alt="Logotipo Accedra sobre fondo claro" width={1073} height={160} className="h-5 w-auto" unoptimized />
+          </div>
+          <div className="flex h-20 items-center justify-center rounded-xl px-6" style={{ background: DESIGN_SYSTEM.backgrounds[1].hex }}>
+            <Image src="/brand/accedra-logo-blanco.svg" alt="Logotipo Accedra sobre fondo oscuro" width={1073} height={160} className="h-5 w-auto" unoptimized />
+          </div>
+        </div>
+
         <ul className="space-y-2">
           {DESIGN_SYSTEM.logo.rules.map((rule, i) => (
             <li key={i} className="flex items-start gap-2.5 text-sm text-zinc-600">
@@ -952,7 +1024,7 @@ export function ContentStudioClient() {
   const rawTextRef      = useRef("")
   const savedHistoryIds = useRef(new Set<string>())
 
-  // ── Generated images (OpenAI) ───────────────────────────────────────────────
+  // ── Imágenes generadas (Gemini) ─────────────────────────────────────────────
   const [heroImage, setHeroImage]                 = useState<string | null>(null)
   const [heroImageLoading, setHeroImageLoading]   = useState(false)
   const [slideImages, setSlideImages]             = useState<Record<number, string>>({})
@@ -1038,7 +1110,7 @@ export function ContentStudioClient() {
     setTimeout(() => setCopiedAll(false), 2000)
   }
 
-  // ── Image generation (OpenAI) ───────────────────────────────────────────────
+  // ── Generación de imagen (Gemini) ───────────────────────────────────────────
 
   function imageSizeForFormat(format: string): "square" | "portrait" {
     return format === "reel" || format === "video" || format === "story" ? "portrait" : "square"
@@ -1536,22 +1608,40 @@ export function ContentStudioClient() {
           {/* Platform */}
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-3 block">Plataforma</label>
-            <div className="flex flex-wrap gap-2.5">
-              {PLATFORMS.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => handlePlatformChange(p.id)}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all",
-                    platform === p.id
-                      ? "border-brand-green bg-brand-green/[0.06] text-brand-green"
-                      : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300"
-                  )}
-                >
-                  <span>{p.emoji}</span><span>{p.label}</span>
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+              {PLATFORMS.map((p) => {
+                const { Icon, hex } = MARCA[p.id]
+                const activo = platform === p.id
+                const guia = PLATAFORMA_GUIA[p.id]
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => handlePlatformChange(p.id)}
+                    className={cn(
+                      "flex flex-col items-start rounded-xl border-2 p-4 text-left transition-all",
+                      activo
+                        ? "border-brand-green bg-brand-green/[0.06]"
+                        : "border-zinc-200 bg-white hover:border-zinc-300"
+                    )}
+                  >
+                    {/* El logo en color solo cuando está elegido: cuatro marcas a
+                        todo color compitiendo convierten la fila en un semáforo. */}
+                    <Icon
+                      className="h-11 w-11 shrink-0 transition-colors"
+                      style={{ color: activo ? hex : "var(--n-400)" }}
+                    />
+                    <p className={cn("mt-3.5 text-sm font-semibold", activo ? "text-brand-green" : "text-zinc-700")}>
+                      {p.label}
+                    </p>
+                    <PrioridadCanal prioridad={guia.prioridad} />
+                  </button>
+                )
+              })}
             </div>
+            <p className="mt-2.5 text-xs leading-relaxed text-zinc-500">
+              {PLATAFORMA_GUIA[platform].rol}{" "}
+              <span className="text-zinc-400">Quién está ahí: {PLATAFORMA_GUIA[platform].quien}</span>
+            </p>
           </div>
 
           {contentMode === "ideas" ? (
@@ -1583,6 +1673,10 @@ export function ContentStudioClient() {
                     </button>
                   ))}
                 </div>
+
+                {/* Qué sale de esta elección. Sin esto, "carrusel" es una palabra:
+                    que son ocho slides verticales se descubre después de generar. */}
+                <FichaFormato guia={guiaDe(platform, selectedFormat)} />
               </div>
 
               {/* Audience */}
@@ -1596,6 +1690,10 @@ export function ContentStudioClient() {
                     </SelectorBtn>
                   ))}
                 </div>
+                <p className="mt-2.5 text-xs leading-relaxed text-zinc-500">
+                  {AUDIENCIA_GUIA[audience].que}{" "}
+                  <span className="text-zinc-400">{AUDIENCIA_GUIA[audience].comoLeHablo}</span>
+                </p>
               </div>
 
               {/* Objective */}
@@ -1605,9 +1703,17 @@ export function ContentStudioClient() {
                   {OBJECTIVES.map((o) => (
                     <SelectorBtn key={o.id} active={objective === o.id} onClick={() => setObjective(o.id)}>
                       <p className={cn("text-sm font-semibold", objective === o.id ? "text-brand-green" : "text-zinc-700")}>{o.label}</p>
-                      <p className="text-xs text-zinc-400 mt-0.5">{o.desc}</p>
+                      <p className="text-xs text-zinc-400 mt-0.5">{OBJETIVO_GUIA[o.id].que}</p>
                     </SelectorBtn>
                   ))}
+                </div>
+                <div className="mt-2.5 space-y-1.5">
+                  <p className="text-xs leading-relaxed text-zinc-500">
+                    {OBJETIVO_GUIA[objective].comoSeNota}
+                  </p>
+                  <p className="rounded-lg bg-zinc-50 px-3 py-2 text-xs italic leading-relaxed text-zinc-500">
+                    Así suena: {OBJETIVO_GUIA[objective].ejemplo}
+                  </p>
                 </div>
               </div>
 
