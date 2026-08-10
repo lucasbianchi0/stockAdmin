@@ -32,38 +32,45 @@ export const NOMBRE_MODULO: Record<Modulo, string> = {
 export const HOME_DE_MODULO: Record<Modulo, string> = {
   productos: "/",
   marketing: "/marketing",
-  administracion: "/settings",
+  administracion: "/admin/clientes",
 }
 
 /** Rutas sin sesión. Cualquier otra cosa exige usuario. */
 const PUBLICAS = ["/login", "/sin-acceso"]
 
 /**
- * Prefijo de ruta → módulo. El orden importa: gana la primera coincidencia, así
- * que lo específico va antes que lo general. La raíz se compara aparte porque
- * como prefijo coincidiría con todo.
+ * Prefijo de ruta → módulos que la habilitan. El orden importa: gana la primera
+ * coincidencia, así que lo específico va antes que lo general. La raíz se compara
+ * aparte porque como prefijo coincidiría con todo.
+ *
+ * Casi todas las rutas pertenecen a un módulo y punto. La lista es de módulos —y
+ * no un valor suelto— por las pocas que son genuinamente compartidas: la
+ * cotización del dólar la necesitan tanto el que arma precios como el que carga
+ * una factura, y duplicar el endpoint para duplicar el permiso garantizaría que
+ * algún día los dos devuelvan cotizaciones distintas.
  */
-const RUTAS: { prefijo: string; modulo: Modulo }[] = [
+const RUTAS: { prefijo: string; modulos: Modulo[] }[] = [
   // Marketing
-  { prefijo: "/marketing", modulo: "marketing" },
-  { prefijo: "/contenido", modulo: "marketing" },
-  { prefijo: "/api/contenido", modulo: "marketing" },
+  { prefijo: "/marketing", modulos: ["marketing"] },
+  { prefijo: "/contenido", modulos: ["marketing"] },
+  { prefijo: "/api/contenido", modulos: ["marketing"] },
 
   // Productos
-  { prefijo: "/product", modulo: "productos" },
-  { prefijo: "/mis-productos", modulo: "productos" },
-  { prefijo: "/orders", modulo: "productos" },
-  { prefijo: "/api/products", modulo: "productos" },
-  { prefijo: "/api/my-products", modulo: "productos" },
-  { prefijo: "/api/orders", modulo: "productos" },
-  { prefijo: "/api/distecna", modulo: "productos" },
-  { prefijo: "/api/dolar", modulo: "productos" },
+  { prefijo: "/product", modulos: ["productos"] },
+  { prefijo: "/mis-productos", modulos: ["productos"] },
+  { prefijo: "/orders", modulos: ["productos"] },
+  { prefijo: "/api/products", modulos: ["productos"] },
+  { prefijo: "/api/my-products", modulos: ["productos"] },
+  { prefijo: "/api/orders", modulos: ["productos"] },
+  { prefijo: "/api/distecna", modulos: ["productos"] },
 
   // Administración
-  { prefijo: "/settings", modulo: "administracion" },
-  { prefijo: "/api/settings", modulo: "administracion" },
-  { prefijo: "/customers", modulo: "administracion" },
-  { prefijo: "/reports", modulo: "administracion" },
+  { prefijo: "/admin", modulos: ["administracion"] },
+  { prefijo: "/api/admin", modulos: ["administracion"] },
+  { prefijo: "/api/settings", modulos: ["administracion"] },
+
+  // Compartidas
+  { prefijo: "/api/dolar", modulos: ["productos", "administracion"] },
 ]
 
 export function esPublica(pathname: string): boolean {
@@ -71,15 +78,15 @@ export function esPublica(pathname: string): boolean {
 }
 
 /**
- * Qué módulo exige una ruta. `null` = no está declarada, y entonces solo pasa un
- * administrador: una ruta nueva nace cerrada, no abierta.
+ * Qué módulos habilitan una ruta. `null` = no está declarada, y entonces solo
+ * pasa un administrador: una ruta nueva nace cerrada, no abierta.
  */
-export function moduloDeRuta(pathname: string): Modulo | null {
-  if (pathname === "/") return "productos"
+export function modulosDeRuta(pathname: string): Modulo[] | null {
+  if (pathname === "/") return ["productos"]
   const hit = RUTAS.find(
     (r) => pathname === r.prefijo || pathname.startsWith(`${r.prefijo}/`)
   )
-  return hit?.modulo ?? null
+  return hit?.modulos ?? null
 }
 
 /**
@@ -119,9 +126,11 @@ export function accesoDeUsuario(user: User | null): Acceso {
 
 export function puede(acceso: Acceso, pathname: string): boolean {
   if (acceso.admin) return true
-  const requerido = moduloDeRuta(pathname)
-  if (requerido === null) return false
-  return acceso.modulos.includes(requerido)
+  const requeridos = modulosDeRuta(pathname)
+  if (requeridos === null) return false
+  // Basta con uno: los módulos de una ruta compartida son alternativas, no
+  // requisitos acumulativos.
+  return requeridos.some((m) => acceso.modulos.includes(m))
 }
 
 /** Adónde mandar a alguien que entró donde no debía. */

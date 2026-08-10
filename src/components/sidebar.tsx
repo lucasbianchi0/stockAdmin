@@ -55,7 +55,8 @@ const GRUPOS: Grupo[] = [
       { name: "Informes de campañas", href: "/marketing/informes", available: true },
       { name: "Brand Kit", href: "/marketing/brand", available: true },
       { name: "Landings y SEO", href: "/marketing/landings", available: true },
-      { name: "Creación de contenido", href: "/contenido", available: true },
+      { name: "Calendario de contenido", href: "/contenido/calendario", available: true },
+      { name: "Content Studio", href: "/contenido", available: true, exact: true },
     ],
   },
   {
@@ -63,9 +64,14 @@ const GRUPOS: Grupo[] = [
     titulo: "Administración",
     icon: SlidersHorizontal,
     items: [
-      { name: "Clientes", href: "/customers", available: false },
-      { name: "Reportes", href: "/reports", available: false },
-      { name: "Configuración", href: "/settings", available: false },
+      { name: "Clientes", href: "/admin/clientes", available: true },
+      { name: "Facturas de venta", href: "/admin/ventas", available: true },
+      { name: "Cobros", href: "/admin/cobros", available: true },
+      { name: "Proveedores", href: "/admin/proveedores", available: true },
+      { name: "Facturas de compra", href: "/admin/compras", available: true },
+      { name: "Pagos a proveedores", href: "/admin/pagos", available: true },
+      { name: "Caja y bancos", href: "/admin/cuentas", available: true },
+      { name: "Reportes", href: "/admin/reportes", available: true },
     ],
   },
 ]

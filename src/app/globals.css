@@ -23,8 +23,11 @@
 
 :root {
   /* ── Neutros ──────────────────────────────────────────────────────────────
-     Un solo tono (hue 255, azulado) para que grises y marca convivan sin que
-     aparezca el gris "sucio" que sale de mezclar neutros cálidos con azul. */
+     Un solo tono azulado (hue 255) para que no aparezca el gris "sucio" que
+     sale de mezclar neutros cálidos con azul. No coincide exactamente con el
+     tono de la marca (265): diez grados de diferencia no se ven en un gris de
+     baja saturación, y reteñir cada superficie de la app para emparejarlos
+     costaría mucho más de lo que arregla. */
   --n-0:   oklch(1 0 0);
   --n-25:  oklch(0.990 0.002 255);
   --n-50:  oklch(0.978 0.004 255);
@@ -42,22 +45,32 @@
 
   /* ── Navy: la marca sobre superficies oscuras (sidebar, login) ─────────── */
   --navy-950: #060E1A;
-  --navy-900: #0B1628;
-  --navy-850: #101D33;
+  --navy-900: #0A1424; /* Navy fondo del kit */
+  --navy-850: #0D1F3A; /* Navy Accedra — el del logotipo */
   --navy-800: #16253F;
   --navy-700: #1E3050;
 
-  /* ── Marca: azul corporativo Accedra (#2b6ac8 = brand-600) ─────────────── */
-  --brand-50:  oklch(0.968 0.014 258);
-  --brand-100: oklch(0.934 0.034 258);
-  --brand-200: oklch(0.882 0.064 258);
-  --brand-300: oklch(0.798 0.104 258);
-  --brand-400: oklch(0.668 0.148 258);
-  --brand-500: oklch(0.578 0.170 258);
-  --brand-600: oklch(0.517 0.163 258);
-  --brand-700: oklch(0.452 0.145 258);
-  --brand-800: oklch(0.375 0.115 258);
-  --brand-900: oklch(0.292 0.082 258);
+  /* ── Marca: azul Accedra (#2B56D4 = brand-600, el hex del logo) ──────────
+     Escala reanclada al azul del isotipo. La anterior estaba construida sobre
+     #2b6ac8 —oklch(0.535 0.160 259)— que quedó viejo cuando la marca definió
+     el suyo: más saturado (0.200 vs 0.160) y siete grados corrido de tono.
+     Diferencia chica en el papel, imposible de no ver cuando dos azules
+     conviven en la misma pantalla.
+
+     La chroma de los cuatro pasos claros está recortada al máximo que entra en
+     sRGB con este tono. Pedir 0.017 en brand-50 se sale del gamut y el
+     navegador lo clampea: el color termina existiendo igual, pero corrido y
+     sin que nadie sepa por qué. */
+  --brand-50:  oklch(0.966 0.016 265);
+  --brand-100: oklch(0.930 0.033 265);
+  --brand-200: oklch(0.874 0.060 265);
+  --brand-300: oklch(0.786 0.106 265);
+  --brand-400: oklch(0.655 0.180 265);
+  --brand-500: oklch(0.566 0.200 265);
+  --brand-600: oklch(0.504 0.200 265);
+  --brand-700: oklch(0.441 0.178 265);
+  --brand-800: oklch(0.366 0.141 265);
+  --brand-900: oklch(0.285 0.101 265);
 
   /* ── Estado: cada uno con relleno, línea, tinta y sólido ────────────────
      Cuatro piezas por color evitan el ring-1 ring-inset a mano en cada badge
@@ -136,8 +149,9 @@
     "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* Acento del Content Studio: conserva su nombre histórico. */
-  --color-brand-green: #2b6ac8;
+  /* Acento del Content Studio. Conserva el nombre histórico, pero el valor es
+     el azul del logo (#2B56D4, ver PALETA en brand-kit.ts), no el viejo. */
+  --color-brand-green: #2b56d4;
 }
 
 @theme inline {
@@ -281,12 +295,12 @@
     outline: none;
     box-shadow:
       0 0 0 2px var(--surface),
-      0 0 0 4px oklch(0.578 0.170 258 / 0.45);
+      0 0 0 4px oklch(0.566 0.200 265 / 0.45);
     border-radius: var(--radius-md);
   }
 
   ::selection {
-    background: oklch(0.578 0.170 258 / 0.22);
+    background: oklch(0.566 0.200 265 / 0.22);
   }
 
   /* Scrollbars finas: en un backoffice con tablas anchas la barra gruesa del

@@ -208,16 +208,23 @@ function Lista({
 
 /* ── 00 · Portada ─────────────────────────────────────────────────────────── */
 
+/** Un color de la paleta por nombre. La página que documenta la marca no puede
+ *  tener los hex escritos a mano. */
+const hex = (nombre: string) => PALETA.find((c) => c.nombre === nombre)!.hex
+
 function Portada() {
   return (
-    <div className="overflow-hidden rounded-2xl bg-[#0A1424] px-7 py-8 shadow-e2">
+    <div
+      className="overflow-hidden rounded-2xl px-7 py-8 shadow-e2"
+      style={{ background: hex("Navy fondo") }}
+    >
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
         {EMPRESA.razonSocial} · Brand Kit
       </p>
       <p className="mt-3 max-w-xl text-[19px] font-semibold leading-snug tracking-[-0.02em] text-white">
         {POSICIONAMIENTO.frase}
       </p>
-      <p className="mt-2.5 max-w-2xl text-[13px] leading-relaxed text-[#E5EAF2]/60">
+      <p className="mt-2.5 max-w-2xl text-[13px] leading-relaxed opacity-60" style={{ color: hex("Gris texto") }}>
         {POSICIONAMIENTO.unaLinea}
       </p>
 

@@ -473,8 +473,20 @@ export const COMPOSICION = {
     "Sombras suaves y líneas limpias. Nada de degradados de fondo ni blur decorativo.",
     "El logo va prolijo y discreto, nunca protagonista.",
   ],
+  /**
+   * El prompt base de imagen.
+   *
+   * La mitad son prohibiciones, y es a propósito: el problema de una imagen
+   * generada no es lo que le falta, es lo que le sobra. Los modelos por defecto
+   * agregan resplandores, partículas, interfaces flotantes y circuitos azules
+   * —el look que delata de lejos que la pieza la hizo una IA—. Nombrar cada uno
+   * de esos tics es lo único que los saca.
+   *
+   * Fondo claro, no oscuro: sobre claro el defecto del modelo es agregar luz, y
+   * la luz de más es justamente lo que arruina el resultado.
+   */
   promptImagen:
-    "Premium corporate tech aesthetic, clean light background #F4F6F9, soft even studio light, ultra-clean composition, large negative space, modern sans-serif typography, subtle shadows, matte finish, enterprise B2B feel, single blue accent #2B56D4, photorealistic, much air around the subject, professional and trustworthy. No text overlays, no logos, no holographic UI, no glowing circuits.",
+    "Editorial corporate photography for a premium B2B technology brand. Bright, clean, minimal. Light background (#F4F6F9 or white). Real, natural light with soft directional shadows — like a well-lit office or a real workplace, not a studio render. Matte finish, restrained contrast, muted natural colours. A single subject, generously framed, with at least 40% empty space. One accent colour only: #2B56D4. Shot on a full-frame camera, 35mm or 50mm, moderate depth of field. Composed, calm, expensive-looking.\n\nDO NOT include, under any circumstance: glow, light trails, lens flare, particles, bokeh sparkles, holographic or floating user interfaces, transparent screens, HUD overlays, circuit-board or motherboard motifs, neon, wireframe globes, digital brains, padlock icons, binary code, hooded figures, teal-and-orange grading, heavy vignetting, symmetrical sci-fi compositions, plastic-looking skin, or busy detail filling the whole frame. No text, letters, numbers, logos, badges or signage of any kind — copy and wordmark are composited afterwards in layout.",
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

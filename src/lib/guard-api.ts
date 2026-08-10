@@ -22,6 +22,18 @@ import { accesoDeUsuario, type Modulo } from "@/lib/permisos"
  *   }
  */
 export async function exigirModulo(modulo: Modulo): Promise<NextResponse | null> {
+  return exigirAlgunModulo([modulo])
+}
+
+/**
+ * Para los pocos endpoints genuinamente compartidos entre módulos —la cotización
+ * del dólar es el caso—: alcanza con tener uno de los de la lista. Tiene que
+ * coincidir con lo que declara `RUTAS` en lib/permisos.ts, o el middleware corta
+ * antes y esto no llega a ejecutarse nunca.
+ */
+export async function exigirAlgunModulo(
+  modulos: Modulo[]
+): Promise<NextResponse | null> {
   const supabase = await createSupabaseServer()
   const {
     data: { user },
@@ -32,7 +44,7 @@ export async function exigirModulo(modulo: Modulo): Promise<NextResponse | null>
   }
 
   const acceso = accesoDeUsuario(user)
-  if (!acceso.admin && !acceso.modulos.includes(modulo)) {
+  if (!acceso.admin && !modulos.some((m) => acceso.modulos.includes(m))) {
     return NextResponse.json({ error: "Sin permiso para este módulo" }, { status: 403 })
   }
 

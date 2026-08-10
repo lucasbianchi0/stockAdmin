@@ -1,9 +1,13 @@
-import { exigirModulo } from "@/lib/guard-api"
+import { exigirAlgunModulo } from "@/lib/guard-api"
 let cache: { venta: number; updatedAt: string; fetchedAt: number } | null = null
 const TTL_MS = 60 * 60 * 1000
 
 export async function GET() {
-  const sinPermiso = await exigirModulo("productos")
+  // Dólar oficial venta (Banco Nación). Lo consumen dos módulos: productos, para
+  // armar precios, y administración, para valuar comprobantes bimonetarios. Es
+  // el mismo número a propósito — si cada uno tuviera el suyo, la factura de un
+  // cliente no cerraría contra la cotización con la que se le vendió.
+  const sinPermiso = await exigirAlgunModulo(["productos", "administracion"])
   if (sinPermiso) return sinPermiso
 
   try {

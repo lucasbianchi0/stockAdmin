@@ -7,7 +7,10 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { armarPrompt, type LogoAsset, type PromptDisciplina } from "@/lib/brand-kit"
+import { armarPrompt, PALETA, type LogoAsset, type PromptDisciplina } from "@/lib/brand-kit"
+
+/** El navy sobre el que se previsualizan las variantes claras del logo. */
+const NAVY_FONDO = PALETA.find((c) => c.nombre === "Navy fondo")!.hex
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Piezas interactivas del Brand Kit. Todo lo que se ve acá existe por una
@@ -183,10 +186,8 @@ export function LogoCard({ logo }: { logo: LogoAsset }) {
   return (
     <figure className="overflow-hidden rounded-xl border border-line bg-surface shadow-e1">
       <div
-        className={cn(
-          "flex h-32 items-center justify-center px-8",
-          oscuro ? "bg-[#0A1424]" : "bg-surface-subtle"
-        )}
+        className={cn("flex h-32 items-center justify-center px-8", !oscuro && "bg-surface-subtle")}
+        style={oscuro ? { background: NAVY_FONDO } : undefined}
       >
         <Image
           src={logo.archivo}
