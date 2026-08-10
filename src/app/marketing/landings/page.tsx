@@ -135,8 +135,9 @@ function Portada() {
         <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[11.5px]">
           llms.txt
         </code>{" "}
-        que casi nadie tiene todavía. Los dos huecos reales son de otra naturaleza: la ficha de
-        Google Business, que no existe, y el home en mobile, que puntúa 60.
+        que casi nadie tiene todavía. El home en mobile ya se resolvió: pasó de 60 a 87 al aligerar
+        el video del hero. El hueco real que queda es de otra naturaleza: la ficha de Google
+        Business, que no existe.
       </p>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -632,7 +633,7 @@ function Performance() {
     <Section
       num="04"
       titulo="Performance · la calificación real"
-      bajada={`Medido con ${PERF_HERRAMIENTA} sobre producción el ${PERF_MEDIDO}. Google usa el corte de mobile, no el de desktop — y ahí el home puntúa 60.`}
+      bajada={`Medido con ${PERF_HERRAMIENTA} sobre producción el ${PERF_MEDIDO}. Google usa el corte de mobile, no el de desktop — y ahí el home pasó de 60 a 87 después de aligerar el video del hero.`}
     >
       <div className="space-y-4">
         <div className="grid gap-3 lg:grid-cols-3">
@@ -692,7 +693,7 @@ function Performance() {
 
         <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
           <Panel>
-            <p className="eyebrow">De dónde sale el 60</p>
+            <p className="eyebrow">El peso del home, hoy</p>
             <p className="num mt-1.5 text-[15px] font-bold text-ink">{PESO_HOME.total}</p>
             <div className="mt-4 space-y-2.5">
               {PESO_HOME.reparto.map((r) => (
@@ -707,7 +708,7 @@ function Performance() {
                     <div
                       className={cn(
                         "h-full rounded-full",
-                        r.tipo === "Video" ? "bg-danger" : "bg-n-400"
+                        r.tipo === "Video" ? "bg-brand-500" : "bg-n-400"
                       )}
                       style={{ width: `${(r.peso / maxPeso) * 100}%` }}
                     />
@@ -716,8 +717,8 @@ function Performance() {
               ))}
             </div>
             <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-ink-muted">
-              Un solo video es el 78% del peso. En desktop no se nota; con la red y el CPU de un
-              celular, sí.
+              El video del hero pasó de 2,71 MB a 308 KB con una versión propia para mobile. El home
+              entero pesa hoy menos de lo que pesaba ese solo archivo.
             </p>
           </Panel>
 

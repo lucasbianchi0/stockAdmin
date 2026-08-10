@@ -266,38 +266,43 @@ export type Auditoria = {
 }
 
 /**
- * Lighthouse 12 sobre producción, headless, red móvil simulada.
+ * Lighthouse 13 sobre producción, headless, red móvil simulada.
  *
- * El número que importa es el 60 de mobile en el home: no es un detalle técnico,
- * es la mitad del tráfico de Ads entrando a una página que tarda 5,4 s en pintar
- * el titular. Las landings —que son el destino real de los anuncios— están bien.
+ * Esta medición es la de después de aligerar el home. El 60 de mobile pasó a 87:
+ * el video del hero ahora se sirve en una versión mobile de 308 KB en vez de los
+ * 2,71 MB de antes, y el bloqueo de hilo bajó de 570 ms a 0. Lo que queda es un
+ * LCP de 3,6 s — mejorable, pero ya no es el agujero que era.
+ *
+ * Ojo al comparar contra la corrida anterior: aquella fue con Lighthouse 12 y
+ * ésta con 13, así que parte del movimiento de los puntajes es de versión. Lo
+ * que no depende de la versión son los bytes y el TBT, y ahí la mejora es real.
  */
-export const PERF_MEDIDO = "2026-08-07"
-export const PERF_HERRAMIENTA = "Lighthouse 12 · headless · 4G simulado"
+export const PERF_MEDIDO = "2026-08-10"
+export const PERF_HERRAMIENTA = "Lighthouse 13 · headless · 4G simulado"
 
 export const AUDITORIAS: Auditoria[] = [
   {
     etiqueta: "Home",
     url: "/",
     dispositivo: "Mobile",
-    performance: 60,
-    accesibilidad: 91,
+    performance: 87,
+    accesibilidad: 95,
     buenasPracticas: 96,
     seo: 100,
-    lcp: "5,4 s",
+    lcp: "3,6 s",
     cls: "0",
-    tbt: "570 ms",
-    si: "6,3 s",
+    tbt: "0 ms",
+    si: "4,7 s",
   },
   {
     etiqueta: "Home",
     url: "/",
     dispositivo: "Desktop",
-    performance: 97,
-    accesibilidad: 96,
+    performance: 100,
+    accesibilidad: 95,
     buenasPracticas: 96,
     seo: 100,
-    lcp: "1,2 s",
+    lcp: "0,7 s",
     cls: "0",
     tbt: "0 ms",
     si: "0,6 s",
@@ -307,56 +312,67 @@ export const AUDITORIAS: Auditoria[] = [
     url: "/soluciones/firma-biometrica/juridicos",
     dispositivo: "Mobile",
     performance: 91,
-    accesibilidad: 87,
+    accesibilidad: 91,
     buenasPracticas: 96,
     seo: 100,
-    lcp: "3,5 s",
-    cls: "0,022",
-    tbt: "0 ms",
-    si: "2,5 s",
+    lcp: "3,2 s",
+    cls: "0",
+    tbt: "10 ms",
+    si: "4,3 s",
   },
 ]
 
-/** De dónde sale el 60: el reparto del peso del home en mobile. */
+/** El reparto del peso del home en mobile, después de aligerarlo. */
 export const PESO_HOME = {
-  total: "3,46 MB en 55 pedidos",
+  total: "727 KB en 42 pedidos",
   reparto: [
-    { tipo: "Video", peso: 2.71, req: 1 },
-    { tipo: "Imágenes", peso: 0.36, req: 29 },
-    { tipo: "JavaScript", peso: 0.25, req: 13 },
+    { tipo: "Video", peso: 0.3, req: 1 },
+    { tipo: "JavaScript", peso: 0.2, req: 13 },
     { tipo: "Tipografías", peso: 0.1, req: 3 },
+    { tipo: "Imágenes", peso: 0.08, req: 18 },
   ],
 }
 
-export const HALLAZGOS_PERF = [
+export type Hallazgo = {
+  titulo: string
+  detalle: string
+  impacto: "alto" | "medio" | "bajo"
+}
+
+export const HALLAZGOS_PERF: Hallazgo[] = [
   {
-    titulo: "Un video de 2,71 MB",
+    titulo: "El LCP del home queda en 3,6 s",
     detalle:
-      "Es el 78% del peso del home y entra en un solo pedido. Es la causa principal del 60 en mobile.",
-    impacto: "alto" as const,
-  },
-  {
-    titulo: "El LCP es el propio <h1>",
-    detalle:
-      "La animación de entrada del hero lo retrasa 0,15 s y lo dibuja en 1,3 s. Lighthouse mide el titular recién cuando termina de animar: 5,4 s.",
-    impacto: "alto" as const,
-  },
-  {
-    titulo: "570 ms de bloqueo de hilo",
-    detalle:
-      "En desktop es 0 ms. El JS que corre al inicio sólo se nota con el CPU lento que simula mobile.",
+      "Es lo único que separa al home mobile de los 90. El umbral bueno de Google es 2,5 s: falta poco más de un segundo.",
     impacto: "medio" as const,
   },
   {
-    titulo: "Imágenes sin formato moderno ni tamaño",
-    detalle: "164 KB recuperables entre WebP/AVIF y servirlas al tamaño real.",
+    titulo: "2,2 s de trabajo en el hilo principal",
+    detalle:
+      "No bloquea (el TBT es 0 ms), pero son 0,9 s de tareas varias y 0,7 s de estilo y layout que empujan el Speed Index a 4,7 s.",
+    impacto: "medio" as const,
+  },
+  {
+    titulo: "Contraste insuficiente en las landings",
+    detalle:
+      "Es lo que deja la accesibilidad de la landing en 91 contra 95 del home. Son pares de colores concretos, no un problema de sistema.",
+    impacto: "medio" as const,
+  },
+  {
+    titulo: "48 KB de JavaScript sin usar",
+    detalle: "Más 14 KB de sintaxis vieja transpilada de más. Se recuperan sin tocar el diseño.",
     impacto: "bajo" as const,
   },
   {
-    titulo: "Accesibilidad 87 en las landings",
+    titulo: "Logos sin width ni height",
     detalle:
-      "Botones sin nombre accesible, un select sin label y contraste insuficiente en algún par de colores.",
-    impacto: "medio" as const,
+      "Los `<img>` de las marcas no declaran tamaño. Hoy no cuesta CLS —está en 0—, pero obliga al navegador a recalcular layout.",
+    impacto: "bajo" as const,
+  },
+  {
+    titulo: "16 KB de CSS que bloquean el render",
+    detalle: "Una sola hoja de estilos frena la primera pintura. Es el techo del FCP de 1,0 s.",
+    impacto: "bajo" as const,
   },
 ]
 
@@ -383,8 +399,8 @@ export const ESTADO: { area: string; estado: Semaforo; comentario: string }[] = 
   },
   {
     area: "Performance",
-    estado: "amarillo",
-    comentario: "Desktop impecable, mobile del home en 60 por el video del hero",
+    estado: "verde",
+    comentario: "Desktop en 100 y mobile del home de 60 a 87 tras aligerar el video del hero",
   },
   {
     area: "SEO local / Google Business",
@@ -409,16 +425,22 @@ export const PENDIENTES = [
     prioridad: "ahora" as const,
   },
   {
-    titulo: "Aligerar el home en mobile",
-    porque:
-      "El video de 2,71 MB y la animación del titular cuestan 37 puntos de Lighthouse en la mitad del tráfico.",
-    prioridad: "ahora" as const,
-  },
-  {
     titulo: "Confirmar Search Console",
     porque:
       "El meta de verificación no está en el HTML. Puede estar verificado por DNS, pero sin confirmarlo se navega a ciegas: no hay posiciones ni impresiones.",
     prioridad: "ahora" as const,
+  },
+  {
+    titulo: "Bajar el LCP del home de 3,6 s a 2,5 s",
+    porque:
+      "Aligerar el video ya subió el mobile de 60 a 87. Lo que falta para los 90 es el último segundo de LCP: el CSS que bloquea el render y los 2,2 s de hilo principal. Es afinado, ya no rescate.",
+    prioridad: "despues" as const,
+  },
+  {
+    titulo: "Contraste de colores en las landings",
+    porque:
+      "Es lo único que separa la accesibilidad de la landing (91) de la del home (95). Son pares de colores puntuales, y las landings son el destino real de los anuncios.",
+    prioridad: "despues" as const,
   },
   {
     titulo: "Los 3 casos duplicados",
