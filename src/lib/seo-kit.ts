@@ -12,7 +12,7 @@
  *     lista de resultados: o entrás en la respuesta o no existís.
  */
 
-export const RELEVADO = "2026-08-07"
+export const RELEVADO = "2026-08-10"
 export const DOMINIO = "https://www.accedra.com.ar"
 
 /* ── 1. Arquitectura ──────────────────────────────────────────────────────── */

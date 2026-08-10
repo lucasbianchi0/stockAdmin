@@ -21,7 +21,8 @@ import { templatePorId } from "@/lib/templates-pieza"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-export const maxDuration = 90
+/** Tope del plan hobby de Vercel; con Pro esto puede volver a 90. */
+export const maxDuration = 60
 
 /* ── PATCH · elegir una opción, o cambiarle el template ───────────────────── */
 

@@ -32,11 +32,14 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 /**
  * Generar el plan entero es una sola llamada larga: 11 publicaciones con 3
- * opciones cada una. Medido, tarda entre dos y tres minutos — con los 120
- * segundos que había antes, la request moría del lado del server justo cuando
- * el modelo estaba por terminar.
+ * opciones cada una. Medido, tarda entre dos y tres minutos.
+ *
+ * OJO: 60 no alcanza y lo sabemos. El plan hobby de Vercel no deja declarar más
+ * (el build falla con "invalid maxDuration value"), así que en producción esta
+ * ruta va a cortar por timeout hasta que el proyecto pase a Pro — ahí subir a
+ * 300 — o hasta que partamos la generación en varias requests por slot.
  */
-export const maxDuration = 300
+export const maxDuration = 60
 
 /**
  * Techo de salida del plan.

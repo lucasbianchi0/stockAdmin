@@ -2,7 +2,8 @@ import { exigirModulo } from "@/lib/guard-api"
 import { ruta } from "@/lib/admin/ruta"
 import { leerFicha } from "@/lib/admin/lectura-handlers"
 
-export const maxDuration = 120
+/** Tope del plan hobby de Vercel; con Pro esto puede volver a 120. */
+export const maxDuration = 60
 
 export const POST = ruta("clientes leer", async (req: Request) => {
   const sinPermiso = await exigirModulo("administracion")
