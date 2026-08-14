@@ -204,21 +204,58 @@ export async function vinoEnmarcada(imagen: Buffer): Promise<boolean> {
 }
 
 /**
- * Le pega el logotipo oficial a una pieza ya generada.
+ * La medida final de una pieza, en píxeles.
+ *
+ * Existe porque el generador NO es una fuente confiable de medidas: se le pide
+ * una relación de aspecto y una resolución nominal, y devuelve lo que le sale.
+ * Lo que se publica tiene que entrar exacto en el feed, así que la última
+ * palabra sobre el tamaño la tiene el código, no el modelo.
+ */
+export type Medida = { ancho: number; alto: number }
+
+/**
+ * Le pega el logotipo oficial a una pieza ya generada, en la medida final.
  *
  * Devuelve el JPEG con el logo abajo a la izquierda. Si algo falla —el archivo
  * no está, la imagen no se puede leer— devuelve la pieza original: una pieza sin
  * logo se arregla a mano, una pieza perdida no.
  *
- * Antes de medir nada, descarta el marco si la pieza vino encuadrada. El logo se
- * ubica por porcentaje sobre el cuadro, así que sobre una pieza enmarcada caía
- * en la esquina del MARCO —afuera del arte, flotando en la banda negra— que es
- * el peor resultado posible: la pieza parece terminada y no se puede publicar.
+ * El orden de los tres pasos importa:
+ *
+ * 1. RECORTAR el marco, si la pieza vino encuadrada. El logo se ubica por
+ *    porcentaje sobre el cuadro, así que sobre una pieza enmarcada caía en la
+ *    esquina del MARCO —afuera del arte— y la pieza quedaba inservible.
+ * 2. LLEVAR A LA MEDIDA final. Acá se empareja todo: la pieza sana viene de
+ *    ~2048 y la rescatada de ~1670, y las dos BAJAN a 1080. Bajar no pierde
+ *    nitidez; por eso se normaliza acá y no antes del recorte.
+ * 3. COMPONER el logo, ya sobre el tamaño definitivo, para que el SVG se
+ *    rasterice justo al ancho que va a tener y no se reescale después.
  */
-export async function conLogo(imagen: Buffer): Promise<Buffer> {
+export async function conLogo(imagen: Buffer, medida: Medida): Promise<Buffer> {
   try {
     const marco = await marcoDetectado(imagen).catch(() => null)
-    const arte = marco ? await sharp(imagen).extract(marco).toBuffer() : imagen
+
+    // Ruidoso a propósito. Llegar acá significa que la pieza salió enmarcada Y
+    // que el reintento también, así que la estamos rescatando: sale más chica
+    // que la pedida. Y es el único lugar donde se vería el error contrario —un
+    // recorte sobre una pieza que estaba bien—, que no tiene ninguna otra señal.
+    if (marco) {
+      console.warn(
+        `[logo-pieza] pieza enmarcada, recortando al arte: ${marco.width}x${marco.height} en +${marco.left}+${marco.top}`
+      )
+    }
+
+    const recortada = marco ? await sharp(imagen).extract(marco).toBuffer() : imagen
+
+    /**
+     * `cover` y no `fill`: si el recorte quedó un par de píxeles fuera de
+     * escuadra —al arte de la pieza medida le sobraban 2 px de alto— `fill` lo
+     * estiraría y la tipografía saldría deformada. `cover` recorta esa astilla
+     * desde el centro, que no se ve.
+     */
+    const arte = await sharp(recortada)
+      .resize({ width: medida.ancho, height: medida.alto, fit: "cover", position: "centre" })
+      .toBuffer()
 
     const base = sharp(arte)
     const { width, height } = await base.metadata()
@@ -229,7 +266,7 @@ export async function conLogo(imagen: Buffer): Promise<Buffer> {
     const margen = Math.round(width * MARGEN_RELATIVO)
 
     // El SVG se rasteriza al ancho pedido en vez de escalar un PNG ya rendereado:
-    // a 2K el logo mide 450 px y cualquier bitmap más chico llegaría blando.
+    // sobre 1080 el logo mide 237 px y cualquier bitmap más chico llegaría blando.
     const svg = await readFile(join(process.cwd(), ARCHIVO_LOGO))
     const logo = await sharp(svg, { density: 300 })
       .resize({ width: anchoLogo, height: altoLogo, fit: "contain" })

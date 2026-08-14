@@ -25,17 +25,16 @@ import { useEffect, useState } from "react"
 
 /* ── Vocabulario ──────────────────────────────────────────────────────────── */
 
-export const TIPOS_CUENTA = ["activo", "pasivo", "patrimonio", "ingreso", "egreso"] as const
-export type TipoCuenta = (typeof TIPOS_CUENTA)[number]
+/* Vive en `cuentas-vocabulario.ts` para que el servidor pueda usarlo sin
+ * arrastrar los hooks de este archivo. Se reexporta para que las pantallas
+ * sigan importando de un solo lugar. */
+export {
+  TIPOS_CUENTA,
+  TIPO_CUENTA_LABEL,
+  type TipoCuenta,
+} from "@/lib/admin/cuentas-vocabulario"
 
-/** Los rubros como los nombra el contador en su plan (ACT, PAS, PAT, GAN, PER). */
-export const TIPO_CUENTA_LABEL: Record<TipoCuenta, string> = {
-  activo: "Activo",
-  pasivo: "Pasivo",
-  patrimonio: "Patrimonio neto",
-  ingreso: "Ganancias",
-  egreso: "Pérdidas",
-}
+import type { TipoCuenta } from "@/lib/admin/cuentas-vocabulario"
 
 export type CuentaContable = {
   id: string

@@ -168,12 +168,21 @@ No third-party logos anywhere either, unless explicitly requested above.`
  * sobre un fondo casi negro ese gris directamente se pierde y las etiquetas
  * quedan ilegibles. Ahora todo va en blanco y la jerarquía la hace el tamaño,
  * que es lo mismo que ya hace el titular.
+ *
+ * El párrafo de espacio negativo decía "wide margins on all four sides" y
+ * "large uninterrupted areas of pure flat black". Leído literal eso ES un marco,
+ * y contradecía al FULL BLEED de cinco líneas más abajo. Una pieza que salió así
+ * —banda lisa alrededor, arte texturado adentro— se midió: las cuatro franjas
+ * del borde con desvío 0, o sea planas, y la textura solo adentro. El modelo no
+ * se desvió, cumplió esta línea y sacrificó la otra. Ahora los márgenes se
+ * nombran como distancia DEL TEXTO a los bordes y el negro plano como "el
+ * fondo", que es lo que se quería decir desde el principio.
  */
 const SISTEMA_GUIA = `TYPE SYSTEM — the headline is set in a geometric grotesque (Montserrat) at REGULAR or LIGHT weight: thin, even strokes, open counters, sentence case, generous line spacing. It is NOT bold, NOT semibold, NOT black, NOT condensed and never faux-bolded. Size carries the hierarchy, weight does not: the headline is large and thin, and it reads calm rather than loud. Only a standalone figure (a percentage, a year count) may be set heavier. Secondary lines and labels are the same face, smaller. Never Helvetica, Arial or a default system font.
 PALETTE, strictly: background flat #0B0D12 to #111827, surfaces and cards #1E293B, accent #3B82F6 used sparingly. No other color outside the photograph.
 TEXT COLOR: every word in the piece is WHITE #FFFFFF — the headline, the service labels, the list items, the pill text, the captions, the CTA. Grey text is a defect: it disappears against the black. The only exceptions are the small uppercase eyebrow label and the highlighted span of the headline, which are the accent blue.
 KEEP IT PLAIN: say things the simplest way they can be said. No decorative icons where a word does the job, no arrows or symbols standing in for words, no notation the reader has to decode, no ornament. If an element does not carry meaning on its own, it does not go in the piece.
-NEGATIVE SPACE: the text block occupies at most the upper third of the canvas and never crowds it. Wide margins on all four sides. Large uninterrupted areas of pure flat black are the point of this system, not empty space to fill — resist adding anything to them.
+NEGATIVE SPACE: the text block occupies at most the upper third of the canvas and never crowds it. The text keeps a wide clear distance from all four edges — that is padding INSIDE the artwork, never a border around it: the background itself still runs edge to edge, behind and past the text. Large uninterrupted calm areas of that background are the point of this system, not empty space to fill — resist adding anything to them.
 GRAPHICS: flat, thin, luminous line-work on black — outlines, dotted particle fields, fine curves. Never a rendered 3D object, never volumetric glow, never a chrome or glass surface, never small illegible characters or fake code inside a graphic.
 PHOTOGRAPHY: real photographs only, with the grain and imperfection of a real camera. Never a CGI render, never an illustration.
 ICONS: thin single-weight outline icons only, small, aligned to the text baseline. Never filled, never colorful, never illustrative.
@@ -530,7 +539,7 @@ ${titular(v)}${si(
 ${destacado(v)}${si(Boolean(v.cta), `Below, a short line: “${v.cta}” followed by “→”`)}
 
 No photography. No unnecessary icons.
-Use generous margins and strong editorial typography. The overall design should feel like a high-end B2B technology case-study cover.`,
+Keep the text well clear of the four edges — as padding inside the piece, not as a border drawn around it — and use strong editorial typography. The overall design should feel like a high-end B2B technology case-study cover.`,
   },
   {
     id: "feed-13-evento",

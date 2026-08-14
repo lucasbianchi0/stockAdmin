@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 
 import { NextResponse } from "next/server"
+import sharp from "sharp"
 import { IMAGE_STYLE_SUFFIX } from "@/lib/contenido-context"
 import { supabase } from "@/lib/supabase"
 import { BUCKET_PLANTILLAS } from "@/lib/plantillas"
@@ -284,17 +285,65 @@ async function pedirImagen(input: unknown[], sizeKind: SizeKind): Promise<string
 }
 
 /**
- * Le pega el logotipo oficial a la pieza que devolvió el generador.
+ * La medida con la que sale cada pieza, en píxeles. La última palabra.
+ *
+ * Gemini recibe una relación de aspecto y una resolución nominal ("2K"), pero
+ * eso no es un contrato: devuelve alrededor de esa medida, y una pieza que hubo
+ * que rescatar de un marco sale más chica todavía. Lo que se publica tiene que
+ * entrar exacto en el feed, así que el tamaño lo fija el código al final.
+ *
+ * 1080 es la medida cuadrada del feed y sirve para los dos canales: Instagram la
+ * usa nativa y LinkedIn la admite (`sistema-visual.ts` ya eligió cuadrado para
+ * los dos por eso mismo). El vertical 4:5 es 1080×1350, el de Instagram.
+ *
+ * Todas las piezas BAJAN hasta acá —la sana desde ~2048, la rescatada desde
+ * ~1670— y bajar no cuesta nitidez. Subir sí, y por eso ninguna medida de esta
+ * tabla puede ser mayor que lo que devuelve el generador.
+ */
+const MEDIDA_FINAL: Record<SizeKind, { ancho: number; alto: number }> = {
+  square: { ancho: 1080, alto: 1080 },
+  portrait: { ancho: 1080, alto: 1350 },
+  landscape: { ancho: 1920, alto: 1080 },
+}
+
+/**
+ * Le pega el logotipo oficial a la pieza que devolvió el generador, ya en la
+ * medida final.
  *
  * Solo el camino 2: el sistema viejo pide el logo dentro del prompt y componerle
  * otro encima lo duplicaría.
  */
-async function componerLogo(dataUrl: string): Promise<string> {
+async function componerLogo(dataUrl: string, sizeKind: SizeKind): Promise<string> {
   const coincide = dataUrl.match(/^data:image\/\w+;base64,(.+)$/)
   if (!coincide) return dataUrl
 
-  const conMarca = await conLogo(Buffer.from(coincide[1], "base64"))
+  const conMarca = await conLogo(Buffer.from(coincide[1], "base64"), MEDIDA_FINAL[sizeKind])
   return `data:image/jpeg;base64,${conMarca.toString("base64")}`
+}
+
+/**
+ * La misma medida final, para el camino 1.
+ *
+ * Ese camino no lleva logo compuesto —lo pide dentro del prompt— así que no pasa
+ * por `conLogo` y se quedaba con el tamaño crudo del generador. El tamaño de lo
+ * que se publica no debería depender de por qué camino se generó.
+ */
+async function aMedida(dataUrl: string, sizeKind: SizeKind): Promise<string> {
+  const coincide = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/)
+  if (!coincide) return dataUrl
+
+  const { ancho, alto } = MEDIDA_FINAL[sizeKind]
+  try {
+    const ajustada = await sharp(Buffer.from(coincide[2], "base64"))
+      .resize({ width: ancho, height: alto, fit: "cover", position: "centre" })
+      .jpeg({ quality: 92 })
+      .toBuffer()
+    return `data:image/jpeg;base64,${ajustada.toString("base64")}`
+  } catch (err) {
+    // Una pieza con la medida equivocada se arregla; una pieza perdida no.
+    console.error("[contenido/image] no se pudo llevar a medida", err)
+    return dataUrl
+  }
 }
 
 export async function POST(req: Request) {
@@ -402,7 +451,9 @@ export async function POST(req: Request) {
       }
     }
 
-    const image = crudo ? await componerLogo(generada) : generada
+    const image = crudo
+      ? await componerLogo(generada, sizeKind)
+      : await aMedida(generada, sizeKind)
     return NextResponse.json({ image, model: GEMINI_MODEL, prompt: finalPrompt })
   } catch (err) {
     // Sin respaldo a propósito: Claude analiza, Gemini genera y nadie más. Un

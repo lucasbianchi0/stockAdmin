@@ -71,6 +71,7 @@ const GRUPOS: Grupo[] = [
       { name: "Facturas de compra", href: "/admin/compras", available: true },
       { name: "Pagos a proveedores", href: "/admin/pagos", available: true },
       { name: "Caja y bancos", href: "/admin/cuentas", available: true },
+      { name: "Contabilidad", href: "/admin/contabilidad", available: true },
       { name: "Reportes", href: "/admin/reportes", available: true },
     ],
   },
