@@ -8,6 +8,10 @@ import {
   type DistecnaOrderLine,
 } from "@/lib/distecna-v2"
 
+// El POST de pedidos a Distecna es lento (medido, hasta ~16s en produccion, con
+// picos que cortan a los 25s). Le damos todo el techo del plan hobby de Vercel.
+export const maxDuration = 60
+
 interface RequestItem {
   code: string
   quantity: number

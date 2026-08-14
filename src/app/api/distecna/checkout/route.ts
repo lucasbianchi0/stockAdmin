@@ -6,6 +6,10 @@ import {
   DistecnaError,
 } from "@/lib/distecna-v2"
 
+// Las lecturas de Distecna en produccion pueden tardar bastante (16s+); le damos
+// margen para que el checkout no corte por el default de 10s de Vercel.
+export const maxDuration = 60
+
 // Contexto necesario para armar un pedido: condicion de pago y direcciones de la
 // cuenta. Los dos son opcionales en POST /v2/Order, asi que un fallo parcial no
 // bloquea nada — el pedido se puede mandar con los defaults de la cuenta.
