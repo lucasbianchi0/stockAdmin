@@ -39,6 +39,17 @@ import {
 import { FeedPrevia } from "@/components/contenido/feed-previa"
 import { MarcaCanal } from "@/components/admin/platform-icons"
 import { promptDeImagen } from "@/lib/prompt-pieza"
+import {
+  claveSistema,
+  esSistema,
+  pedirPromptFeed,
+  proporcionDe,
+  secuenciaFeed,
+  SISTEMAS,
+  SISTEMA_LABEL,
+  SISTEMA_NOTA,
+  type SistemaVisual,
+} from "@/lib/sistema-visual"
 
 /**
  * Un plan del calendario.
@@ -68,6 +79,14 @@ export function PlanClient({ planId }: { planId: string }) {
     slotId: string | null
   } | null>(null)
   const [previaFeed, setPreviaFeed] = useState(false)
+  /**
+   * Con cuál de los dos sistemas visuales se generan las imágenes de este plan.
+   *
+   * Vive en localStorage y no en la base a propósito: es un experimento por
+   * plan, no una propiedad del plan. Cuando uno de los dos gane, esto se borra
+   * y el ganador queda solo.
+   */
+  const [sistema, setSistema] = useState<SistemaVisual>("accedra")
   /** La última pieza generada con cada template. Es lo que se dibuja en el feed
    *  para las piezas que todavía no tienen su imagen real. */
   const [miniaturas, setMiniaturas] = useState<Record<string, string>>({})
@@ -99,6 +118,19 @@ export function PlanClient({ planId }: { planId: string }) {
       vigente = false
     }
   }, [planId])
+
+  useEffect(() => {
+    const guardado = window.localStorage.getItem(claveSistema(planId))
+    if (esSistema(guardado)) setSistema(guardado)
+  }, [planId])
+
+  const cambiarSistema = useCallback(
+    (s: SistemaVisual) => {
+      setSistema(s)
+      window.localStorage.setItem(claveSistema(planId), s)
+    },
+    [planId]
+  )
 
   // Las miniaturas no bloquean nada: si fallan, el feed se dibuja con los
   // nombres de los templates.
@@ -326,6 +358,37 @@ export function PlanClient({ planId }: { planId: string }) {
   }, [plan, recienGeneradas])
 
   /**
+   * Qué template del camino 2 le toca a cada pieza.
+   *
+   * Se calcula acá y no se guarda: es una función pura de los slots del plan,
+   * así que dos cálculos dan lo mismo. Guardarlo obligaría a una columna nueva
+   * para un sistema que todavía se está probando.
+   */
+  const feedPorSlot = useMemo(
+    () => (plan ? secuenciaFeed(plan.slots) : new Map<string, string>()),
+    [plan]
+  )
+
+  /**
+   * El prompt de una pieza, por el camino que esté activo.
+   *
+   * Único punto donde se decide: el lote y el panel tienen que armar el MISMO
+   * prompt o la comparación entre los dos sistemas no mide lo que se cree.
+   */
+  const promptDeSlot = useCallback(
+    async (slot: Slot): Promise<string> => {
+      if (sistema !== "feed") return promptDeImagen(slot)
+
+      const templateFeedId = feedPorSlot.get(slot.id)
+      if (!templateFeedId) return ""
+
+      const { prompt } = await pedirPromptFeed(slot.id, templateFeedId)
+      return prompt
+    },
+    [sistema, feedPorSlot]
+  )
+
+  /**
    * Genera todo lo elegido, de a una. En serie y no en paralelo a propósito: son
    * llamadas caras a un modelo y lanzar once juntas termina en rate limit, con
    * la mitad hecha y sin forma de saber cuál falló.
@@ -352,13 +415,19 @@ export function PlanClient({ planId }: { planId: string }) {
           // Y la imagen. Sin esto el lote dejaba once textos y ninguna pieza
           // visual, que es media publicación: había que entrar a cada día a
           // generar la imagen a mano, justo lo que el botón venía a evitar.
-          const prompt = promptDeImagen(data.slot)
+          setLote({ hechos: i, total: pendientes.length, paso: "imagen", slotId: s.id })
+          const prompt = await promptDeSlot(data.slot)
           if (prompt) {
-            setLote({ hechos: i, total: pendientes.length, paso: "imagen", slotId: s.id })
             const img = await fetch("/api/contenido/image", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ prompt, size: "square" }),
+              // La proporción sale del canal, siempre. Antes iba "square" fija
+              // y una pieza de LinkedIn salía con la medida de Instagram.
+              body: JSON.stringify(
+                sistema === "feed"
+                  ? { prompt, size: proporcionDe(s.canal), sistema: "feed" }
+                  : { prompt, size: proporcionDe(s.canal) }
+              ),
             })
             const datosImg = await img.json()
             if (img.ok && datosImg.image) await guardarImagen(s.id, datosImg.image)
@@ -373,7 +442,7 @@ export function PlanClient({ planId }: { planId: string }) {
     setLote(null)
     if (fallaron === 0) toast.success("Todo el contenido está generado")
     else toast.warning(`Quedaron ${fallaron} sin generar. Probá de nuevo desde el detalle.`)
-  }, [pendientes, aplicarSlot, guardarImagen])
+  }, [pendientes, aplicarSlot, guardarImagen, promptDeSlot, sistema])
 
   const slot = plan?.slots.find((s) => s.id === slotAbierto) ?? null
 
@@ -432,6 +501,32 @@ export function PlanClient({ planId }: { planId: string }) {
                 </button>
               )
             })}
+          </div>
+
+          {/* Con cuál de los dos sistemas se generan las imágenes. Está al lado
+              del botón que las genera y no escondido en un ajuste: la gracia es
+              generar la misma pieza por los dos caminos y comparar. */}
+          <div
+            className="flex gap-1 rounded-xl border border-line bg-surface p-1 shadow-e1"
+            title={SISTEMA_NOTA[sistema]}
+          >
+            {SISTEMAS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => cambiarSistema(s)}
+                disabled={Boolean(lote)}
+                title={SISTEMA_NOTA[s]}
+                className={cn(
+                  "rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium transition-colors disabled:opacity-50",
+                  sistema === s
+                    ? "bg-brand-50 text-brand-700"
+                    : "text-ink-muted hover:bg-surface-muted hover:text-ink"
+                )}
+              >
+                {SISTEMA_LABEL[s]}
+              </button>
+            ))}
           </div>
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -493,6 +588,8 @@ export function PlanClient({ planId }: { planId: string }) {
 
       <PiezaPanel
         slot={slot}
+        sistema={sistema}
+        feedTemplateId={slot ? (feedPorSlot.get(slot.id) ?? null) : null}
         eligiendo={eligiendo}
         generando={generandoSlot}
         imagen={slot ? imagenDe(slot) : null}

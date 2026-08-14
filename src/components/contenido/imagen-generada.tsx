@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Plantilla } from "@/lib/plantillas"
+import { SISTEMA_LABEL, type SistemaVisual } from "@/lib/sistema-visual"
 
 /**
  * El prompt de imagen deja de ser texto para llevarse a otro lado.
@@ -32,13 +33,30 @@ export function ImagenGenerada({
   prompt,
   imagen,
   onImagen,
+  sistema = "accedra",
+  proporcionFija,
 }: {
   prompt: string
   /** La imagen vive en el panel, no acá: la vista previa también la necesita. */
   imagen: string | null
   onImagen: (dataUrl: string) => void
+  /**
+   * La medida que impone el canal. Cuando viene, el selector desaparece.
+   *
+   * La proporción de una pieza no es una preferencia de quien la genera: es la
+   * medida del feed donde se publica. Dejarla a mano era la forma de terminar
+   * con una pieza de LinkedIn en 4:5.
+   */
+  proporcionFija?: Proporcion
+  /**
+   * Con qué sistema visual se genera. En "feed" el prompt ya viene entero y
+   * autosuficiente: no hay plantilla de referencia que elegir ni bloque de
+   * estilo que pegarle atrás, así que el selector directamente no aparece.
+   */
+  sistema?: SistemaVisual
 }) {
-  const [proporcion, setProporcion] = useState<Proporcion>("square")
+  const [elegidaPorMano, setElegidaPorMano] = useState<Proporcion>("square")
+  const proporcion = proporcionFija ?? elegidaPorMano
   const [generando, setGenerando] = useState(false)
   const [plantillas, setPlantillas] = useState<Plantilla[]>([])
   const [elegida, setElegida] = useState<string | null>(null)
@@ -76,8 +94,8 @@ export function ImagenGenerada({
   }, [prompt])
 
   useEffect(() => {
-    if (!imagen) recomendar()
-  }, [imagen, recomendar])
+    if (!imagen && sistema === "accedra") recomendar()
+  }, [imagen, recomendar, sistema])
 
   const forma = PROPORCIONES.find((p) => p.id === proporcion)!
 
@@ -87,7 +105,11 @@ export function ImagenGenerada({
       const res = await fetch("/api/contenido/image", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt, size: proporcion, plantillaId: elegida ?? undefined }),
+        body: JSON.stringify(
+          sistema === "feed"
+            ? { prompt, size: proporcion, sistema: "feed" }
+            : { prompt, size: proporcion, plantillaId: elegida ?? undefined }
+        ),
       })
       const data = (await res.json()) as { image?: string; error?: string }
       if (!res.ok || !data.image) throw new Error(data.error ?? "No se pudo generar")
@@ -115,28 +137,43 @@ export function ImagenGenerada({
         <div className="flex min-w-0 items-center gap-2">
           <ImageIcon className="h-3.5 w-3.5 shrink-0 text-ink-faint" strokeWidth={2} />
           <p className="truncate text-[11.5px] font-semibold text-ink-secondary">Imagen</p>
+          {/* Cuál de los dos sistemas está generando. Sin esto, dos piezas que
+              salieron distintas no se pueden atribuir a nada. */}
+          <span className="shrink-0 rounded-md bg-surface-muted px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
+            {SISTEMA_LABEL[sistema]}
+          </span>
         </div>
 
-        {/* La proporción se elige antes de gastar una generación, no después. */}
-        <div className="flex items-center gap-1">
-          {PROPORCIONES.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setProporcion(p.id)}
-              disabled={generando}
-              title={p.nota}
-              className={cn(
-                "rounded-md px-2 py-1 text-[10.5px] font-semibold tabular-nums transition-colors",
-                proporcion === p.id
-                  ? "bg-brand-600 text-white"
-                  : "text-ink-muted hover:bg-surface-muted hover:text-ink"
-              )}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        {/* La proporción se elige antes de gastar una generación, no después —
+            salvo que la imponga el canal, y entonces no se elige. */}
+        {proporcionFija ? (
+          <span
+            className="shrink-0 rounded-md bg-surface-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-ink-muted"
+            title={`${forma.nota} — lo fija el canal`}
+          >
+            {forma.label}
+          </span>
+        ) : (
+          <div className="flex items-center gap-1">
+            {PROPORCIONES.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setElegidaPorMano(p.id)}
+                disabled={generando}
+                title={p.nota}
+                className={cn(
+                  "rounded-md px-2 py-1 text-[10.5px] font-semibold tabular-nums transition-colors",
+                  proporcion === p.id
+                    ? "bg-brand-600 text-white"
+                    : "text-ink-muted hover:bg-surface-muted hover:text-ink"
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {imagen ? (
@@ -172,16 +209,18 @@ export function ImagenGenerada({
             {prompt}
           </p>
 
-          <SelectorPlantilla
-            plantillas={plantillas}
-            elegida={elegida}
-            porQue={porQue}
-            cargando={recomendando}
-            onElegir={(id) => {
-              setElegida(id)
-              setPorQue(null)
-            }}
-          />
+          {sistema === "accedra" && (
+            <SelectorPlantilla
+              plantillas={plantillas}
+              elegida={elegida}
+              porQue={porQue}
+              cargando={recomendando}
+              onElegir={(id) => {
+                setElegida(id)
+                setPorQue(null)
+              }}
+            />
+          )}
 
           <Button size="sm" className="mt-3" onClick={generar} disabled={generando}>
             {generando ? <Loader2 className="animate-spin" /> : <Sparkles />}

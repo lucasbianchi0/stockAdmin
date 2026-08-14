@@ -1,9 +1,13 @@
 import { exigirModulo } from "@/lib/guard-api"
+import { readFile } from "node:fs/promises"
+import { join } from "node:path"
+
 import { NextResponse } from "next/server"
 import { IMAGE_STYLE_SUFFIX } from "@/lib/contenido-context"
 import { supabase } from "@/lib/supabase"
 import { BUCKET_PLANTILLAS } from "@/lib/plantillas"
 import { promptDeTemplate, templatePorId, type TemplatePieza } from "@/lib/templates-pieza"
+import { conLogo, vinoEnmarcada } from "@/lib/logo-pieza"
 
 // El bloque de estilo sale del Brand Kit (ver IMAGE_STYLE_SUFFIX): antes vivía
 // acá escrito a mano y por eso seguía pidiendo el azul viejo #2B6AC8.
@@ -17,8 +21,47 @@ type SizeKind = "square" | "portrait" | "landscape"
 // falla —cuota, corte, respuesta sin imagen— la pieza igual sale. Un generador
 // caído no debería frenar a alguien que está armando el calendario del mes.
 
-const GEMINI_MODEL = "gemini-3.1-flash-image"
+/**
+ * Pro y no Flash.
+ *
+ * Flash es el tier de volumen: rápido, barato y suficiente para una escena. Pero
+ * una pieza de feed no es una escena — es un titular en tipografía, un bloque de
+ * etiquetas, una banda y un pie, todo alineado a una grilla. Google separa los
+ * dos casos explícitamente: Pro es el "professional design engine con reasoning
+ * core para layouts complejos y renderizado preciso de texto", y es justo lo que
+ * acá se rompía. Con Flash el titular salía con una letra de más y las etiquetas
+ * pisadas.
+ *
+ * Cuesta bastante más por imagen. Si hace falta volver atrás para una tanda de
+ * pruebas, la variable de entorno lo baja sin tocar el código.
+ */
+const GEMINI_MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-3-pro-image"
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+
+/**
+ * 2K y no 1K.
+ *
+ * A 1K un titular de tres líneas entra con el cuerpo justo y el modelo lo
+ * resuelve engordando la letra hasta que pierde el tracking. 2K le da lugar.
+ *
+ * 4K no: la imagen viaja como base64 dentro del JSON y se guarda por la ruta de
+ * `slot/imagen`, que corta en 8 MB. Una pieza en 4K queda al filo de ese tope
+ * para mostrarse igual reescalada a 1080 en el feed.
+ */
+const GEMINI_RESOLUCION = "2K"
+
+/**
+ * Sin esto la ruta se muere en producción y anda perfecto en local.
+ *
+ * El default de Vercel para una función sin `maxDuration` son 10 segundos, y una
+ * pieza con Pro a 2K tarda entre 28 y 37 medidos. O sea: todas las imágenes
+ * fallarían por timeout apenas se despliegue, sin ningún síntoma en desarrollo.
+ *
+ * 60 es el techo del plan hobby. Deja poco margen —una generación lenta lo roza—
+ * así que si empiezan a aparecer timeouts, el arreglo no es subir esto sino
+ * bajar la resolución a 1K o pasar el plan a Pro y poner 300.
+ */
+export const maxDuration = 60
 
 /** Relación de aspecto por tipo de pieza. 4:5 es el vertical de feed, no 9:16. */
 const GEMINI_ASPECTO: Record<SizeKind, string> = {
@@ -87,11 +130,73 @@ async function bloqueDePlantilla(plantillaId: string) {
   }
 }
 
+/**
+ * La referencia de marca del camino 2. Es de Accedra, no de otra marca.
+ *
+ * Es la diferencia más grande medida hasta ahora en este sistema: las mismas dos
+ * piezas generadas sin referencia salen con un logo inventado, la foto gris y
+ * una costura visible entre la foto y el texto; con la referencia adelante salen
+ * con el isotipo correcto, la foto hundida en negro y sin corte. El texto solo
+ * no alcanza para transmitir cuánto negro es "casi negro".
+ *
+ * Vive como archivo en el repo y no en la base a propósito: no es una plantilla
+ * que el usuario elige por pieza, es LA definición visual del sistema. Cambiar
+ * este archivo cambia las quince piezas.
+ */
+const REFERENCIA_MARCA = "public/brand/referencia-feed.png"
+
+async function referenciaDeMarca() {
+  try {
+    const bytes = await readFile(join(process.cwd(), REFERENCIA_MARCA))
+    return { type: "image", mime_type: "image/png", data: bytes.toString("base64") }
+  } catch (err) {
+    // Falla abierto: sin la referencia la pieza sale peor, pero sale. Se
+    // registra porque "salió con otro logo" no se diagnostica de otra forma.
+    console.error("[contenido/image referencia]", err)
+    return null
+  }
+}
+
+/**
+ * Qué se copia de la referencia cuando la referencia ES de la marca.
+ *
+ * Es lo contrario del bloque que acompaña a las plantillas, que son piezas
+ * AJENAS subidas por su composición y de las que hay que ignorar el color y los
+ * signos de identidad. Acá la identidad es justamente lo que se viene a buscar.
+ */
+const COPIA_LA_MARCA = `The attached image is Accedra's own Instagram feed board: finished posts from the visual system you are working in. This is the brand you work for — not a foreign reference.
+
+COPY from it, exactly:
+- The overall level of darkness. These pieces are almost entirely black; match that, and never lighten anything to make it "readable".
+- The photographic and graphic treatment: photographs drowned in shadow, cold and blue; graphics as thin luminous line-work on black, never solid or illustrative.
+- The typography, and look closely at its WEIGHT: the headlines in the reference are thin — regular or light, not bold. Match that thinness exactly; a bolder headline is the single most common way to get this system wrong.
+- How much of each piece is empty flat black, and how small the text block is inside it.
+- The small uppercase blue eyebrow label, the icon style and the spacing of any list or pill.
+
+IGNORE from it:
+- The board layout itself, the grid of several posts, and the Instagram format badges in the corners. You are producing ONE single square piece, full bleed, with no badge.
+- Every headline and photograph in it — those come from the brief below.
+- The Accedra logo in the bottom-left of every piece. That logo is composited afterwards from the official file; you must NOT draw it, and you must leave that corner clear as the brief describes.
+
+The new piece:
+
+`
+
 async function generarConGemini(
   prompt: string,
   sizeKind: SizeKind,
-  plantillaId?: string
+  plantillaId?: string,
+  conMarca = false
 ): Promise<string> {
+  // El camino 2 lleva la referencia de marca; el camino de siempre, la plantilla
+  // que se haya elegido. Nunca las dos: son dos instrucciones opuestas sobre qué
+  // hacer con la identidad de la imagen que se manda adelante.
+  if (conMarca) {
+    const marca = await referenciaDeMarca()
+    if (marca) return await pedirImagen([marca, { type: "text", text: COPIA_LA_MARCA + prompt }], sizeKind)
+    return await pedirImagen([{ type: "text", text: prompt }], sizeKind)
+  }
+
   const referencia = plantillaId ? await bloqueDePlantilla(plantillaId) : null
 
   // La referencia va PRIMERO. Con el texto adelante el modelo la trata como
@@ -128,6 +233,11 @@ ${prompt}`,
       ]
     : [{ type: "text", text: prompt }]
 
+  return await pedirImagen(input, sizeKind)
+}
+
+/** El pedido a Gemini y la lectura de la respuesta, ya armado el input. */
+async function pedirImagen(input: unknown[], sizeKind: SizeKind): Promise<string> {
   const res = await fetch(GEMINI_URL, {
     method: "POST",
     headers: {
@@ -141,9 +251,7 @@ ${prompt}`,
         type: "image",
         mime_type: "image/jpeg",
         aspect_ratio: GEMINI_ASPECTO[sizeKind],
-        // 1K y no 2K: Instagram y LinkedIn muestran 1080 px de ancho, así que
-        // 2K son 2,5 MB de base64 viajando en el JSON para terminar reescalados.
-        image_size: "1K",
+        image_size: GEMINI_RESOLUCION,
       },
     }),
   })
@@ -175,6 +283,20 @@ ${prompt}`,
   return `data:${imagen.mime};base64,${imagen.b64}`
 }
 
+/**
+ * Le pega el logotipo oficial a la pieza que devolvió el generador.
+ *
+ * Solo el camino 2: el sistema viejo pide el logo dentro del prompt y componerle
+ * otro encima lo duplicaría.
+ */
+async function componerLogo(dataUrl: string): Promise<string> {
+  const coincide = dataUrl.match(/^data:image\/\w+;base64,(.+)$/)
+  if (!coincide) return dataUrl
+
+  const conMarca = await conLogo(Buffer.from(coincide[1], "base64"))
+  return `data:image/jpeg;base64,${conMarca.toString("base64")}`
+}
+
 export async function POST(req: Request) {
   const sinPermiso = await exigirModulo("marketing")
   if (sinPermiso) return sinPermiso
@@ -192,7 +314,22 @@ export async function POST(req: Request) {
 
   const raw = body as Record<string, unknown>
 
-  const concept = typeof raw.prompt === "string" ? raw.prompt.trim().slice(0, 3500) : ""
+  /**
+   * Camino 2 — "Feed 1080": el prompt llega entero y no se le toca nada.
+   *
+   * Los quince templates de `templates-feed.ts` ya traen adentro su paleta, su
+   * tipografía y sus prohibiciones. Pegarles atrás el bloque de estilo del Brand
+   * Kit sería mandarle al generador dos sistemas de identidad en el mismo
+   * pedido, y de ahí no sale ninguno de los dos. Por lo mismo se ignora la
+   * plantilla de referencia: es una imagen de OTRA marca puesta como molde, y
+   * acá el molde ya lo pone el template.
+   */
+  const crudo = raw.sistema === "feed"
+
+  // El tope sube en crudo porque un template del feed ya son ~2.000 caracteres
+  // antes de las variables; 3.500 le cortaba la cola justo donde van las
+  // prohibiciones.
+  const concept = typeof raw.prompt === "string" ? raw.prompt.trim().slice(0, crudo ? 8000 : 3500) : ""
   if (!concept) {
     return NextResponse.json({ error: "Prompt requerido" }, { status: 400 })
   }
@@ -235,16 +372,37 @@ export async function POST(req: Request) {
       }
     : template
 
-  const finalPrompt = receta
-    ? promptDeTemplate({ template: receta, titular: titular || concept, sujeto, etiqueta })
-    : `${concept}${seriesNote}${STYLE_SUFFIX}`
+  const finalPrompt = crudo
+    ? concept
+    : receta
+      ? promptDeTemplate({ template: receta, titular: titular || concept, sujeto, etiqueta })
+      : `${concept}${seriesNote}${STYLE_SUFFIX}`
 
   if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json({ error: "Falta GEMINI_API_KEY" }, { status: 500 })
   }
 
   try {
-    const image = await generarConGemini(finalPrompt, sizeKind, plantillaId)
+    let generada = await generarConGemini(
+      finalPrompt,
+      sizeKind,
+      crudo ? undefined : plantillaId,
+      crudo
+    )
+
+    // Un reintento y uno solo si la pieza vino enmarcada como mockup. Es un
+    // fallo intermitente que no cede por prompt —le pegamos tres veces— y que
+    // arruina la pieza entera, porque el logo compuesto cae fuera del arte.
+    // Reintentar sale ~0,18 USD; publicar una pieza así sale bastante más caro.
+    if (crudo) {
+      const bytes = Buffer.from(generada.split(",")[1] ?? "", "base64")
+      if (await vinoEnmarcada(bytes)) {
+        console.warn("[contenido/image] pieza enmarcada, regenerando")
+        generada = await generarConGemini(finalPrompt, sizeKind, undefined, true)
+      }
+    }
+
+    const image = crudo ? await componerLogo(generada) : generada
     return NextResponse.json({ image, model: GEMINI_MODEL, prompt: finalPrompt })
   } catch (err) {
     // Sin respaldo a propósito: Claude analiza, Gemini genera y nadie más. Un

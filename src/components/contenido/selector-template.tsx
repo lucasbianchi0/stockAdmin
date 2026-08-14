@@ -5,6 +5,7 @@ import { AlertTriangle, Check, ChevronDown, ImageOff, Loader2, Shapes } from "lu
 
 import { cn } from "@/lib/utils"
 import { TEMPLATES, templatePorId, type Densidad, type TemplatePieza } from "@/lib/templates-pieza"
+import { useTemplatesArchivados } from "@/lib/templates-browser"
 
 /**
  * Qué formato tiene esta pieza.
@@ -56,6 +57,14 @@ export function SelectorTemplate({
   const [abierto, setAbierto] = useState(false)
   const actual = templatePorId(templateSlug)
 
+  // Los archivados salen de la lista, salvo el que la pieza ya tiene puesto: si
+  // se archivó después de asignarlo, esconderlo dejaría el selector mostrando un
+  // formato que no figura entre las opciones.
+  const archivados = useTemplatesArchivados()
+  const opciones = TEMPLATES.filter(
+    (t) => !archivados?.has(t.id) || t.id === templateSlug
+  )
+
   return (
     <div className="min-w-0">
       <button
@@ -97,7 +106,7 @@ export function SelectorTemplate({
       {abierto && (
         <div className="mt-2 rounded-xl border border-line bg-surface-subtle p-2">
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-            {TEMPLATES.map((t) => (
+            {opciones.map((t) => (
               <OpcionTemplate
                 key={t.id}
                 template={t}

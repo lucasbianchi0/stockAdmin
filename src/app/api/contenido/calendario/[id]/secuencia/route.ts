@@ -4,7 +4,7 @@ import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { aSlotsCliente } from "@/lib/calendario-server"
 import { secuenciaRecomendada } from "@/lib/secuencia"
-import { TEMPLATES } from "@/lib/templates-pieza"
+import { templatesActivos } from "@/lib/templates-server"
 import { esCanal, type Canal } from "@/lib/calendario-context"
 
 type Contexto = { params: Promise<{ id: string }> }
@@ -58,7 +58,7 @@ export async function POST(req: Request, { params }: Contexto) {
     fijo: s.imagen_path ? (s.template_slug as string | null) : null,
   }))
 
-  const asignacion = secuenciaRecomendada(paraSecuencia, TEMPLATES, { semilla })
+  const asignacion = secuenciaRecomendada(paraSecuencia, await templatesActivos(), { semilla })
 
   /**
    * Un UPDATE por template y no uno por slot.

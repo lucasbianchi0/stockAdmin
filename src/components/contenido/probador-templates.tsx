@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Loader2, Sparkles } from "lucide-react"
+import { Loader2, RotateCcw, Sparkles, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -9,18 +9,19 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { TEMPLATES, promptDeTemplate } from "@/lib/templates-pieza"
+import { cambiarArchivado, useTemplatesArchivados } from "@/lib/templates-browser"
 import type { PiezaGenerada } from "@/lib/piezas"
 
 /**
- * El probador: el mismo contenido en los quince templates, uno al lado del otro.
+ * El probador: el mismo contenido en todos los templates, uno al lado del otro.
  *
  * Es la única forma de juzgar si tienen la misma personalidad. Una pieza suelta
  * siempre parece razonable; recién puestas juntas se ve si son de la misma marca
- * o si son quince cosas distintas que salieron el mismo día.
+ * o si son un montón de cosas distintas que salieron el mismo día.
  *
- * Van en serie y no en paralelo: quince llamadas juntas terminan en rate limit y
- * además así se ven aparecer una por una, que es más útil que esperar a que
- * estén todas.
+ * Van en serie y no en paralelo: todas las llamadas juntas terminan en rate
+ * limit y además así se ven aparecer una por una, que es más útil que esperar a
+ * que estén todas.
  */
 
 type Resultado = { templateId: string; imagen: string | null; error?: string }
@@ -38,6 +39,19 @@ export function ProbadorTemplates() {
   const [lote, setLote] = useState<string | null>(null)
   const [refrescar, setRefrescar] = useState(0)
   const [historial, setHistorial] = useState<PiezaGenerada[]>([])
+  // Cuál está pidiendo confirmación para archivarse. Uno solo a la vez: son
+  // diecinueve tarjetas y un estado por tarjeta no aporta nada.
+  const [confirmando, setConfirmando] = useState<string | null>(null)
+
+  const archivados = useTemplatesArchivados()
+  const visibles = useMemo(
+    () => (archivados ? TEMPLATES.filter((t) => !archivados.has(t.id)) : []),
+    [archivados]
+  )
+  const guardados = useMemo(
+    () => (archivados ? TEMPLATES.filter((t) => archivados.has(t.id)) : []),
+    [archivados]
+  )
 
   useEffect(() => {
     fetch("/api/contenido/piezas?limite=60")
@@ -112,9 +126,21 @@ export function ProbadorTemplates() {
     const loteId = crypto.randomUUID()
     setLote(loteId)
     setResultados([])
-    for (const t of TEMPLATES) await generarUno(t.id, loteId)
+    for (const t of visibles) await generarUno(t.id, loteId)
     setRefrescar((n) => n + 1)
-    toast.success("Listo — compará los quince")
+    toast.success(`Listo — compará los ${visibles.length}`)
+  }
+
+  /**
+   * Archivar saca el formato de todos lados: de esta grilla, del selector de
+   * cada pieza y de la secuencia que arma el calendario. No borra nada de lo ya
+   * generado con él — esas piezas siguen en el historial con su nombre.
+   */
+  async function archivar(slug: string, activo: boolean) {
+    setConfirmando(null)
+    const error = await cambiarArchivado(slug, activo)
+    if (error) return toast.error(error)
+    toast.success(activo ? "Formato restaurado" : "Formato archivado")
   }
 
   const generando = enCurso !== null
@@ -122,7 +148,7 @@ export function ProbadorTemplates() {
   return (
     <div className="space-y-5">
       <div className="panel p-5">
-        <p className="eyebrow mb-3">Probá el mismo contenido en los quince</p>
+        <p className="eyebrow mb-3">Probá el mismo contenido en los {visibles.length}</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-[12px] font-medium text-ink-secondary">
@@ -144,12 +170,13 @@ export function ProbadorTemplates() {
           </label>
         </div>
         <div className="mt-3.5 flex flex-wrap items-center gap-3">
-          <Button onClick={generarTodos} disabled={generando}>
+          <Button onClick={generarTodos} disabled={generando || visibles.length === 0}>
             {generando ? <Loader2 className="animate-spin" /> : <Sparkles />}
-            {generando ? "Generando…" : "Generar en los 15 templates"}
+            {generando ? "Generando…" : `Generar en los ${visibles.length} templates`}
           </Button>
           <p className="text-[11.5px] text-ink-muted">
-            Van de a uno, unos 12 segundos cada uno — tres minutos los quince. Aparecen a medida que salen.
+            Van de a uno, unos 12 segundos cada uno — {Math.max(1, Math.round((visibles.length * 12) / 60))} minutos
+            los {visibles.length}. Aparecen a medida que salen.
           </p>
         </div>
       </div>
@@ -157,7 +184,7 @@ export function ProbadorTemplates() {
       <Versiones piezas={historial} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {TEMPLATES.map((t) => {
+        {visibles.map((t) => {
           const r = resultados.find((x) => x.templateId === t.id)
           const guardada = ultimaPorTemplate.get(t.id)
           const imagen = r?.imagen ?? guardada?.url ?? null
@@ -192,14 +219,41 @@ export function ProbadorTemplates() {
               <figcaption className="border-t border-line p-3.5">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-[13px] font-semibold text-ink">{t.nombre}</p>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => generarUno(t.id)}
-                    disabled={generando}
-                  >
-                    {r?.imagen ? "Otra" : "Generar"}
-                  </Button>
+
+                  {confirmando === t.id ? (
+                    <span className="flex shrink-0 items-center gap-1">
+                      <Button
+                        size="xs"
+                        variant="destructive"
+                        onClick={() => archivar(t.id, false)}
+                      >
+                        Archivar
+                      </Button>
+                      <Button size="xs" variant="ghost" onClick={() => setConfirmando(null)}>
+                        No
+                      </Button>
+                    </span>
+                  ) : (
+                    <span className="flex shrink-0 items-center gap-1">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => generarUno(t.id)}
+                        disabled={generando}
+                      >
+                        {r?.imagen ? "Otra" : "Generar"}
+                      </Button>
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        onClick={() => setConfirmando(t.id)}
+                        disabled={generando}
+                      >
+                        <Trash2 />
+                        <span className="sr-only">Archivar {t.nombre}</span>
+                      </Button>
+                    </span>
+                  )}
                 </div>
                 <p className="mt-1 text-[11.5px] leading-relaxed text-ink-muted">{t.cuandoUsar}</p>
 
@@ -224,6 +278,30 @@ export function ProbadorTemplates() {
           )
         })}
       </div>
+
+      {guardados.length > 0 && (
+        <div className="panel p-5">
+          <p className="eyebrow mb-1">Archivados</p>
+          <p className="mb-3 text-[11.5px] leading-relaxed text-ink-muted">
+            Fuera de circulación: no se generan, no aparecen en el selector de cada pieza y el
+            calendario no los asigna. Las piezas que ya salieron con ellos siguen intactas.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {guardados.map((t) => (
+              <span
+                key={t.id}
+                className="flex items-center gap-1 rounded-lg border border-line bg-surface-subtle py-1 pl-2.5 pr-1 text-[11.5px] text-ink-secondary"
+              >
+                {t.nombre}
+                <Button size="icon-sm" variant="ghost" onClick={() => archivar(t.id, true)}>
+                  <RotateCcw />
+                  <span className="sr-only">Restaurar {t.nombre}</span>
+                </Button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

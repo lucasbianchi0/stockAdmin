@@ -24,6 +24,13 @@ import { VistaPrevia } from "@/components/contenido/vista-previa"
 import { SelectorTemplate } from "@/components/contenido/selector-template"
 import { promptDeImagen } from "@/lib/prompt-pieza"
 import {
+  pedirPromptFeed,
+  proporcionDe,
+  SISTEMA_LABEL,
+  type SistemaVisual,
+} from "@/lib/sistema-visual"
+import { templateFeedPorId } from "@/lib/templates-feed"
+import {
   CANAL_CORTO,
   CANAL_LABEL,
   type Canal,
@@ -52,10 +59,16 @@ export function PiezaPanel({
   onCerrar,
   onElegir,
   onGenerar,
+  sistema,
+  feedTemplateId,
 }: {
   slot: Slot | null
   eligiendo: boolean
   generando: boolean
+  /** Con cuál de los dos sistemas visuales se genera la imagen de esta pieza. */
+  sistema: SistemaVisual
+  /** El template del camino 2 que le tocó. Null si el sistema es el de siempre. */
+  feedTemplateId: string | null
   /** La imagen vive en el calendario: el panel se cierra y ella tiene que
    *  seguir estando, tanto para volver a abrirlo como para la vista del feed. */
   imagen: string | null
@@ -69,6 +82,41 @@ export function PiezaPanel({
 }) {
   const [ajuste, setAjuste] = useState("")
   const idAnterior = useRef<string | null>(null)
+  /**
+   * El prompt del camino 2, que se pide al servidor.
+   *
+   * Se guarda junto al slot que lo generó: sin eso, abrir otra pieza mientras
+   * este viaja mostraría el prompt de la anterior, que es la peor falla posible
+   * acá porque se ve correcto y genera la imagen equivocada.
+   */
+  const [promptFeed, setPromptFeed] = useState<{
+    slotId: string
+    /** Con qué texto se derivó. Regenerar el caption tiene que rehacerlo. */
+    caption: string
+    prompt: string
+  } | null>(null)
+  const [armandoFeed, setArmandoFeed] = useState(false)
+
+  const slotId = slot?.id ?? null
+  const caption = slot?.contenido?.caption ?? ""
+
+  useEffect(() => {
+    if (sistema !== "feed" || !slotId || !caption || !feedTemplateId) return
+    // Ya derivado para este slot y este texto. Sin este corte, cada vez que se
+    // abre el panel se paga otra llamada al modelo para llegar al mismo prompt.
+    if (promptFeed?.slotId === slotId && promptFeed.caption === caption) return
+
+    let vigente = true
+    setArmandoFeed(true)
+    pedirPromptFeed(slotId, feedTemplateId)
+      .then(({ prompt }) => vigente && setPromptFeed({ slotId, caption, prompt }))
+      .catch((e: Error) => vigente && toast.error(e.message))
+      .finally(() => vigente && setArmandoFeed(false))
+
+    return () => {
+      vigente = false
+    }
+  }, [sistema, slotId, caption, feedTemplateId, promptFeed])
 
   // El ajuste es de la pieza, no del panel: si no se limpia al cambiar de slot,
   // el pedido de una se aplica a la siguiente sin que nadie lo note.
@@ -282,7 +330,16 @@ export function PiezaPanel({
                 canal={CANAL_LABEL[slot.canal]}
                 canalId={slot.canal}
                 imagen={imagen}
-                promptImagen={promptDeImagen(slot)}
+                sistema={sistema}
+                armandoPrompt={armandoFeed}
+                nombreTemplateFeed={templateFeedPorId(feedTemplateId)?.nombre ?? null}
+                promptImagen={
+                  sistema === "feed"
+                    ? promptFeed?.slotId === slot.id
+                      ? promptFeed.prompt
+                      : ""
+                    : promptDeImagen(slot)
+                }
                 onImagen={(dataUrl) => onImagen(slot.id, dataUrl)}
               />
             )}
@@ -312,11 +369,18 @@ function ContenidoGenerado({
   imagen,
   promptImagen,
   onImagen,
+  sistema,
+  armandoPrompt,
+  nombreTemplateFeed,
 }: {
   contenido: Contenido
   canal: string
   canalId: Canal
   imagen: string | null
+  sistema: SistemaVisual
+  /** El camino 2 pasa por el servidor a traducir la pieza a variables: tarda. */
+  armandoPrompt: boolean
+  nombreTemplateFeed: string | null
   /**
    * El prompt real con el que se va a generar. Sale de la receta del template
    * cuando la pieza tiene uno asignado, y del texto libre del modelo cuando no
@@ -361,8 +425,22 @@ function ContenidoGenerado({
       )}
       {contenido.cta && <Bloque icono={MousePointerClick} titulo="Call to action" texto={contenido.cta} />}
       {contenido.hashtags && <Bloque icono={Hash} titulo="Hashtags" texto={contenido.hashtags} />}
-      {promptImagen && (
-        <ImagenGenerada prompt={promptImagen} imagen={imagen} onImagen={onImagen} />
+      {promptImagen ? (
+        <ImagenGenerada
+          prompt={promptImagen}
+          imagen={imagen}
+          onImagen={onImagen}
+          sistema={sistema}
+          proporcionFija={proporcionDe(canalId)}
+        />
+      ) : (
+        armandoPrompt && (
+          <p className="flex items-center gap-1.5 rounded-xl border border-line bg-surface-subtle px-4 py-3 text-[11.5px] text-ink-muted">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Traduciendo la pieza a las variables de {SISTEMA_LABEL.feed}
+            {nombreTemplateFeed ? ` · ${nombreTemplateFeed}` : ""}…
+          </p>
+        )
       )}
 
       {previa && (

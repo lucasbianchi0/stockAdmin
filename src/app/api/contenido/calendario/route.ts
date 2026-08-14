@@ -5,7 +5,7 @@ import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { createSupabaseServer } from "@/lib/supabase-server"
 import { secuenciaRecomendada } from "@/lib/secuencia"
-import { TEMPLATES } from "@/lib/templates-pieza"
+import { templatesActivos } from "@/lib/templates-server"
 import {
   ACCEDRA_BRAND_CONTEXT,
   AUDIENCIA_LABEL,
@@ -213,7 +213,7 @@ export async function POST(req: Request) {
      */
     const secuencia = secuenciaRecomendada(
       plan.slots.map((s, i) => ({ id: String(i), fecha: s.fecha, canal: s.canal })),
-      TEMPLATES,
+      await templatesActivos(),
       { semilla: 0 }
     )
 
