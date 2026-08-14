@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Migración API V2 — Distecna</title>
+<style>
+  @page { size: A4; margin: 13mm 14mm 12mm 14mm; }
+
+  :root{
+    --navy:#0D1F3A;
+    --navy-700:#1E3050;
+    --brand:#2b6ac8;
+    --brand-accent:#2b56d4;
+    --brand-50:#eef3fc;
+    --brand-100:#dbe6f9;
+    --ink:#1a1f2b;
+    --ink-2:#4b5364;
+    --ink-3:#6b7385;
+    --ink-4:#9aa1b1;
+    --line:#e2e5ec;
+    --line-soft:#eef0f4;
+    --surface-subtle:#f7f8fa;
+    --ok-soft:#eaf7f1; --ok-line:#bfe4d3; --ok-text:#1e7a55;
+    --warn-soft:#fdf5e6; --warn-line:#f0dcaf; --warn-text:#8a6216;
+    --bad-soft:#fdeeed; --bad-line:#f4c9c5; --bad-text:#b3372c;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:"Geist","Inter",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+    font-size:9.6pt;
+    line-height:1.45;
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{ font-family:"Geist Mono","SF Mono",ui-monospace,Menlo,Consolas,monospace; font-size:8.6pt; }
+  code{
+    font-family:"Geist Mono","SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    font-size:8.5pt;
+    background:var(--surface-subtle);
+    border:1px solid var(--line-soft);
+    border-radius:4px;
+    padding:0.5px 4px;
+    color:var(--ink-2);
+    white-space:nowrap;
+  }
+  strong{ font-weight:600; color:var(--ink); }
+
+  /* ---------- cabecera ---------- */
+  header{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    border-bottom:2.5px solid var(--navy);
+    padding-bottom:9px; margin-bottom:16px;
+  }
+  header img{ height:22px; display:block; }
+  .head-right{ text-align:right; }
+  .eyebrow{
+    font-size:7pt; font-weight:600; letter-spacing:.11em; text-transform:uppercase;
+    color:var(--brand); margin-bottom:2px;
+  }
+  h1{
+    font-size:15.5pt; font-weight:700; letter-spacing:-.02em;
+    margin:0; color:var(--navy); line-height:1.15;
+  }
+  .meta{ font-size:7.6pt; color:var(--ink-4); margin-top:3px; }
+
+  /* ---------- bloque resumen ---------- */
+  .tldr{
+    background:var(--navy);
+    color:#fff;
+    border-radius:9px;
+    padding:11px 14px;
+    margin-bottom:15px;
+  }
+  .tldr .eyebrow{ color:#8fb4ef; }
+  .tldr p{ margin:0; font-size:10pt; line-height:1.45; color:#e8edf6; }
+  .tldr b{ color:#fff; font-weight:600; }
+
+  /* ---------- secciones ---------- */
+  section{ margin-bottom:10px; break-inside:avoid; }
+  h2{
+    font-size:10.5pt; font-weight:700; letter-spacing:-.015em; color:var(--navy);
+    margin:0 0 5px 0; display:flex; align-items:center; gap:7px;
+  }
+  .num{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px; border-radius:4px; flex:none;
+    background:var(--brand); color:#fff;
+    font-size:7.5pt; font-weight:700; line-height:1;
+  }
+  p{ margin:0 0 4px 0; color:var(--ink-2); }
+  .lead{ color:var(--ink); }
+
+  ul{ margin:4px 0 5px 0; padding-left:0; list-style:none; }
+  li{ position:relative; padding-left:12px; margin-bottom:2.5px; color:var(--ink-2); }
+  li::before{
+    content:""; position:absolute; left:2px; top:5.5px;
+    width:4px; height:4px; border-radius:1px; background:var(--brand-accent);
+  }
+
+  /* ---------- callouts ---------- */
+  .callout{
+    border-left:2.5px solid var(--brand);
+    background:var(--brand-50);
+    border-radius:0 6px 6px 0;
+    padding:7px 10px; margin:6px 0 0 0;
+  }
+  .callout p:last-child{ margin-bottom:0; }
+  .callout .label{
+    font-size:7pt; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--brand); display:block; margin-bottom:2px;
+  }
+
+  /* ---------- tablas ---------- */
+  table{ width:100%; border-collapse:collapse; margin:6px 0 0 0; }
+  th{
+    text-align:left; font-size:7pt; font-weight:600; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--ink-4);
+    padding:0 8px 4px 0; border-bottom:1px solid var(--line);
+  }
+  td{
+    padding:4px 8px 4px 0; border-bottom:1px solid var(--line-soft);
+    color:var(--ink-2); vertical-align:top;
+  }
+  tr:last-child td{ border-bottom:none; }
+  td.k{ color:var(--ink); font-weight:500; }
+
+  .badge{
+    display:inline-block; font-size:7.4pt; font-weight:600; line-height:1.35;
+    padding:1px 6px; border-radius:4px; white-space:nowrap;
+  }
+  .b-ok{ background:var(--ok-soft); border:1px solid var(--ok-line); color:var(--ok-text); }
+  .b-warn{ background:var(--warn-soft); border:1px solid var(--warn-line); color:var(--warn-text); }
+  .b-bad{ background:var(--bad-soft); border:1px solid var(--bad-line); color:var(--bad-text); }
+
+  /* ---------- tabla comparativa V1 / V2 ---------- */
+  table.cmp{ table-layout:fixed; }
+  table.cmp th{ padding-bottom:5px; }
+  table.cmp th:first-child{ width:20%; }
+  table.cmp th.v2, table.cmp td.v2{ color:var(--brand); }
+  table.cmp th.v2{ border-bottom:2px solid var(--brand); }
+  table.cmp td{ padding:4.5px 9px 4.5px 0; }
+  table.cmp td.v2{
+    background:var(--brand-50); color:var(--ink-2);
+    padding-left:9px; border-bottom:1px solid #cfdcf3;
+  }
+  table.cmp tr:last-child td.v2{ border-bottom:none; }
+  table.cmp td:first-child{ padding-right:12px; }
+
+  /* ---------- caja de código / respuesta cruda ---------- */
+  .raw{
+    background:var(--surface-subtle); border:1px solid var(--line);
+    border-radius:6px; padding:7px 10px; margin:6px 0 0 0;
+    font-family:"Geist Mono","SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    font-size:8.2pt; color:var(--ink-2); line-height:1.5;
+  }
+  .raw .hl{ color:var(--bad-text); font-weight:600; }
+
+  /* ---------- pedido ---------- */
+  .ask{
+    border:1.5px solid var(--brand); border-radius:9px;
+    padding:10px 13px; background:#fff;
+  }
+  .ask h2{ margin-bottom:6px; }
+  .ask ol{ margin:0; padding-left:0; list-style:none; counter-reset:a; }
+  .ask li{ padding-left:20px; margin-bottom:5px; color:var(--ink-2); }
+  .ask li::before{
+    counter-increment:a; content:counter(a);
+    position:absolute; left:0; top:1px;
+    width:14px; height:14px; border-radius:50%;
+    background:var(--navy); color:#fff;
+    font-size:6.8pt; font-weight:700; line-height:14px; text-align:center;
+  }
+
+  footer{
+    margin-top:14px; padding-top:8px; border-top:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:baseline;
+    font-size:7.6pt; color:var(--ink-4);
+  }
+  footer b{ color:var(--ink-2); font-weight:600; }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="file:///Users/lucasbianchi/Desktop/projects/stockAdmin/public/brand/accedra-logo-navy.svg" alt="Accedra">
+  <div class="head-right">
+    <div class="eyebrow">Integración Distecna</div>
+    <h1>Migración a la API V2</h1>
+    <div class="meta">Estado, bloqueante y lo que necesitamos · Accedra SA · 13 de agosto de 2026</div>
+  </div>
+</header>
+
+<div class="tldr">
+  <div class="eyebrow">En una línea</div>
+  <p>La integración con V2 <b>está terminada y validada en homologación</b>. No pudimos salir a producción por un solo motivo: <b>nunca recibimos las credenciales de producción de V2</b>, y el usuario de homologación devuelve <b>401</b> contra el entorno productivo.</p>
+</div>
+
+<section>
+  <h2><span class="num">1</span> Por qué necesitamos V2 y no alcanza con la V1</h2>
+  <p class="lead">Por un solo campo: <strong><code>productType</code></strong>. Para crear un pedido, <code>POST /v2/Order</code> lo exige obligatoriamente en cada ítem (valores como <code>NWOTRO</code>, <code>PCACCS</code>, <code>MMDM</code>, <code>NWROUT</code>, <code>NWSWIT</code>).</p>
+  <p>Ese dato <strong>solo existe en V2</strong>. Lo verificamos:</p>
+  <ul>
+    <li>La V1 no devuelve el <code>type</code> en ningún endpoint: el detalle de producto trae 17 campos y ninguno es el tipo.</li>
+    <li>La ruta <code>/Product/{code}/{type}</code> no existe en V1 (responde 404).</li>
+    <li>No se puede deducir del código ni de la categoría, así que tampoco hay forma de armar una tabla de equivalencias.</li>
+  </ul>
+  <p>Sin el <code>type</code> no hay pedido posible. Por eso la migración no es una mejora opcional: <strong>es la condición para poder comprar por API</strong>.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span> Cómo funciona hoy la V1 y qué cambia con la V2</h2>
+  <p class="lead">Hoy la app es un <strong>híbrido</strong>: el catálogo lo trae de la <strong>V1 de producción</strong>, y los pedidos los manda a la <strong>V2 de homologación</strong>. Son dos APIs distintas, con autenticación distinta, conviviendo.</p>
+  <table class="cmp">
+    <tr><th></th><th>V1 — lo que usamos hoy</th><th class="v2">V2 — a dónde vamos</th></tr>
+    <tr>
+      <td class="k">Autenticación</td>
+      <td>Clave fija en la cabecera <code>x-apikey</code>, en cada llamada. No vence.</td>
+      <td class="v2">Usuario y contraseña → devuelve un <strong>token JWT que dura 1 hora</strong>. La app lo cachea y lo renueva sola.</td>
+    </tr>
+    <tr>
+      <td class="k">Traer el catálogo</td>
+      <td>El listado viene incompleto: falta parte de la información y hay que ir a buscarla aparte. La sincronización es <strong>lenta</strong>.</td>
+      <td class="v2">Listado paginado (<code>limit</code> / <code>offset</code>) que ya trae los <strong>datos comerciales</strong>: precio, stock, IVA y el <code>type</code>.</td>
+    </tr>
+    <tr>
+      <td class="k">Buscar y paginar</td>
+      <td>No existe. Hay que traer el catálogo entero y filtrarlo de nuestro lado.</td>
+      <td class="v2">Del lado del servidor, con <code>search</code>, <code>limit</code> y <code>offset</code>.</td>
+    </tr>
+    <tr>
+      <td class="k">Certificado TLS</td>
+      <td>Autofirmado: hay que <strong>desactivar la validación</strong> para poder conectarse.</td>
+      <td class="v2">Válido. Se conecta sin bypass — un problema de seguridad menos.</td>
+    </tr>
+    <tr>
+      <td class="k">Tipo de producto</td>
+      <td><strong>No lo expone.</strong> Ni en el listado, ni en el detalle, ni por ruta propia.</td>
+      <td class="v2">Viene en el listado, junto con el resto de los datos.</td>
+    </tr>
+    <tr>
+      <td class="k">Crear un pedido</td>
+      <td><strong>No tiene endpoint de pedidos.</strong> Es solo consulta de catálogo.</td>
+      <td class="v2"><code>POST /v2/Order</code>, más condición de pago y direcciones de entrega.</td>
+    </tr>
+  </table>
+  <div class="callout">
+    <span class="label">Por eso hoy el pedido falla</span>
+    <p>El producto que el usuario elige viene de V1, así que <strong>no trae el <code>type</code></strong>. Al confirmar el pedido, la app sale a preguntárselo a V2 <strong>en ese momento</strong> — y como el único V2 que tenemos es el de homologación, si el producto no está en ese entorno de prueba, el pedido se corta ahí.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span> Qué ya funciona (homologación)</h2>
+  <p>El checklist de la <em>Guía de Homologación e Integración API V2</em> (v2.1, abril 2026) está validado punta a punta contra <code>qa-apipublica.distecna.com</code>:</p>
+  <table>
+    <tr>
+      <td class="k">Token JWT · <code>POST /Auth/API/login</code></td>
+      <td><span class="badge b-ok">Validado</span></td>
+      <td class="k">Catálogo paginado · <code>GET /v2/Product</code></td>
+      <td><span class="badge b-ok">3.078 productos</span></td>
+    </tr>
+    <tr>
+      <td class="k">Detalle · <code>/v2/Product/{code}/{type}</code></td>
+      <td><span class="badge b-ok">Validado</span></td>
+      <td class="k">Condición de pago y direcciones</td>
+      <td><span class="badge b-ok">IDs guardados</span></td>
+    </tr>
+    <tr>
+      <td class="k">Pedido completo y pedido mínimo</td>
+      <td><span class="badge b-ok">3 pedidos creados</span></td>
+      <td class="k">Manejo de errores 400 / 401</td>
+      <td><span class="badge b-ok">Validado</span></td>
+    </tr>
+  </table>
+  <div class="callout">
+    <span class="label">Prueba concreta</span>
+    <p>Pedidos generados con éxito en QA: <span class="mono">PED-158154-L6J7C3</span> · <span class="mono">PED-158155-G9P5B5</span> · <span class="mono">PED-158157-K4R7F6</span>. El flujo completo funciona; lo único que le falta es apuntar a producción.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span> El bloqueante: 401 en producción</h2>
+  <p class="lead">Al autenticarnos contra producción con el usuario de homologación, la API nos rechaza:</p>
+  <div class="raw">
+    POST https://dsaapi.distecna.com:8087/Auth/API/login<br>
+    userName: distecna_api@distecna.com<br><br>
+    <span class="hl">→ HTTP 401 · "Credenciales invalidas."</span><br>
+    traceId: 40004457-0000-ee00-b63f-84710c7967bb &nbsp;·&nbsp; 5 de agosto de 2026
+  </div>
+  <p style="margin-top:6px"><strong>No es un problema técnico nuestro.</strong> El servidor responde bien y con un mensaje claro: la ruta existe y el cuerpo se interpretó correctamente. El rechazo es <strong>de la cuenta, no del formato</strong>. Con esas mismas credenciales, contra homologación, todo sigue funcionando.</p>
+  <div class="callout">
+    <span class="label">El punto clave para la reunión</span>
+    <p>Accedra <strong>ya opera en producción</strong> con Distecna a través de la <strong>API V1</strong> (<code>api.distecna.com:8096</code>), con la API key de nuestra cuenta: la consultamos y devuelve el catálogo completo de <strong>3.435 productos</strong>. No pedimos un acceso nuevo, pedimos <strong>la versión V2 de un acceso que ya tenemos</strong>.</p>
+  </div>
+  <p style="margin-top:6px">Las dos APIs usan sistemas de identificación distintos y <strong>no son intercambiables</strong>: la V1 usa una clave fija en la cabecera, la V2 pide usuario y contraseña para devolver un token temporal de 1 hora. Probamos la clave de V1 en V2 de todas las formas posibles (header <code>x-apikey</code>, <code>Bearer</code>, y como contraseña del login) y las tres dan 401, cosa esperable.</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span> El impacto hoy, en la app</h2>
+  <p>Como el catálogo sale de V1 y el <code>type</code> solo se puede resolver contra el V2 de <strong>homologación</strong>, solo se puede pedir lo que casualmente exista en ese entorno de prueba. Los dos catálogos no son el mismo conjunto:</p>
+  <table>
+    <tr><td class="k">V1 producción — lo que ve el usuario en la app</td><td class="mono">3.435 productos</td></tr>
+    <tr><td class="k">V2 homologación — donde podemos resolver el <code>type</code></td><td class="mono">3.078 productos (snapshot de prueba)</td></tr>
+  </table>
+  <p style="margin-top:6px">Resultado práctico: de los productos cargados en “Nuestros Productos”, <strong>la mayoría no se puede pedir</strong> y la app muestra <em>“No se pudo determinar el tipo de producto”</em>. <strong>No es un bug</strong>: es exactamente esta limitación de acceso.</p>
+</section>
+
+<section>
+  <h2><span class="num">6</span> Un detalle del servidor de producción (menor, pero conviene avisarlo)</h2>
+  <p>El certificado de <code>dsaapi.distecna.com</code> es válido y está vigente, pero el servidor lo entrega <strong>incompleto</strong>: manda el certificado sin el eslabón intermedio de la cadena. Homologación sí lo manda completo.</p>
+  <table>
+    <tr><th>Entorno</th><th>Qué entrega el servidor</th></tr>
+    <tr><td class="k mono">qa-apipublica.distecna.com</td><td>Certificado <strong>+</strong> intermedio <span class="badge b-ok">Completo</span></td></tr>
+    <tr><td class="k mono">dsaapi.distecna.com :8087 y :8088</td><td>Solo el certificado <span class="badge b-warn">Falta el intermedio</span></td></tr>
+  </table>
+  <p style="margin-top:6px">Algunas herramientas buscan por su cuenta la parte que falta (curl) y otras no: <strong>Node.js rechaza la conexión</strong>, y nuestra app corre sobre Node. Se resuelve del lado del servidor concatenando el intermedio de Sectigo, igual que ya está hecho en homologación — no hay que emitir ni comprar nada. <strong>Lo podemos parchear de nuestro lado, así que esto no nos frena</strong>; lo avisamos porque le va a pasar a cualquier integrador con la misma plataforma.</p>
+</section>
+
+<section class="ask">
+  <h2><span class="num">7</span> Lo que necesitamos de Distecna</h2>
+  <ol>
+    <li><strong>Usuario y contraseña de producción de la API V2</strong> para la cuenta de Accedra SA. O, si les resulta más simple, que habiliten en producción el usuario que ya venimos usando. <strong>Es el único bloqueante real.</strong></li>
+    <li><strong>Confirmación de si queda algo pendiente del checklist de homologación.</strong> Si falta enviar algo en un formato específico para la aprobación, lo preparamos el mismo día.</li>
+    <li>Que revisen el <strong>certificado incompleto</strong> del punto 5 cuando puedan.</li>
+  </ol>
+</section>
+
+<section>
+  <h2><span class="num">8</span> Qué pasa cuando lleguen las credenciales</h2>
+  <table>
+    <tr><th>Paso</th><th>Esfuerzo</th></tr>
+    <tr><td class="k">Apuntar la app a producción — es solo configuración, <strong>no requiere cambios de código</strong></td><td class="mono">15 min</td></tr>
+    <tr><td class="k">Pedido real de verificación (1 unidad de bajo costo) y confirmar que aparece en el portal</td><td class="mono">mismo día</td></tr>
+    <tr><td class="k">Migrar la sincronización del catálogo de V1 a V2 (trae el <code>type</code> para todo el catálogo)</td><td class="mono">~1,5 días</td></tr>
+  </table>
+  <div class="callout">
+    <span class="label">Punto a validar antes de cortar V1</span>
+    <p><strong>Verificar que los precios de V1 y V2 coincidan.</strong> En homologación vimos el mismo producto a U$S 0,61 en V1 y U$S 1,82 en V2. Los datos de QA son ficticios, así que no prueba nada — pero en producción hay que compararlo <strong>antes</strong> de reemplazar el catálogo, porque de ese precio dependen todas nuestras publicaciones.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">9</span> Limitación ya confirmada por Distecna</h2>
+  <p>No existe endpoint para <strong>consultar un pedido ya creado</strong>: no hay estado, ni listado, ni cancelación. <code>POST /v2/Order</code> es el único endpoint de pedidos. Ya ajustamos la app para no depender de eso — el seguimiento de despacho y facturación sale del portal. <strong>Lo dejamos anotado por si más adelante aparece en el roadmap</strong>, porque nos permitiría mostrar el estado real en pantalla.</p>
+</section>
+
+<footer>
+  <div><b>Lucas Bianchi</b> — Responsable técnico de la integración, Accedra SA</div>
+  <div>lucmbianchi2000@gmail.com · 11 2457 1928</div>
+</footer>
+
+</body>
+</html>
