@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { formatearCuit } from "@/lib/admin/cuit"
 import { formatearNumero } from "@/lib/admin/comprobantes"
 import {
+  JURISDICCIONES,
+  JURISDICCION_LABEL,
   RETENCIONES,
   RETENCION_LABEL,
   balancear,
@@ -18,6 +20,7 @@ import {
   sumaRetenciones,
   type CuentaFinanciera,
   type Pendiente,
+  type Jurisdiccion,
   type Retencion,
 } from "@/lib/admin/cobros"
 import type { Cliente } from "@/lib/admin/entidades"
@@ -52,6 +55,15 @@ const hoyISO = () => new Date().toISOString().slice(0, 10)
 
 type Medio = { cuentaId: string; importe: string; referencia: string }
 
+/** Un renglón de retención en el formulario. Todo texto: el parseo a número es
+ *  al guardar, para que se pueda tipear "1.234,56" sin que el campo pelee. */
+type RenglonRetencion = {
+  tipo: Retencion
+  jurisdiccion: Jurisdiccion | null
+  importe: string
+  numeroCertificado: string
+}
+
 export function PagoDialog({
   tipo,
   abierto,
@@ -76,12 +88,10 @@ export function PagoDialog({
   /** comprobanteId → importe imputado, como texto del formulario. */
   const [imputado, setImputado] = useState<Record<string, string>>({})
   const [medios, setMedios] = useState<Medio[]>([{ cuentaId: "", importe: "", referencia: "" }])
-  const [retenciones, setRetenciones] = useState<Record<Retencion, string>>({
-    ganancias: "",
-    iva: "",
-    iibb: "",
-    suss: "",
-  })
+  /** Los renglones de retención. Arranca vacío: la mayoría de los recibos no
+   *  tiene ninguna, y cuatro campos en cero era la forma más rápida de que nadie
+   *  leyera ninguno. */
+  const [retenciones, setRetenciones] = useState<RenglonRetencion[]>([])
   const [observaciones, setObservaciones] = useState("")
   const [cuentas, setCuentas] = useState<CuentaFinanciera[]>([])
   const [guardando, setGuardando] = useState(false)
@@ -98,7 +108,7 @@ export function PagoDialog({
     setPendientes([])
     setImputado({})
     setMedios([{ cuentaId: "", importe: "", referencia: "" }])
-    setRetenciones({ ganancias: "", iva: "", iibb: "", suss: "" })
+    setRetenciones([])
     setObservaciones("")
     setError(null)
   }, [abierto])
@@ -118,10 +128,6 @@ export function PagoDialog({
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [onCerrar, guardando])
-
-  useEffect(() => {
-    if (moneda === "USD" && !tc && cotizacion.venta) setTc(String(cotizacion.venta))
-  }, [moneda, tc, cotizacion.venta])
 
   const cargarPendientes = useCallback(async (id: string) => {
     setCargandoPendientes(true)
@@ -158,18 +164,38 @@ export function PagoDialog({
   )
 
   const totalRetenciones = useMemo(
-    () =>
-      sumaRetenciones(
-        Object.fromEntries(
-          RETENCIONES.map((k) => [k, parsearImporte(retenciones[k]) ?? 0])
-        ) as Record<Retencion, number>
-      ),
+    () => sumaRetenciones(retenciones.map((r) => ({ importe: parsearImporte(r.importe) ?? 0 }))),
     [retenciones]
   )
 
   const balance = balancear(totalImputado, totalMedios, totalRetenciones)
 
-  const faltaTc = moneda === "USD" && tcNum <= 0
+  /**
+   * Cuándo hace falta el tipo de cambio.
+   *
+   * No lo decide la moneda del recibo sino si hay conversión de por medio: o
+   * porque se está cancelando un comprobante en otra moneda, o porque la plata
+   * entra a una cuenta en otra moneda. Antes se pedía solo en los recibos en
+   * dólares, y un cobro en pesos de una factura en dólares se guardaba con TC 1
+   * y nunca cuadraba.
+   */
+  const hayComprobanteEnOtraMoneda = pendientes.some(
+    (p) => p.moneda !== moneda && (parsearImporte(imputado[p.id] ?? "") ?? 0) > 0
+  )
+  const hayCuentaEnOtraMoneda = medios.some((m) => {
+    const cuenta = cuentas.find((c) => c.id === m.cuentaId)
+    return Boolean(cuenta && cuenta.moneda !== moneda)
+  })
+  const necesitaTc = hayComprobanteEnOtraMoneda || hayCuentaEnOtraMoneda
+
+  const faltaTc = necesitaTc && tcNum <= 0
+
+  // La cotización del día se propone cuando el recibo la va a necesitar, que no
+  // es lo mismo que "cuando el recibo está en dólares": un cobro en pesos de una
+  // factura en dólares también la necesita — es el caso del punto 5.
+  useEffect(() => {
+    if (necesitaTc && !tc && cotizacion.venta) setTc(String(cotizacion.venta))
+  }, [necesitaTc, tc, cotizacion.venta])
   const hayImputaciones = Object.values(imputado).some((v) => (parsearImporte(v) ?? 0) > 0)
   const puedeGuardar =
     Boolean(cliente) && hayImputaciones && balance.cuadra && !faltaTc && !guardando
@@ -201,10 +227,18 @@ export function PagoDialog({
           entidadId: cliente.id,
           fecha,
           moneda,
-          tc: moneda === "USD" ? tcNum : 1,
-          retenciones: Object.fromEntries(
-            RETENCIONES.map((k) => [k, parsearImporte(retenciones[k]) ?? 0])
-          ),
+          // Se manda siempre que haya: en un recibo en pesos sin conversión no
+          // hace falta, pero tenerlo deja el movimiento valuado en las dos
+          // monedas sin costo.
+          tc: tcNum > 0 ? tcNum : null,
+          retenciones: retenciones
+            .filter((r) => (parsearImporte(r.importe) ?? 0) > 0)
+            .map((r) => ({
+              tipo: r.tipo,
+              jurisdiccion: r.tipo === "iibb" ? r.jurisdiccion : null,
+              importe: parsearImporte(r.importe) ?? 0,
+              numeroCertificado: r.numeroCertificado || null,
+            })),
           imputaciones: pendientes
             .map((p) => ({ comprobanteId: p.id, importe: parsearImporte(imputado[p.id] ?? "") ?? 0 }))
             .filter((i) => i.importe > 0),
@@ -317,7 +351,7 @@ export function PagoDialog({
                 </div>
               </Campo>
 
-              {moneda === "USD" && (
+              {necesitaTc && (
                 <Campo
                   id="tc"
                   rotulo="Tipo de cambio"
@@ -375,31 +409,133 @@ export function PagoDialog({
 
           {/* Retenciones */}
           <section>
-            <p className="eyebrow mb-1">
-              {esCobro ? "Retenciones sufridas" : "Retenciones practicadas"}
-            </p>
+            <div className="mb-1 flex items-center justify-between">
+              <p className="eyebrow">
+                {esCobro ? "Retenciones sufridas" : "Retenciones practicadas"}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setRetenciones((prev) => [
+                    ...prev,
+                    { tipo: "ganancias", jurisdiccion: null, importe: "", numeroCertificado: "" },
+                  ])
+                }
+                disabled={guardando}
+              >
+                <Plus className="h-3 w-3" />
+                Agregar retención
+              </Button>
+            </div>
+
             <p className="mb-2.5 text-[11.5px] text-ink-muted">
               {esCobro
                 ? "Cancelan la factura pero no entran a la caja: son crédito fiscal."
                 : "Cancelan el comprobante pero no salen de la caja: se depositan a AFIP aparte."}
             </p>
-            <div className="grid gap-3 sm:grid-cols-4">
-              {RETENCIONES.map((k) => (
-                <Campo key={k} id={`ret-${k}`} rotulo={RETENCION_LABEL[k]}>
-                  <Input
-                    id={`ret-${k}`}
-                    value={retenciones[k]}
-                    onChange={(e) =>
-                      setRetenciones((prev) => ({ ...prev, [k]: e.target.value }))
-                    }
-                    placeholder="0,00"
-                    inputMode="decimal"
-                    className="num h-8 text-right text-[12px]"
-                    disabled={guardando}
-                  />
-                </Campo>
-              ))}
-            </div>
+
+            {retenciones.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-line px-3 py-2.5 text-[12px] text-ink-faint">
+                Sin retenciones.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {retenciones.map((r, i) => {
+                  const cambiar = (cambios: Partial<RenglonRetencion>) =>
+                    setRetenciones((prev) =>
+                      prev.map((x, j) => (j === i ? { ...x, ...cambios } : x))
+                    )
+
+                  return (
+                    <div
+                      key={i}
+                      className="grid items-end gap-2 rounded-lg border border-line bg-surface-subtle p-2.5 sm:grid-cols-[140px_minmax(0,1fr)_120px_36px]"
+                    >
+                      <Campo id={`ret-tipo-${i}`} rotulo="Impuesto">
+                        <select
+                          id={`ret-tipo-${i}`}
+                          value={r.tipo}
+                          onChange={(e) => {
+                            const tipo = e.target.value as Retencion
+                            // Al dejar de ser IIBB la jurisdicción no aplica, y
+                            // dejarla puesta haría que el servidor la rechace.
+                            cambiar({
+                              tipo,
+                              jurisdiccion: tipo === "iibb" ? (r.jurisdiccion ?? "caba") : null,
+                            })
+                          }}
+                          disabled={guardando}
+                          className="h-8 w-full rounded-lg border border-line-strong bg-surface px-2 text-[12px] text-ink"
+                        >
+                          {RETENCIONES.map((k) => (
+                            <option key={k} value={k}>
+                              {RETENCION_LABEL[k]}
+                            </option>
+                          ))}
+                        </select>
+                      </Campo>
+
+                      {/* Solo Ingresos Brutos es provincial. Es la apertura que
+                          pidieron: IIBB CABA e IIBB Bs As como dos renglones. */}
+                      {r.tipo === "iibb" ? (
+                        <Campo id={`ret-jur-${i}`} rotulo="Jurisdicción">
+                          <select
+                            id={`ret-jur-${i}`}
+                            value={r.jurisdiccion ?? "caba"}
+                            onChange={(e) =>
+                              cambiar({ jurisdiccion: e.target.value as Jurisdiccion })
+                            }
+                            disabled={guardando}
+                            className="h-8 w-full rounded-lg border border-line-strong bg-surface px-2 text-[12px] text-ink"
+                          >
+                            {JURISDICCIONES.map((j) => (
+                              <option key={j} value={j}>
+                                {JURISDICCION_LABEL[j]}
+                              </option>
+                            ))}
+                          </select>
+                        </Campo>
+                      ) : (
+                        <Campo id={`ret-cert-${i}`} rotulo="Certificado" opcional>
+                          <Input
+                            id={`ret-cert-${i}`}
+                            value={r.numeroCertificado}
+                            onChange={(e) => cambiar({ numeroCertificado: e.target.value })}
+                            placeholder="N° de certificado"
+                            className="h-8 text-[12px]"
+                            disabled={guardando}
+                          />
+                        </Campo>
+                      )}
+
+                      <Campo id={`ret-imp-${i}`} rotulo="Importe">
+                        <Input
+                          id={`ret-imp-${i}`}
+                          value={r.importe}
+                          onChange={(e) => cambiar({ importe: e.target.value })}
+                          placeholder="0,00"
+                          inputMode="decimal"
+                          className="num h-8 text-right text-[12px]"
+                          disabled={guardando}
+                        />
+                      </Campo>
+
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => setRetenciones((prev) => prev.filter((_, j) => j !== i))}
+                        disabled={guardando}
+                        aria-label="Quitar la retención"
+                        className="mb-0.5 text-ink-faint hover:bg-danger-soft hover:text-danger-text"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </section>
 
           {/* Medios de pago */}

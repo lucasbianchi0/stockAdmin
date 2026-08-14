@@ -115,6 +115,15 @@ export type Entidad = {
   telefono: string | null
   email: string | null
   condicionPagoDias: number | null
+  /**
+   * Contra qué cuenta del plan se imputan sus comprobantes por defecto.
+   *
+   * Existe por una razón práctica: desde que el plan es el real del contador son
+   * 224 cuentas, y buscarla en cada factura es fricción que termina en "sin
+   * imputar". Guardada en la ficha, el formulario la completa al elegir la
+   * entidad y solo se toca cuando la factura es la excepción.
+   */
+  cuentaContableId: string | null
   notas: string | null
   activo: boolean
   createdAt: string

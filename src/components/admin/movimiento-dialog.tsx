@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { AlertTriangle, ArrowLeftRight, Loader2, Receipt, X } from "lucide-react"
 
+import { SelectorCuenta } from "@/components/admin/selector-cuenta"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -17,8 +18,6 @@ import {
 } from "@/lib/admin/moneda"
 import { useCotizacion } from "@/lib/admin/use-cotizacion"
 import { cn } from "@/lib/utils"
-
-type Cuenta = { id: string; codigo: string; nombre: string }
 
 /**
  * Gasto, ajuste o transferencia.
@@ -49,12 +48,17 @@ export function MovimientoDialog({
   modo,
   cuentas,
   borrador,
+  cuentaFijaId,
   onCerrar,
   onGuardado,
 }: {
   modo: null | "gasto" | "transferencia" | "ajuste"
   cuentas: CuentaFinanciera[]
   borrador?: BorradorMovimiento | null
+  /** Cuando se abre desde el extracto de una cuenta, esa cuenta ya está
+   *  elegida. Es la diferencia entre cargar un gasto en dos clics y tener que
+   *  volver a decir dónde estás parado. */
+  cuentaFijaId?: string
   onCerrar: () => void
   onGuardado: () => void
 }) {
@@ -73,7 +77,6 @@ export function MovimientoDialog({
   const [cuentaContableId, setCuentaContableId] = useState("")
   const [referencia, setReferencia] = useState("")
   const [detalle, setDetalle] = useState("")
-  const [contables, setContables] = useState<Cuenta[]>([])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -81,12 +84,16 @@ export function MovimientoDialog({
   const esTransferencia = modo === "transferencia"
 
   // Al abrir se arranca de cero, o de lo que haya leído la carga inteligente.
-  // La cuenta nunca viene precargada: de qué caja salió la plata no está en el
-  // papel, y elegirla por defecto sería inventar el dato más fácil de no mirar.
+  //
+  // La cuenta solo viene precargada si el diálogo se abrió desde el extracto de
+  // una: ahí no se está inventando el dato, se está usando el que la pantalla ya
+  // sabe. Desde la carga inteligente sigue vacía — de qué caja salió la plata no
+  // está en el papel, y elegirla por defecto sería inventar el dato más fácil de
+  // no mirar.
   useEffect(() => {
     if (!modo) return
     setFecha(borrador?.fecha ?? hoy)
-    setCuentaId("")
+    setCuentaId(cuentaFijaId ?? "")
     setCuentaDestinoId("")
     setTipo("egreso")
     setImporte(borrador?.importe ?? "")
@@ -99,14 +106,7 @@ export function MovimientoDialog({
     setReferencia(borrador?.referencia ?? "")
     setDetalle(borrador?.detalle ?? "")
     setError(null)
-  }, [modo, hoy, borrador])
-
-  useEffect(() => {
-    fetch("/api/admin/plan-cuentas")
-      .then((r) => r.json())
-      .then((d) => setContables(d.cuentas ?? []))
-      .catch(() => {})
-  }, [])
+  }, [modo, hoy, borrador, cuentaFijaId])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -390,19 +390,18 @@ export function MovimientoDialog({
                 />
               </Campo>
 
-              <Campo id="contable" rotulo="Cuenta contable" opcional>
-                <Select
+              <Campo
+                id="contable"
+                rotulo="Cuenta contable"
+                opcional
+                ayuda="Contra qué cuenta del plan se imputa el gasto"
+              >
+                <SelectorCuenta
                   id="contable"
-                  value={cuentaContableId}
-                  onChange={setCuentaContableId}
+                  valor={cuentaContableId}
+                  onElegir={setCuentaContableId}
                   disabled={guardando}
-                  opciones={[
-                    { valor: "", etiqueta: "Sin imputar" },
-                    ...contables.map((c) => ({
-                      valor: c.id,
-                      etiqueta: `${c.codigo} · ${c.nombre}`,
-                    })),
-                  ]}
+                  tipoSugerido="egreso"
                 />
               </Campo>
             </div>

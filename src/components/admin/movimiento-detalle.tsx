@@ -12,7 +12,7 @@ import {
   type Movimiento,
 } from "@/lib/admin/movimientos"
 import { formatearFechaLarga } from "@/lib/admin/fecha"
-import { formatearImporte, formatearTc } from "@/lib/admin/moneda"
+import { formatearContravalor, formatearImporte, formatearTc } from "@/lib/admin/moneda"
 
 /**
  * Un movimiento de caja abierto desde la tabla.
@@ -33,7 +33,8 @@ export function MovimientoDetalle({
   movimiento: Movimiento | null
   onCerrar: () => void
   onConciliar: () => void
-  onBorrar: () => void
+  /** Opcional: el extracto solo deja borrar lo que no cuelga de un recibo. */
+  onBorrar?: () => void
 }) {
   const entra = m?.signo === 1
 
@@ -82,10 +83,10 @@ export function MovimientoDetalle({
                 rotulo={m.moneda === "USD" ? "En pesos" : "En dólares"}
                 valor={
                   m.moneda === "USD"
-                    ? formatearImporte(m.importeArs, "ARS")
-                    : formatearImporte(m.importeUsd, "USD")
+                    ? formatearContravalor(m.importeArs, "ARS")
+                    : formatearContravalor(m.importeUsd, "USD")
                 }
-                pie={`TC ${formatearTc(m.tc)}`}
+                pie={m.tc === null ? "sin cotización" : `TC ${formatearTc(m.tc)}`}
               />
             </div>
           </Bloque>

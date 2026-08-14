@@ -35,7 +35,12 @@ import {
   type TipoComprobante,
 } from "@/lib/admin/comprobantes"
 import { formatearFecha } from "@/lib/admin/fecha"
-import { formatearCompacto, formatearImporte, formatearTc } from "@/lib/admin/moneda"
+import {
+  formatearCompacto,
+  formatearContravalor,
+  formatearImporte,
+  formatearTc,
+} from "@/lib/admin/moneda"
 import { useTablaAdmin } from "@/lib/admin/use-tabla"
 import { cn } from "@/lib/utils"
 
@@ -448,7 +453,7 @@ function Fila({
         <span className="num block text-[11px] text-ink-muted">
           {c.moneda === "USD"
             ? `${formatearImporte(c.totalArs, "ARS")} · ${formatearTc(c.tc)}`
-            : formatearImporte(c.totalUsd, "USD")}
+            : formatearContravalor(c.totalUsd, "USD")}
         </span>
       </TableCell>
 

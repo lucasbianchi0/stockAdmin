@@ -67,9 +67,16 @@ export type Movimiento = {
   tipo: "ingreso" | "egreso"
   importe: number
   moneda: Moneda
-  tc: number
-  importeArs: number
-  importeUsd: number
+  /** Pesos por dólar del día del movimiento. `null` = no se conoce, y entonces
+   *  el importe en la otra moneda tampoco. */
+  tc: number | null
+  importeArs: number | null
+  importeUsd: number | null
+  /** Cuando el documento que lo originó estaba en otra moneda: cuánto era y en
+   *  qué moneda, antes de convertirlo a la de la cuenta. Un cobro de
+   *  USD 2.855,31 acreditado en el Galicia en pesos guarda acá los dólares. */
+  importeOrigen: number | null
+  monedaOrigen: Moneda | null
   signo: 1 | -1
   origen: OrigenMovimiento
   pagoId: string | null

@@ -1,6 +1,20 @@
 import { exigirAlgunModulo } from "@/lib/guard-api"
+import { guardarCotizacion } from "@/lib/admin/cotizaciones-server"
+
 let cache: { venta: number; updatedAt: string; fetchedAt: number } | null = null
 const TTL_MS = 60 * 60 * 1000
+
+/** Hoy en la zona horaria de Buenos Aires, que es la que define de qué día es la
+ *  cotización. Con UTC, todo lo consultado después de las 21 h se archivaría con
+ *  la fecha de mañana. */
+function hoyEnArgentina(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date())
+}
 
 export async function GET() {
   // Dólar oficial venta (Banco Nación). Lo consumen dos módulos: productos, para
@@ -20,6 +34,13 @@ export async function GET() {
     if (!res.ok) throw new Error(`dolarapi status ${res.status}`)
     const data = await res.json()
     cache = { venta: data.venta, updatedAt: data.fechaActualizacion, fetchedAt: Date.now() }
+
+    // Se archiva la cotización del día. Es lo que arma el histórico con el uso
+    // normal del sistema: sin él, una factura cargada con fecha de la semana
+    // pasada no se puede valuar en dólares nunca más. No se espera el resultado
+    // —si la escritura falla, la pantalla igual tiene que recibir su número.
+    void guardarCotizacion(hoyEnArgentina(), Number(data.venta), Number(data.compra))
+
     return Response.json({ venta: data.venta, updatedAt: data.fechaActualizacion, cached: false })
   } catch (err) {
     console.error("[/api/dolar]", err)

@@ -11,6 +11,7 @@ import {
   errorDeComprobante,
   validarComprobante,
 } from "@/lib/admin/comprobantes-server"
+import { cotizacionHasta } from "@/lib/admin/cotizaciones-server"
 
 /**
  * Los handlers de facturas de venta y de compra, parametrizados por tipo.
@@ -94,6 +95,24 @@ export async function listarComprobantes(tipo: TipoComprobante, req: Request) {
   return NextResponse.json({ comprobantes, total: count ?? 0, pagina, porPagina })
 }
 
+/**
+ * Completa el TC de valuación cuando el formulario no lo mandó.
+ *
+ * Un comprobante en pesos no necesita tipo de cambio para existir, pero sin él
+ * no se puede ver en dólares — y verlo en las dos monedas es lo que pidió
+ * administración. En vez de obligar a tipearlo factura por factura, se toma el
+ * dólar archivado de esa fecha (o el último anterior, para los sábados y
+ * feriados, que es lo que hace cualquier contador).
+ *
+ * Si no hay ninguno guardado queda en null, que significa "no se conoce" y la
+ * pantalla muestra un guion. Nunca se inventa un 1.
+ */
+async function conTcDelDia(fila: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (fila.tc !== null && fila.tc !== undefined) return fila
+  const tc = await cotizacionHasta(fila.fecha as string)
+  return tc === null ? fila : { ...fila, tc }
+}
+
 /* ── Alta ─────────────────────────────────────────────────────────────────── */
 
 export async function crearComprobante(tipo: TipoComprobante, req: Request) {
@@ -112,7 +131,7 @@ export async function crearComprobante(tipo: TipoComprobante, req: Request) {
 
   const { data, error } = await supabase
     .from("comprobantes")
-    .insert({ ...validado.fila, created_by: user?.id ?? null })
+    .insert({ ...(await conTcDelDia(validado.fila)), created_by: user?.id ?? null })
     .select(SELECT_COMPROBANTE)
     .single()
 
@@ -134,7 +153,7 @@ export async function editarComprobante(tipo: TipoComprobante, req: Request, id:
 
   const { data, error } = await supabase
     .from("comprobantes")
-    .update(validado.fila)
+    .update(await conTcDelDia(validado.fila))
     .eq("id", id)
     .eq("tipo", tipo)
     .select(SELECT_COMPROBANTE)

@@ -30,7 +30,8 @@ type Fila = {
   /** El importe en la moneda original, con signo. */
   importe: number
   importeUsd: number | null
-  tc: number
+  /** `null` cuando el documento no tiene cotización cargada. */
+  tc: number | null
   /** El importe en pesos históricos, con signo. Es lo que acumula el saldo. */
   importeArs: number
   saldo: number
@@ -112,8 +113,11 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
       detalle: (c.detalle as string | null) ?? null,
       moneda: c.moneda as "ARS" | "USD",
       importe: redondear(Number(c.total) * signo),
-      importeUsd: c.moneda === "USD" ? redondear(Number(c.total_usd) * signo) : null,
-      tc: Number(c.tc),
+      // Ahora también sale en los comprobantes en pesos que tengan TC cargado:
+      // `total_usd` es null solo cuando de verdad no se conoce la cotización.
+      importeUsd:
+        c.total_usd === null ? null : redondear(Number(c.total_usd) * signo),
+      tc: c.tc === null ? null : Number(c.tc),
       importeArs: redondear(Number(c.total_ars) * signo),
     })
   }
@@ -143,7 +147,7 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
       moneda: p.moneda as "ARS" | "USD",
       importe: -redondear(enPesos),
       importeUsd: enUsd > 0 ? -redondear(enUsd) : null,
-      tc: Number(p.tc),
+      tc: p.tc === null ? null : Number(p.tc),
       importeArs: -redondear(enPesos),
     })
   }

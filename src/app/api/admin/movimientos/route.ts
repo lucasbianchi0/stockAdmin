@@ -8,6 +8,28 @@ import { POR_PAGINA_MAX, escaparParaOr } from "@/lib/admin/entidades-server"
 import { esMoneda, redondear } from "@/lib/admin/moneda"
 import { CATEGORIAS_GASTO, type CategoriaGasto } from "@/lib/admin/movimientos"
 import { SELECT_MOVIMIENTO, aMovimiento } from "@/lib/admin/movimientos-server"
+import { cotizacionHasta } from "@/lib/admin/cotizaciones-server"
+
+/**
+ * La moneda de cada cuenta financiera, leída de la base.
+ *
+ * No se confía en la que manda el navegador: desde la migración del TC, un
+ * movimiento tiene que estar en la moneda de SU cuenta —un Galicia en pesos no
+ * recibe dólares— y eso lo garantiza un trigger. Preguntarle a la base antes de
+ * insertar convierte lo que haya que convertir y evita que el trigger tenga que
+ * saltar con un error que nadie entendería.
+ */
+async function monedasDeCuentas(ids: string[]): Promise<Map<string, "ARS" | "USD">> {
+  const limpios = ids.filter((v) => v.length > 0)
+  if (limpios.length === 0) return new Map()
+
+  const { data } = await supabase
+    .from("cuentas_financieras")
+    .select("id, moneda")
+    .in("id", limpios)
+
+  return new Map((data ?? []).map((c) => [c.id as string, c.moneda as "ARS" | "USD"]))
+}
 
 /* ── GET · listado ────────────────────────────────────────────────────────── */
 
@@ -123,9 +145,29 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
       return NextResponse.json({ error: "Los importes tienen que ser mayores a cero" }, { status: 400 })
     }
 
-    const monedaOrigen = esMoneda(raw.monedaOrigen) ? raw.monedaOrigen : "ARS"
-    const monedaDestino = esMoneda(raw.monedaDestino) ? raw.monedaDestino : monedaOrigen
-    const tc = numeroPositivo(raw.tc) ?? 1
+    // Las monedas las dicen las cuentas, no el formulario. Es lo que hace que
+    // una compra de dólares —pesos que salen del Galicia, dólares que entran a
+    // la cuenta en USD— se registre bien de los dos lados sin que nadie elija
+    // nada.
+    const monedas = await monedasDeCuentas([cuentaOrigen, cuentaDestino])
+    const monedaOrigen = monedas.get(cuentaOrigen)
+    const monedaDestino = monedas.get(cuentaDestino)
+
+    if (!monedaOrigen || !monedaDestino) {
+      return NextResponse.json({ error: "Alguna de las cuentas elegidas ya no existe" }, { status: 409 })
+    }
+
+    // Con las dos patas en monedas distintas el TC no es opcional: es el precio
+    // al que se compraron o vendieron los dólares, y sin él la operación no se
+    // puede valuar ni explicar después.
+    let tc = numeroPositivo(raw.tc)
+    if (monedaOrigen !== monedaDestino && tc === null) {
+      return NextResponse.json(
+        { error: "Una transferencia entre cuentas en monedas distintas necesita tipo de cambio" },
+        { status: 400 }
+      )
+    }
+    if (tc === null) tc = await cotizacionHasta(fecha)
 
     const referencia = textoCorto(raw.referencia) ?? `Transferencia ${fecha}`
     const detalle = textoCorto(raw.detalle)
@@ -138,7 +180,7 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
         tipo: "egreso",
         importe: importeSale,
         moneda: monedaOrigen,
-        tc: monedaOrigen === "USD" ? tc : 1,
+        tc,
         origen: "transferencia",
         referencia,
         detalle,
@@ -158,7 +200,7 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
       tipo: "ingreso",
       importe: importeEntra,
       moneda: monedaDestino,
-      tc: monedaDestino === "USD" ? tc : 1,
+      tc,
       origen: "transferencia",
       referencia,
       detalle,
@@ -186,14 +228,36 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
   }
 
   const tipo = raw.tipo === "ingreso" ? "ingreso" : "egreso"
-  const moneda = esMoneda(raw.moneda) ? raw.moneda : "ARS"
-  const tc = moneda === "USD" ? (numeroPositivo(raw.tc) ?? null) : 1
-  if (tc === null) {
+
+  // La moneda de la cuenta manda. Si el importe se cargó en otra —un gasto en
+  // dólares que se paga desde la cuenta en pesos— se convierte acá y se guarda
+  // de dónde salió, para que el extracto pueda explicar el renglón.
+  const monedaCuenta = (await monedasDeCuentas([cuentaId])).get(cuentaId)
+  if (!monedaCuenta) {
+    return NextResponse.json({ error: "La cuenta elegida ya no existe" }, { status: 409 })
+  }
+
+  const monedaCargada = esMoneda(raw.moneda) ? raw.moneda : monedaCuenta
+  const cruzada = monedaCargada !== monedaCuenta
+
+  let tc = numeroPositivo(raw.tc)
+  if (cruzada && tc === null) {
     return NextResponse.json(
-      { error: "Un movimiento en dólares necesita tipo de cambio" },
+      {
+        error: `Cargaste el importe en ${monedaCargada} y la cuenta está en ${monedaCuenta}: falta el tipo de cambio.`,
+      },
       { status: 400 }
     )
   }
+  // Sin TC explícito se archiva el del día, para que el movimiento quede valuado
+  // en las dos monedas sin que nadie tipee nada.
+  if (tc === null) tc = await cotizacionHasta(fecha)
+
+  const importeEnLaCuenta = cruzada
+    ? monedaCargada === "USD"
+      ? redondear(importe * (tc as number))
+      : redondear(importe / (tc as number))
+    : importe
 
   const categoria =
     typeof raw.categoria === "string" &&
@@ -207,9 +271,11 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
       cuenta_id: cuentaId,
       fecha,
       tipo,
-      importe,
-      moneda,
+      importe: importeEnLaCuenta,
+      moneda: monedaCuenta,
       tc,
+      importe_origen: cruzada ? importe : null,
+      moneda_origen: cruzada ? monedaCargada : null,
       origen: origen === "gasto" ? "gasto" : "manual",
       cuenta_contable_id:
         typeof raw.cuentaContableId === "string" && raw.cuentaContableId

@@ -118,10 +118,36 @@ export function formatearCompacto(
   return formatearImporte(n, moneda)
 }
 
-/** El TC, con 2 decimales: `1.435,00`. */
+/**
+ * El TC, con 2 decimales: `1.435,00`. Un guion cuando no hay.
+ *
+ * El nulo es un caso real y significa "no se conoce la cotización de ese día",
+ * no "cero". Devolver `0,00` dibujaba un dato que nadie cargó — la versión
+ * anterior de esta función lo hacía, y de ahí salía media pantalla de números
+ * inventados.
+ */
 export function formatearTc(tc: number | null | undefined): string {
-  const n = Number.isFinite(tc) ? (tc as number) : 0
-  return n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  if (tc === null || tc === undefined || !Number.isFinite(tc)) return "—"
+  return (tc as number).toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+/**
+ * El importe visto en la otra moneda, o un guion si no se puede saber.
+ *
+ * `formatearImporte` trata el nulo como cero porque en una columna de importes
+ * eso es lo correcto —una factura sin percepciones tiene percepción cero—. Para
+ * un contravalor no: un comprobante en pesos sin TC cargado no vale USD 0, vale
+ * un importe que no conocemos. Es la diferencia que pedía el punto 2.
+ */
+export function formatearContravalor(
+  valor: number | null | undefined,
+  moneda: Moneda
+): string {
+  if (valor === null || valor === undefined || !Number.isFinite(valor)) return "—"
+  return formatearImporte(valor, moneda)
 }
 
 /**

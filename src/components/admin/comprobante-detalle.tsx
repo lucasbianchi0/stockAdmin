@@ -27,7 +27,7 @@ import {
 } from "@/lib/admin/comprobantes"
 import type { ComprobanteDetalle as Datos } from "@/lib/admin/detalle"
 import { formatearFecha, formatearFechaLarga } from "@/lib/admin/fecha"
-import { formatearImporte, formatearTc } from "@/lib/admin/moneda"
+import { formatearContravalor, formatearImporte, formatearTc } from "@/lib/admin/moneda"
 import { cn } from "@/lib/utils"
 
 /**
@@ -120,7 +120,7 @@ export function ComprobanteDetalle({
                 pie={
                   c.moneda === "USD"
                     ? `${formatearImporte(c.totalArs, "ARS")} · TC ${formatearTc(c.tc)}`
-                    : formatearImporte(c.totalUsd, "USD")
+                    : formatearContravalor(c.totalUsd, "USD")
                 }
               />
               <Cifra

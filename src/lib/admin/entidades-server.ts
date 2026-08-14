@@ -95,6 +95,12 @@ export async function validarEntidad(
     telefono: textoONull(raw.telefono),
     email,
     condicion_pago_dias: condicionPagoDias,
+    // La FK contra `plan_cuentas` valida que exista; acá solo se distingue "no
+    // eligieron ninguna" de "eligieron esta". Un string vacío entraría como
+    // cadena vacía y rompería la FK con un error críptico.
+    cuenta_contable_id: typeof raw.cuentaContableId === "string" && raw.cuentaContableId
+      ? raw.cuentaContableId
+      : null,
     notas: textoONull(raw.notas, LARGO_MAX.notas),
   }
 
@@ -196,6 +202,7 @@ function aEntidad(fila: Record<string, unknown>): Entidad {
     telefono: (fila.telefono as string | null) ?? null,
     email: (fila.email as string | null) ?? null,
     condicionPagoDias: (fila.condicion_pago_dias as number | null) ?? null,
+    cuentaContableId: (fila.cuenta_contable_id as string | null) ?? null,
     notas: (fila.notas as string | null) ?? null,
     activo: Boolean(fila.activo),
     createdAt: fila.created_at as string,

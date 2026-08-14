@@ -231,7 +231,15 @@ export type Comprobante = {
   cuentaContableNombre: string | null
   detalle: string | null
   moneda: Moneda
-  tc: number
+  /**
+   * Pesos por dólar de ESTE comprobante. Obligatorio en dólares (el TC al que se
+   * cerró la operación) y opcional en pesos (el dólar de referencia del día).
+   *
+   * `null` significa que no se conoce — y entonces `totalUsd` tampoco. Antes se
+   * guardaba 1 en los comprobantes en pesos, que hacía que el importe en dólares
+   * diera igual que el importe en pesos: es el punto 2 del pedido.
+   */
+  tc: number | null
   netoGravado: number
   alicuotaIva: number | null
   iva: number
@@ -242,7 +250,9 @@ export type Comprobante = {
   otrosImpuestos: number
   total: number
   totalArs: number
-  totalUsd: number
+  /** `null` cuando no hay TC cargado: no se sabe, y un guion es la respuesta
+   *  correcta. */
+  totalUsd: number | null
   signo: 1 | -1
   condicionPago: string | null
   vendedorId: string | null

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, Check, Loader2, UserPlus, X } from "lucide-react"
 
+import { SelectorCuenta } from "@/components/admin/selector-cuenta"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -54,6 +55,7 @@ export type BorradorCliente = {
   email: string
   vendedor: string
   condicionPagoDias: string
+  cuentaContableId: string
   notas: string
 }
 
@@ -69,6 +71,7 @@ const VACIO: BorradorCliente = {
   email: "",
   vendedor: "",
   condicionPagoDias: "",
+  cuentaContableId: "",
   notas: "",
 }
 
@@ -85,6 +88,7 @@ function aBorrador(c: Cliente): BorradorCliente {
     email: c.email ?? "",
     vendedor: c.vendedorNombre ?? "",
     condicionPagoDias: c.condicionPagoDias?.toString() ?? "",
+    cuentaContableId: c.cuentaContableId ?? "",
     notas: c.notas ?? "",
   }
 }
@@ -372,6 +376,28 @@ export function EntidadDialog({
               </div>
             </Campo>
           </div>
+
+          {/* La imputación habitual de esta ficha. Se guarda una vez acá y el
+              formulario de comprobantes la completa solo: es lo que hace que las
+              224 cuentas del plan no se sientan al cargar factura por factura. */}
+          <Campo
+            id="cuentaContableId"
+            rotulo="Cuenta contable habitual"
+            opcional
+            ayuda={
+              esProveedor
+                ? "Contra qué cuenta se imputan sus facturas. Se propone al cargar una compra."
+                : "Contra qué cuenta se imputan sus ventas. Se propone al cargar una factura."
+            }
+          >
+            <SelectorCuenta
+              id="cuentaContableId"
+              valor={f.cuentaContableId}
+              onElegir={(v) => set("cuentaContableId", v)}
+              disabled={guardando}
+              tipoSugerido={esProveedor ? "egreso" : "ingreso"}
+            />
+          </Campo>
 
           <div className="grid gap-5 sm:grid-cols-2">
             <Campo id="contacto" rotulo="Contacto" opcional>

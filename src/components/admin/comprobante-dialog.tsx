@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { AlertTriangle, Check, FileText, Loader2, Search, X } from "lucide-react"
 
 import { CampoMoneda } from "@/components/admin/campo-moneda"
+import { SelectorCuenta } from "@/components/admin/selector-cuenta"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -30,8 +31,6 @@ import {
 } from "@/lib/admin/moneda"
 import { useCotizacion } from "@/lib/admin/use-cotizacion"
 import { cn } from "@/lib/utils"
-
-type Cuenta = { id: string; codigo: string; nombre: string }
 
 type Borrador = {
   entidadId: string
@@ -128,7 +127,6 @@ export function ComprobanteDialog({
   onGuardado: (c: Comprobante, esNuevo: boolean) => void
 }) {
   const [f, setF] = useState<Borrador>(VACIO)
-  const [cuentas, setCuentas] = useState<Cuenta[]>([])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -144,13 +142,6 @@ export function ComprobanteDialog({
     setF(comprobante ? aBorrador(comprobante) : VACIO())
     setError(null)
   }, [abierto, comprobante])
-
-  useEffect(() => {
-    fetch("/api/admin/plan-cuentas")
-      .then((r) => r.json())
-      .then((d) => setCuentas(d.cuentas ?? []))
-      .catch(() => {})
-  }, [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -306,6 +297,13 @@ export function ComprobanteDialog({
                       c.condicionPagoDias !== null
                         ? `${c.condicionPagoDias} días`
                         : prev.condicionPago,
+                    // La cuenta contable que la ficha tiene guardada. Es lo que
+                    // hace que las 224 cuentas del plan no se sientan: elegido
+                    // el proveedor, la imputación ya está puesta y solo se toca
+                    // cuando la factura es la excepción. No pisa lo que ya
+                    // estaba elegido — si alguien la corrigió a mano, gana.
+                    cuentaContableId:
+                      prev.cuentaContableId || (c.cuentaContableId ?? ""),
                   }
                 })
               }}
@@ -375,19 +373,25 @@ export function ComprobanteDialog({
                 />
               </Campo>
 
-              <Campo id="cuentaContableId" rotulo="Cuenta contable" opcional>
-                <Select
+              <Campo
+                id="cuentaContableId"
+                rotulo="Cuenta contable"
+                opcional
+                ayuda={
+                  esCompra
+                    ? "Contra qué cuenta va el gasto o la compra"
+                    : "Contra qué cuenta va la venta"
+                }
+              >
+                <SelectorCuenta
                   id="cuentaContableId"
-                  value={f.cuentaContableId}
-                  onChange={(v) => set("cuentaContableId", v)}
+                  valor={f.cuentaContableId}
+                  onElegir={(v) => set("cuentaContableId", v)}
                   disabled={guardando}
-                  opciones={[
-                    { valor: "", etiqueta: "Sin imputar" },
-                    ...cuentas.map((c) => ({
-                      valor: c.id,
-                      etiqueta: `${c.codigo} · ${c.nombre}`,
-                    })),
-                  ]}
+                  // Una compra imputa contra una pérdida y una venta contra una
+                  // ganancia. No lo fuerza —hay compras que van a un activo—,
+                  // solo pone primero lo que se elige nueve de cada diez veces.
+                  tipoSugerido={esCompra ? "egreso" : "ingreso"}
                 />
               </Campo>
             </div>

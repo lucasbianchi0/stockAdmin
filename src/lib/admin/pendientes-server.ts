@@ -57,7 +57,7 @@ export async function listarPendientes(tipo: TipoPago, req: Request) {
     fecha: f.fecha as string,
     fechaVencimiento: (f.fecha_vencimiento as string | null) ?? null,
     moneda: f.moneda as Pendiente["moneda"],
-    tc: Number(f.tc),
+    tc: f.tc === null ? null : Number(f.tc),
     total: Number(f.total),
     imputado: Number(f.imputado),
     saldo: Number(f.saldo),

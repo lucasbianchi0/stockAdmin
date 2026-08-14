@@ -52,7 +52,7 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
     const cliente = f.cliente as unknown as { id: string; razon_social: string } | null
     const proveedor = f.proveedor as unknown as { id: string; razon_social: string } | null
     const saldo = Number(f.saldo)
-    const tc = Number(f.tc)
+    const tc = f.tc === null ? null : Number(f.tc)
     const moneda = f.moneda as "ARS" | "USD"
 
     return {
@@ -70,8 +70,13 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
       imputado: Number(f.imputado),
       saldo,
       // Valuado al TC del comprobante, no al de hoy: es el peso que se facturó.
-      saldoArs: moneda === "ARS" ? saldo : redondear(saldo * tc),
-      saldoUsd: moneda === "USD" ? saldo : tc > 0 ? redondear(saldo / tc) : 0,
+      // El comprobante en dólares siempre tiene TC (lo exige la base), así que
+      // el saldo en pesos siempre se puede calcular.
+      saldoArs: moneda === "ARS" ? saldo : redondear(saldo * (tc as number)),
+      // En dólares no: un comprobante en pesos sin cotización cargada no vale
+      // USD 0, vale un importe que no conocemos. Va null y la tabla pone "—".
+      saldoUsd:
+        moneda === "USD" ? saldo : tc && tc > 0 ? redondear(saldo / tc) : null,
       detalle: (f.detalle as string | null) ?? null,
       vencida: Boolean(f.fecha_vencimiento && (f.fecha_vencimiento as string) < hoy),
     }

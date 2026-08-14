@@ -15,7 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { formatearNumero } from "@/lib/admin/comprobantes"
-import { RETENCION_LABEL, RETENCIONES, type Cobro } from "@/lib/admin/cobros"
+import { etiquetaRetencion, type Cobro } from "@/lib/admin/cobros"
 import type { TipoPago } from "@/lib/admin/cobros-server"
 import { formatearFechaLarga } from "@/lib/admin/fecha"
 import { formatearImporte, formatearTc } from "@/lib/admin/moneda"
@@ -134,20 +134,34 @@ export function PagoDetalle({
             </Lista>
           </Bloque>
 
-          {/* Las retenciones solo si las hubo. Cuatro renglones en cero es la
-              forma más rápida de que nadie lea ninguno. */}
-          {cobro.totalRetenciones > 0 && (
+          {/* Solo las que hubo: son filas, así que una retención que no se
+              cargó simplemente no está. */}
+          {cobro.retenciones.length > 0 && (
             <Bloque titulo="Retenciones">
               <Lista>
-                {RETENCIONES.filter((k) => cobro.retenciones[k] > 0).map((k) => (
+                {cobro.retenciones.map((r, i) => (
                   <Renglon
-                    key={k}
+                    key={r.id ?? i}
                     izquierda={
-                      <span className="text-[12.5px] text-ink">{RETENCION_LABEL[k]}</span>
+                      <span className="min-w-0">
+                        <span className="block text-[12.5px] text-ink">
+                          {etiquetaRetencion(r)}
+                        </span>
+                        {/* El certificado y la cuenta contable, cuando están:
+                            es lo que el proveedor pide y lo que el asiento
+                            necesita. */}
+                        {(r.numeroCertificado || r.cuentaContableNombre) && (
+                          <span className="block truncate text-[11px] text-ink-muted">
+                            {[r.numeroCertificado, r.cuentaContableNombre]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        )}
+                      </span>
                     }
                     derecha={
                       <span className="num text-[12.5px] font-semibold text-ink">
-                        {formatearImporte(cobro.retenciones[k], cobro.moneda)}
+                        {formatearImporte(r.importe, cobro.moneda)}
                       </span>
                     }
                   />

@@ -213,7 +213,7 @@ async function ultimosPagos(
   const { data, error } = await supabase
     .from("pagos")
     .select(
-      "id, fecha, moneda, ret_ganancias, ret_iva, ret_iibb, ret_suss, movimientos (importe), imputaciones (id)"
+      "id, fecha, moneda, movimientos (importe), imputaciones (id), pago_retenciones (importe)"
     )
     .eq("tipo", tipo)
     .eq(campo, id)
@@ -227,11 +227,13 @@ async function ultimosPagos(
 
   return (data ?? []).map((p) => {
     const medios = (p.movimientos ?? []) as { importe: number | string }[]
-    const retenciones =
-      Number(p.ret_ganancias ?? 0) +
-      Number(p.ret_iva ?? 0) +
-      Number(p.ret_iibb ?? 0) +
-      Number(p.ret_suss ?? 0)
+    // Desde la migración de retenciones son filas: se suman en vez de leer
+    // cuatro columnas fijas, y así una retención de IIBB por provincia entra
+    // sola sin tocar esta cuenta.
+    const retenciones = ((p.pago_retenciones ?? []) as { importe: number | string }[]).reduce(
+      (a, r) => a + Number(r.importe),
+      0
+    )
 
     return {
       id: p.id as string,

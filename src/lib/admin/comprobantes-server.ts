@@ -74,16 +74,27 @@ export function validarComprobante(
 
   const moneda = esMoneda(raw.moneda) ? raw.moneda : "ARS"
 
-  // El TC solo importa en dólares. En pesos se fuerza a 1 en vez de aceptar lo
-  // que venga: un comprobante en pesos con TC 1.500 haría que `total_usd` diera
-  // cualquier cosa.
-  let tc = 1
-  if (moneda === "USD") {
-    const n = Number(raw.tc)
-    if (!Number.isFinite(n) || n <= 0) {
-      return { error: "Un comprobante en dólares necesita tipo de cambio", status: 400 }
-    }
-    tc = redondear(n, 4)
+  /**
+   * El TC de valuación del comprobante: pesos por dólar el día que se emitió.
+   *
+   * Antes se forzaba a 1 cuando la moneda era pesos, y como `total_usd` sale de
+   * `total / tc`, el importe en dólares terminaba siendo idéntico al importe en
+   * pesos — el punto 2 del pedido, con el screenshot de la factura de $ 8.058.622
+   * que mostraba "USD 8.058.622" abajo.
+   *
+   * Ahora es un solo dato con un solo significado, y `null` es una respuesta
+   * válida: quiere decir "no se conoce", y entonces el importe en dólares
+   * tampoco se conoce y la pantalla muestra un guion. Un guion es correcto; el
+   * número de antes no lo era.
+   */
+  let tc: number | null = null
+  const tcCrudo = Number(raw.tc)
+  if (Number.isFinite(tcCrudo) && tcCrudo > 0) tc = redondear(tcCrudo, 4)
+
+  // En dólares sí es obligatorio: sin él no hay forma de valuar la factura en
+  // pesos, y el estado de cuenta corre el saldo en pesos históricos.
+  if (moneda === "USD" && tc === null) {
+    return { error: "Un comprobante en dólares necesita tipo de cambio", status: 400 }
   }
 
   const importes = {
@@ -178,6 +189,12 @@ type FilaCompleta = Record<string, unknown> & {
 
 const num = (v: unknown): number => (v === null || v === undefined ? 0 : Number(v))
 
+/** Para las columnas donde el nulo significa algo. `tc` nulo es "no se conoce la
+ *  cotización", que no es lo mismo que cero — y convertirlo a cero haría que la
+ *  UI dibujara un dato inventado, que es justo el bug que se está arreglando. */
+const numONull = (v: unknown): number | null =>
+  v === null || v === undefined ? null : Number(v)
+
 export function aComprobante(fila: FilaCompleta): Comprobante {
   return {
     id: fila.id as string,
@@ -196,7 +213,7 @@ export function aComprobante(fila: FilaCompleta): Comprobante {
     cuentaContableNombre: fila.cuenta ? `${fila.cuenta.codigo} · ${fila.cuenta.nombre}` : null,
     detalle: (fila.detalle as string | null) ?? null,
     moneda: fila.moneda as Comprobante["moneda"],
-    tc: num(fila.tc),
+    tc: numONull(fila.tc),
     netoGravado: num(fila.neto_gravado),
     alicuotaIva: fila.alicuota_iva === null ? null : num(fila.alicuota_iva),
     iva: num(fila.iva),
@@ -207,7 +224,7 @@ export function aComprobante(fila: FilaCompleta): Comprobante {
     otrosImpuestos: num(fila.otros_impuestos),
     total: num(fila.total),
     totalArs: num(fila.total_ars),
-    totalUsd: num(fila.total_usd),
+    totalUsd: numONull(fila.total_usd),
     signo: num(fila.signo) === -1 ? -1 : 1,
     condicionPago: (fila.condicion_pago as string | null) ?? null,
     vendedorId: fila.vendedor?.id ?? null,

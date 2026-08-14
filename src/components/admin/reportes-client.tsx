@@ -42,7 +42,7 @@ type Pendiente = {
   fecha: string
   fechaVencimiento: string | null
   moneda: "ARS" | "USD"
-  tc: number
+  tc: number | null
   total: number
   imputado: number
   saldo: number
@@ -68,7 +68,7 @@ type FilaCuenta = {
   moneda: "ARS" | "USD"
   importe: number
   importeUsd: number | null
-  tc: number
+  tc: number | null
   importeArs: number
   saldo: number
 }
@@ -185,7 +185,7 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
         f.fecha,
         f.fechaVencimiento ?? "",
         f.moneda,
-        f.tc,
+        f.tc ?? "",
         f.total,
         f.imputado,
         f.saldo,
@@ -514,7 +514,7 @@ function EstadoDeCuenta({ inicial }: { inicial: Preseleccion | null }) {
                     f.comprobante ?? "",
                     f.moneda,
                     f.importeUsd ?? "",
-                    f.tc,
+                    f.tc ?? "",
                     f.importeArs,
                     f.saldo,
                   ])
@@ -607,7 +607,11 @@ function EstadoDeCuenta({ inicial }: { inicial: Preseleccion | null }) {
                       )}
                     </TableCell>
                     <TableCell className="num text-right text-ink-muted">
-                      {f.moneda === "USD" ? formatearTc(f.tc) : <span className="text-ink-faint">—</span>}
+                      {f.tc !== null ? (
+                        formatearTc(f.tc)
+                      ) : (
+                        <span className="text-ink-faint">—</span>
+                      )}
                     </TableCell>
                     <TableCell
                       className={cn(

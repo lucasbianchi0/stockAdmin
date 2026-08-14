@@ -25,6 +25,67 @@ export const RETENCION_LABEL: Record<Retencion, string> = {
   suss: "SUSS",
 }
 
+/**
+ * Las jurisdicciones de Ingresos Brutos.
+ *
+ * Son las siete que tiene el plan de cuentas del contador. El pedido original
+ * hablaba solo de CABA y Buenos Aires, pero abrir por dos y dejar las otras
+ * cinco afuera obligaría a volver a tocar la base cada vez que aparezca una
+ * provincia — y ya están todas en el plan.
+ *
+ * Solo IIBB es provincial: Ganancias, IVA y SUSS son nacionales.
+ */
+export const JURISDICCIONES = [
+  "caba",
+  "bsas",
+  "santa_fe",
+  "cordoba",
+  "mendoza",
+  "neuquen",
+  "entre_rios",
+] as const
+export type Jurisdiccion = (typeof JURISDICCIONES)[number]
+
+export const JURISDICCION_LABEL: Record<Jurisdiccion, string> = {
+  caba: "CABA",
+  bsas: "Buenos Aires",
+  santa_fe: "Santa Fe",
+  cordoba: "Córdoba",
+  mendoza: "Mendoza",
+  neuquen: "Neuquén",
+  entre_rios: "Entre Ríos",
+}
+
+export function esJurisdiccion(v: unknown): v is Jurisdiccion {
+  return typeof v === "string" && (JURISDICCIONES as readonly string[]).includes(v)
+}
+
+/** Un renglón de retención. Antes eran cuatro columnas fijas en el recibo; son
+ *  filas para que IIBB pueda abrirse por provincia y cada una lleve su cuenta
+ *  contable y su certificado. */
+export type RetencionDetalle = {
+  id?: string
+  tipo: Retencion
+  /** Solo en IIBB. `null` en una retención vieja migrada, que no tiene cómo
+   *  saber de qué provincia era. */
+  jurisdiccion: Jurisdiccion | null
+  importe: number
+  cuentaContableId?: string | null
+  cuentaContableNombre?: string | null
+  base?: number | null
+  alicuota?: number | null
+  numeroCertificado?: string | null
+}
+
+/** Cómo se nombra un renglón en pantalla: "IIBB · CABA" o simplemente "IVA". */
+export function etiquetaRetencion(r: {
+  tipo: Retencion
+  jurisdiccion: Jurisdiccion | null
+}): string {
+  const base = RETENCION_LABEL[r.tipo]
+  return r.jurisdiccion ? `${base} · ${JURISDICCION_LABEL[r.jurisdiccion]}` : base
+}
+
 /** Medio por el que entró la plata: una cuenta y un importe. Un cobro puede
  *  tener varios (mitad transferencia, mitad cheque). */
 export type MedioCobro = {
@@ -44,6 +105,14 @@ export type CuentaFinanciera = {
   tipo: "caja" | "banco" | "billetera"
   moneda: Moneda
   saldo?: number
+  banco?: string | null
+  numeroCuenta?: string | null
+  alias?: string | null
+  /** Solo con `?detalle=1`: lo que necesita la tarjeta de Caja y Bancos para
+   *  decir algo más que el saldo. */
+  entradasMes?: number
+  salidasMes?: number
+  sinConciliar?: number
 }
 
 /** Una factura pendiente, como la ve el panel de imputación. */
@@ -55,7 +124,8 @@ export type Pendiente = {
   fecha: string
   fechaVencimiento: string | null
   moneda: Moneda
-  tc: number
+  /** El TC del comprobante. `null` si no tiene cotización cargada. */
+  tc: number | null
   total: number
   imputado: number
   saldo: number
@@ -69,8 +139,10 @@ export type Cobro = {
   clienteId: string
   clienteNombre: string | null
   moneda: Moneda
-  tc: number
-  retenciones: Record<Retencion, number>
+  /** El TC del recibo. Solo hace falta cuando cancela comprobantes en otra
+   *  moneda; `null` cuando no hubo conversión de por medio. */
+  tc: number | null
+  retenciones: RetencionDetalle[]
   totalRetenciones: number
   /** Suma de los medios de pago: lo que entró de verdad. */
   totalMedios: number
@@ -99,8 +171,8 @@ export type Cobro = {
 
 /* ── Aritmética ───────────────────────────────────────────────────────────── */
 
-export function sumaRetenciones(r: Partial<Record<Retencion, number>>): number {
-  return redondear(RETENCIONES.reduce((a, k) => a + (r[k] ?? 0), 0))
+export function sumaRetenciones(filas: { importe: number }[]): number {
+  return redondear(filas.reduce((a, r) => a + (Number(r.importe) || 0), 0))
 }
 
 /**
