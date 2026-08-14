@@ -4,6 +4,7 @@ import {
   BarChart3,
   Target,
   ListChecks,
+  MessageSquareQuote,
   PenLine,
   Globe,
   ArrowRight,
@@ -59,6 +60,15 @@ const CARDS: Card[] = [
       "Logos, paleta, tono de voz, buyer personas y el prompt maestro. Todo lo que define cómo se ve y cómo habla Accedra.",
     href: "/marketing/brand",
     icon: Palette,
+    estado: "listo",
+  },
+  {
+    kicker: "Mensajes",
+    titulo: "Plantillas de mensajes",
+    descripcion:
+      "Lo que el equipo escribe todos los días —presupuestos, seguimientos, cobranzas— escrito una sola vez y bien. Cualquiera crea y corrige.",
+    href: "/marketing/mensajes",
+    icon: MessageSquareQuote,
     estado: "listo",
   },
   {

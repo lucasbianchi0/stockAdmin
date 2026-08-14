@@ -53,6 +53,7 @@ const RUTAS: { prefijo: string; modulos: Modulo[] }[] = [
   // Marketing
   { prefijo: "/marketing", modulos: ["marketing"] },
   { prefijo: "/contenido", modulos: ["marketing"] },
+  { prefijo: "/api/marketing", modulos: ["marketing"] },
   { prefijo: "/api/contenido", modulos: ["marketing"] },
 
   // Productos

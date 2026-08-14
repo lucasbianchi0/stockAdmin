@@ -54,6 +54,7 @@ const GRUPOS: Grupo[] = [
       { name: "Panel", href: "/marketing", available: true, exact: true },
       { name: "Informes de campañas", href: "/marketing/informes", available: true },
       { name: "Brand Kit", href: "/marketing/brand", available: true },
+      { name: "Plantillas de mensajes", href: "/marketing/mensajes", available: true },
       { name: "Landings y SEO", href: "/marketing/landings", available: true },
       { name: "Calendario de contenido", href: "/contenido/calendario", available: true },
       { name: "Content Studio", href: "/contenido", available: true, exact: true },
