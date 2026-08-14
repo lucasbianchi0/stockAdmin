@@ -1,33 +1,21 @@
 /**
- * Cuál de los dos sistemas visuales genera las imágenes del plan.
+ * El sistema visual del calendario: "Feed 1080" (el camino 2), el único que
+ * quedó. El camino 1 —Templates Accedra, con receta en castellano y plantillas
+ * de otras marcas como molde— se retiró: generaba peor y duplicaba la UI.
  *
- * No conviven dentro de una pieza: cada uno trae su propia paleta, su propio
- * mobiliario y sus propias prohibiciones, y pedirle los dos al generador a la
- * vez no da un promedio, da cualquier cosa. Conviven a nivel plan, para poder
- * generar la misma pieza por los dos caminos y comparar, que es exactamente
- * para lo que se agregó el segundo.
+ * El tipo se conserva de una sola variante para no reescribir el hilván de props
+ * que lo lleva por los componentes; hoy siempre vale "feed".
  */
 
 import type { Canal, Slot } from "@/lib/calendario-context"
 import { secuenciaRecomendada } from "@/lib/secuencia"
 import { TEMPLATES_FEED } from "@/lib/templates-feed"
-import type { TemplatePieza } from "@/lib/templates-pieza"
 
-export const SISTEMAS = ["accedra", "feed"] as const
+export const SISTEMAS = ["feed"] as const
 export type SistemaVisual = (typeof SISTEMAS)[number]
 
 export const SISTEMA_LABEL: Record<SistemaVisual, string> = {
-  accedra: "Templates Accedra",
   feed: "Feed 1080",
-}
-
-export const SISTEMA_NOTA: Record<SistemaVisual, string> = {
-  accedra: "Receta en castellano + bloque de marca, con plantilla de referencia si hay.",
-  feed: "Los 15 prompts en inglés. Sin bloque de marca y sin plantilla de referencia.",
-}
-
-export function esSistema(v: unknown): v is SistemaVisual {
-  return typeof v === "string" && (SISTEMAS as readonly string[]).includes(v)
 }
 
 /* ── Medidas ──────────────────────────────────────────────────────────────── */
@@ -73,20 +61,12 @@ export function claveSistema(planId: string): string {
  * `template_slug`, que es del otro sistema.
  */
 export function secuenciaFeed(slots: Slot[]): Map<string, string> {
-  const comoPieza = TEMPLATES_FEED.map(
-    (t): TemplatePieza => ({
-      id: t.id,
-      nombre: t.nombre,
-      cuandoUsar: t.cuandoUsar,
-      densidad: t.densidad,
-      llevaFoto: t.densidad !== "texto",
-      composicion: "",
-    })
-  )
-
+  // Los templates del feed entran directo: ya tienen `id` y `densidad`, que es lo
+  // único que el repartidor mira. Con semilla fija, cada pieza cae siempre en el
+  // mismo template mientras el plan tenga los mismos slots.
   return secuenciaRecomendada(
     slots.map((s) => ({ id: s.id, fecha: s.fecha, canal: s.canal })),
-    comoPieza,
+    TEMPLATES_FEED,
     { semilla: 0 }
   )
 }

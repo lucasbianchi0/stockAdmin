@@ -8,8 +8,11 @@ import {
   AUDIENCIA_LABEL,
   CANAL_BRIEF,
   CANAL_LABEL,
+  OBJETIVO_DESC,
+  OBJETIVO_LABEL,
   esAudiencia,
   esCanal,
+  esObjetivo,
   fechaLarga,
   type Canal,
   type Contenido,
@@ -17,20 +20,19 @@ import {
 } from "@/lib/calendario-context"
 import { IMAGE_PROMPT_BASE } from "@/lib/contenido-context"
 import { aSlotsCliente } from "@/lib/calendario-server"
-import { templatePorId } from "@/lib/templates-pieza"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 /** Tope del plan hobby de Vercel; con Pro esto puede volver a 90. */
 export const maxDuration = 60
 
-/* ── PATCH · elegir una opción, o cambiarle el template ───────────────────── */
+/* ── PATCH · elegir una opción ────────────────────────────────────────────── */
 
 /**
- * Dos cambios distintos por la misma puerta, pero nunca a la vez: `elegida`
- * decide QUÉ dice la pieza y `templateSlug` decide QUÉ FORMA tiene. El primero
- * invalida el contenido generado y el segundo no lo toca, así que mezclarlos en
- * una sola llamada haría que cambiar de template borre el caption.
+ * Marca qué opción del slot es la elegida. En el modelo de una sola idea los
+ * planes nacen ya elegidos, pero se conserva para los planes viejos de tres
+ * opciones y por si en algún flujo hay que limpiar la elección (`elegida: null`).
+ * Cambiar de opción invalida el contenido: el caption era de la otra idea.
  */
 export async function PATCH(req: Request) {
   const sinPermiso = await exigirModulo("marketing")
@@ -42,14 +44,8 @@ export async function PATCH(req: Request) {
   const slotId = typeof raw.slotId === "string" ? raw.slotId : null
   if (!slotId) return NextResponse.json({ error: "Falta el slot" }, { status: 400 })
 
-  const cambiaTemplate = "templateSlug" in raw
-  const cambiaEleccion = "elegida" in raw
-
-  if (cambiaTemplate === cambiaEleccion) {
-    return NextResponse.json(
-      { error: "Mandá 'elegida' o 'templateSlug', uno de los dos" },
-      { status: 400 }
-    )
+  if (!("elegida" in raw)) {
+    return NextResponse.json({ error: "Mandá 'elegida'" }, { status: 400 })
   }
 
   const { data: slot } = await supabase
@@ -60,37 +56,20 @@ export async function PATCH(req: Request) {
 
   if (!slot) return NextResponse.json({ error: "Slot inexistente" }, { status: 404 })
 
-  let cambios: Record<string, unknown>
+  const elegida =
+    raw.elegida === null ? null : typeof raw.elegida === "string" ? raw.elegida : undefined
+  if (elegida === undefined) {
+    return NextResponse.json({ error: "Opción inválida" }, { status: 400 })
+  }
 
-  if (cambiaTemplate) {
-    const slug = raw.templateSlug
-    if (slug !== null && (typeof slug !== "string" || !templatePorId(slug))) {
-      return NextResponse.json({ error: "Ese template no existe" }, { status: 400 })
-    }
-    // Cambiar el template NO borra el contenido: el texto de la publicación
-    // sigue siendo el mismo, solo cambia la composición de la imagen.
-    cambios = { template_slug: slug }
-  } else {
-    const elegida =
-      raw.elegida === null ? null : typeof raw.elegida === "string" ? raw.elegida : undefined
-    if (elegida === undefined) {
-      return NextResponse.json({ error: "Opción inválida" }, { status: 400 })
-    }
-
-    const opciones = (slot.opciones ?? []) as Opcion[]
-    if (elegida !== null && !opciones.some((o) => o.id === elegida)) {
-      return NextResponse.json({ error: "Esa opción no existe en el slot" }, { status: 400 })
-    }
-
-    // Cambiar de opción invalida el contenido: el caption era de la otra idea.
-    // Dejarlo pegado a la nueva elección es la peor falla posible acá, porque se
-    // ve correcto y no lo es.
-    cambios = { elegida, contenido: null }
+  const opciones = (slot.opciones ?? []) as Opcion[]
+  if (elegida !== null && !opciones.some((o) => o.id === elegida)) {
+    return NextResponse.json({ error: "Esa opción no existe en el slot" }, { status: 400 })
   }
 
   const { data, error } = await supabase
     .from("content_slots")
-    .update({ ...cambios, updated_at: new Date().toISOString() })
+    .update({ elegida, contenido: null, updated_at: new Date().toISOString() })
     .eq("id", slotId)
     .select()
     .single()
@@ -137,7 +116,15 @@ export async function POST(req: Request) {
   }
 
   const plan = (slot.content_plans ?? {}) as Record<string, unknown>
-  const audiencia = esAudiencia(plan.audiencia) ? plan.audiencia : "ambos"
+  // Audiencia y objetivo salen de la pieza, no del plan: dentro de un mismo plan
+  // una pieza de conversión le habla a decisores y una de cultura a corporativo.
+  // Los planes viejos, sin estos campos en la opción, caen al perfil del plan.
+  const audiencia = esAudiencia(opcion.audiencia)
+    ? opcion.audiencia
+    : esAudiencia(plan.audiencia)
+      ? plan.audiencia
+      : "todos"
+  const objetivo = esObjetivo(opcion.objetivo) ? opcion.objetivo : "awareness"
 
   try {
     const contenido = await generarContenido({
@@ -148,6 +135,8 @@ export async function POST(req: Request) {
       arco: typeof plan.arco === "string" ? plan.arco : "",
       contextoPlan: typeof plan.contexto === "string" ? plan.contexto : "",
       audienciaLabel: AUDIENCIA_LABEL[audiencia],
+      objetivoLabel: OBJETIVO_LABEL[objetivo],
+      objetivoDesc: OBJETIVO_DESC[objetivo],
       ajuste,
     })
 
@@ -185,6 +174,8 @@ async function generarContenido({
   arco,
   contextoPlan,
   audienciaLabel,
+  objetivoLabel,
+  objetivoDesc,
   ajuste,
 }: {
   canal: Canal
@@ -194,6 +185,8 @@ async function generarContenido({
   arco: string
   contextoPlan: string
   audienciaLabel: string
+  objetivoLabel: string
+  objetivoDesc: string
   ajuste: string
 }): Promise<Contenido> {
   const message = await anthropic.messages.create({
@@ -215,7 +208,8 @@ LA PIEZA:
 - Ángulo: "${opcion.angulo}"${opcion.imagen ? `\n- Pieza visual comprometida: "${opcion.imagen}"` : ""}
 - Formato: ${opcion.formato}
 - Se publica el ${fechaLarga(fecha)}${beat ? `\n- Rol en el plan: ${beat}` : ""}
-- Audiencia: ${audienciaLabel}
+- Audiencia a la que le habla: ${audienciaLabel}
+- Objetivo de marketing: ${objetivoLabel} — ${objetivoDesc}. Escribí el caption para cumplir ESE objetivo: si es Conversión, cerrá con un llamado a la acción claro; si es Educación, enseñá algo concreto y verificable; si es Awareness, priorizá la historia y la marca por encima de la venta.
 ${arco ? `- Arco del calendario del que forma parte: "${arco}"` : ""}
 ${contextoPlan ? `- Contexto que dio el usuario para todo el plan: "${contextoPlan}"` : ""}
 ${ajuste ? `\nAJUSTE PEDIDO POR EL USUARIO — tiene prioridad: "${ajuste}"` : ""}

@@ -10,7 +10,10 @@ import {
   MousePointerClick,
   RotateCcw,
   Sparkles,
+  Target,
   Type,
+  Users,
+  Wand2,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -21,8 +24,6 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { ImagenGenerada } from "@/components/contenido/imagen-generada"
 import { VistaPrevia } from "@/components/contenido/vista-previa"
-import { SelectorTemplate } from "@/components/contenido/selector-template"
-import { promptDeImagen } from "@/lib/prompt-pieza"
 import {
   pedirPromptFeed,
   proporcionDe,
@@ -31,67 +32,84 @@ import {
 } from "@/lib/sistema-visual"
 import { templateFeedPorId } from "@/lib/templates-feed"
 import {
+  AUDIENCIAS,
+  AUDIENCIA_CORTO,
+  AUDIENCIA_LABEL,
   CANAL_CORTO,
   CANAL_LABEL,
-  type Canal,
+  OBJETIVOS,
+  OBJETIVO_DESC,
+  OBJETIVO_LABEL,
   fechaLarga,
+  type Audiencia,
+  type Canal,
   type Contenido,
+  type Objetivo,
+  type Opcion,
   type Slot,
 } from "@/lib/calendario-context"
 
+/** Los campos con los que se regenera una idea. */
+export type CamposRegenerar = {
+  titulo: string
+  angulo: string
+  objetivo: Objetivo
+  audiencia: Audiencia
+  instruccion: string
+}
+
+/** Los perfiles que puede tener UNA pieza: "todos" es del plan, no de una pieza. */
+const AUDIENCIAS_PIEZA = AUDIENCIAS.filter((a) => a !== "todos")
+
+/** El color del chip de objetivo, reusando los tonos del sistema. */
+function tonoObjetivo(o: Objetivo): "brand" | "warning" | "success" {
+  return o === "conversion" ? "success" : o === "educacion" ? "warning" : "brand"
+}
+
 /**
- * Panel lateral de una pieza. Dos estados y una transición entre ellos:
- * elegir entre las 3 opciones, y ver el contenido generado.
+ * Panel lateral de una pieza del feed.
  *
- * El contenido no reemplaza a las opciones: quedan arriba, colapsadas, con la
- * elegida marcada. Si desaparecieran, cambiar de idea obligaría a cerrar y
- * volver a entrar, y peor: no se vería que la decisión es reversible.
+ * Muestra la única idea que propuso el estratega —con su objetivo y a quién le
+ * habla bien a la vista— y deja dos caminos: regenerarla con campos editables si
+ * no convence, o generar el contenido y la imagen. Ya no hay tres opciones que
+ * elegir: el plan nace con la recomendada puesta.
  */
 export function PiezaPanel({
   slot,
-  eligiendo,
   generando,
+  regenerando,
   imagen,
-  miniaturas,
-  guardandoTemplate,
   onImagen,
-  onTemplate,
   onCerrar,
-  onElegir,
   onGenerar,
-  sistema,
+  onRegenerar,
   feedTemplateId,
 }: {
   slot: Slot | null
-  eligiendo: boolean
+  /** Se está generando el contenido (caption) de esta pieza. */
   generando: boolean
-  /** Con cuál de los dos sistemas visuales se genera la imagen de esta pieza. */
-  sistema: SistemaVisual
-  /** El template del camino 2 que le tocó. Null si el sistema es el de siempre. */
+  /** Se está regenerando la idea de esta pieza. */
+  regenerando: boolean
+  /** El template del camino 2 que le tocó a esta pieza. */
   feedTemplateId: string | null
-  /** La imagen vive en el calendario: el panel se cierra y ella tiene que
-   *  seguir estando, tanto para volver a abrirlo como para la vista del feed. */
+  /** La imagen vive en el calendario: el panel se cierra y ella sigue estando. */
   imagen: string | null
-  miniaturas: Record<string, string>
-  guardandoTemplate: boolean
   onImagen: (slotId: string, dataUrl: string) => void
-  onTemplate: (slotId: string, slug: string) => void
   onCerrar: () => void
-  onElegir: (slotId: string, opcionId: string | null) => void
   onGenerar: (slotId: string, ajuste: string) => void
+  onRegenerar: (slotId: string, campos: CamposRegenerar) => void
 }) {
+  const sistema: SistemaVisual = "feed"
   const [ajuste, setAjuste] = useState("")
+  const [reabrir, setReabrir] = useState(false)
   const idAnterior = useRef<string | null>(null)
   /**
-   * El prompt del camino 2, que se pide al servidor.
-   *
-   * Se guarda junto al slot que lo generó: sin eso, abrir otra pieza mientras
-   * este viaja mostraría el prompt de la anterior, que es la peor falla posible
-   * acá porque se ve correcto y genera la imagen equivocada.
+   * El prompt del camino 2, que se pide al servidor. Se guarda junto al slot que
+   * lo generó: sin eso, abrir otra pieza mientras este viaja mostraría el prompt
+   * de la anterior, que genera la imagen equivocada con cara de correcta.
    */
   const [promptFeed, setPromptFeed] = useState<{
     slotId: string
-    /** Con qué texto se derivó. Regenerar el caption tiene que rehacerlo. */
     caption: string
     prompt: string
   } | null>(null)
@@ -101,9 +119,7 @@ export function PiezaPanel({
   const caption = slot?.contenido?.caption ?? ""
 
   useEffect(() => {
-    if (sistema !== "feed" || !slotId || !caption || !feedTemplateId) return
-    // Ya derivado para este slot y este texto. Sin este corte, cada vez que se
-    // abre el panel se paga otra llamada al modelo para llegar al mismo prompt.
+    if (!slotId || !caption || !feedTemplateId) return
     if (promptFeed?.slotId === slotId && promptFeed.caption === caption) return
 
     let vigente = true
@@ -116,29 +132,30 @@ export function PiezaPanel({
     return () => {
       vigente = false
     }
-  }, [sistema, slotId, caption, feedTemplateId, promptFeed])
+  }, [slotId, caption, feedTemplateId, promptFeed])
 
-  // El ajuste es de la pieza, no del panel: si no se limpia al cambiar de slot,
-  // el pedido de una se aplica a la siguiente sin que nadie lo note.
+  // El ajuste y el panel de regenerar son de la pieza, no del panel: si no se
+  // limpian al cambiar de slot, lo de una se aplica a la siguiente sin avisar.
   useEffect(() => {
     if (slot && slot.id !== idAnterior.current) {
       idAnterior.current = slot.id
       setAjuste("")
+      setReabrir(false)
     }
   }, [slot])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !generando && !eligiendo) onCerrar()
+      if (e.key === "Escape" && !generando && !regenerando) onCerrar()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onCerrar, generando, eligiendo])
+  }, [onCerrar, generando, regenerando])
 
   if (!slot) return null
 
-  const elegida = slot.opciones.find((o) => o.id === slot.elegida) ?? null
-  const ocupado = eligiendo || generando
+  const idea = slot.opciones.find((o) => o.id === slot.elegida) ?? slot.opciones[0] ?? null
+  const ocupado = generando || regenerando
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true">
@@ -158,7 +175,7 @@ export function PiezaPanel({
               <span className="text-[11.5px] text-ink-muted">{fechaLarga(slot.fecha)}</span>
             </div>
             <h2 className="mt-1.5 text-[15px] font-semibold tracking-[-0.015em] text-ink">
-              {elegida?.titulo ?? "Elegí una de las tres"}
+              {idea?.titulo ?? "Pieza"}
             </h2>
             {slot.beat && (
               <p className="mt-0.5 text-[11.5px] leading-relaxed text-ink-muted">{slot.beat}</p>
@@ -176,119 +193,23 @@ export function PiezaPanel({
 
         <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
           <div className="space-y-5">
-            {/* El formato de la pieza. Va arriba porque condiciona todo lo de
-                abajo: la receta del template es la que arma el prompt final. */}
-            <section>
-              <p className="eyebrow mb-2">Formato de la pieza</p>
-              <SelectorTemplate
-                templateSlug={slot.templateSlug}
-                miniaturas={miniaturas}
-                guardando={guardandoTemplate}
-                yaTieneImagen={Boolean(slot.imagenPath)}
-                onElegir={(slug) => onTemplate(slot.id, slug)}
+            {idea && <IdeaResumen idea={idea} />}
+
+            {/* Regenerar la idea con campos editables */}
+            {idea && (reabrir || !slot.contenido) && (
+              <RegenerarIdea
+                idea={idea}
+                regenerando={regenerando}
+                tieneContenido={Boolean(slot.contenido)}
+                onRegenerar={(campos) => onRegenerar(slot.id, campos)}
               />
-            </section>
+            )}
 
-            <section>
-              <div className="mb-2.5 flex items-baseline justify-between gap-3">
-                <p className="eyebrow">
-                  {slot.contenido ? "Opción elegida" : `${slot.opciones.length} opciones`}
-                </p>
-                {slot.elegida && (
-                  <button
-                    onClick={() => onElegir(slot.id, null)}
-                    disabled={ocupado}
-                    className="text-[11px] font-medium text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
-                  >
-                    Cambiar de opción
-                  </button>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                {slot.opciones.map((o, i) => {
-                  const activa = slot.elegida === o.id
-                  // Con contenido ya generado sólo se muestra la elegida: las
-                  // otras dos ya no son alternativas, son ruido.
-                  if (slot.contenido && !activa) return null
-
-                  return (
-                    <button
-                      key={o.id}
-                      onClick={() => !activa && onElegir(slot.id, o.id)}
-                      disabled={ocupado || activa}
-                      className={cn(
-                        "flex w-full gap-3 rounded-xl border p-3.5 text-left transition-all duration-150",
-                        activa
-                          ? "border-brand-300 bg-brand-50 shadow-e1"
-                          : "border-line bg-surface hover:-translate-y-px hover:border-brand-200 hover:shadow-e1",
-                        ocupado && !activa && "opacity-60"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold uppercase",
-                          activa
-                            ? "bg-brand-600 text-white"
-                            : "bg-surface-muted text-ink-muted"
-                        )}
-                      >
-                        {activa ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : o.id || i + 1}
-                      </span>
-
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2">
-                          <span className="min-w-0 flex-1 text-[13px] font-semibold text-ink">
-                            {o.titulo}
-                          </span>
-                          <Badge tone="neutral" size="sm" className="shrink-0 capitalize">
-                            {o.formato}
-                          </Badge>
-                        </span>
-                        {o.hook && (
-                          <span className="mt-1 block text-[12px] italic leading-relaxed text-ink-secondary">
-                            “{o.hook}”
-                          </span>
-                        )}
-                        {/* De qué trata y qué se ve, separados. Elegir entre
-                            tres títulos a ciegas es media decisión: la otra
-                            mitad de una publicación es la pieza visual. */}
-                        {(o.angulo || o.imagen) && (
-                          <span className="mt-2.5 block space-y-1.5 border-t border-line pt-2.5">
-                            {o.angulo && (
-                              <span className="block">
-                                <span className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-ink-faint">
-                                  El posteo
-                                </span>
-                                <span className="mt-0.5 block text-[11.5px] leading-relaxed text-ink-muted">
-                                  {o.angulo}
-                                </span>
-                              </span>
-                            )}
-                            {o.imagen && (
-                              <span className="block">
-                                <span className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-ink-faint">
-                                  La imagen
-                                </span>
-                                <span className="mt-0.5 block text-[11.5px] leading-relaxed text-ink-muted">
-                                  {o.imagen}
-                                </span>
-                              </span>
-                            )}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            </section>
-
-            {/* Generar / regenerar */}
-            {elegida && (
+            {/* Generar / regenerar el contenido */}
+            {idea && (
               <section className="rounded-xl border border-line bg-surface-subtle p-4">
                 <label htmlFor="ajuste" className="text-[12px] font-semibold text-ink">
-                  {slot.contenido ? "Volver a generar con un ajuste" : "Algún ajuste antes de generar"}
+                  {slot.contenido ? "Volver a generar el texto con un ajuste" : "Algún ajuste antes de generar"}
                   <span className="ml-1 font-normal text-ink-muted">(opcional)</span>
                 </label>
                 <div className="mt-2 flex gap-2">
@@ -303,11 +224,7 @@ export function PiezaPanel({
                     disabled={ocupado}
                     className="flex-1"
                   />
-                  <Button
-                    onClick={() => onGenerar(slot.id, ajuste)}
-                    disabled={ocupado}
-                    className="shrink-0"
-                  >
+                  <Button onClick={() => onGenerar(slot.id, ajuste)} disabled={ocupado} className="shrink-0">
                     {generando ? (
                       <Loader2 className="animate-spin" />
                     ) : slot.contenido ? (
@@ -315,9 +232,20 @@ export function PiezaPanel({
                     ) : (
                       <Sparkles />
                     )}
-                    {slot.contenido ? "Regenerar" : "Generar contenido"}
+                    {slot.contenido ? "Regenerar texto" : "Generar contenido"}
                   </Button>
                 </div>
+                {slot.contenido && !reabrir && (
+                  <button
+                    type="button"
+                    onClick={() => setReabrir(true)}
+                    disabled={ocupado}
+                    className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
+                  >
+                    <Wand2 className="h-3 w-3" />
+                    ¿No te gusta la idea? Regenerala con otros campos
+                  </button>
+                )}
               </section>
             )}
 
@@ -330,33 +258,225 @@ export function PiezaPanel({
                 canal={CANAL_LABEL[slot.canal]}
                 canalId={slot.canal}
                 imagen={imagen}
-                sistema={sistema}
                 armandoPrompt={armandoFeed}
                 nombreTemplateFeed={templateFeedPorId(feedTemplateId)?.nombre ?? null}
-                promptImagen={
-                  sistema === "feed"
-                    ? promptFeed?.slotId === slot.id
-                      ? promptFeed.prompt
-                      : ""
-                    : promptDeImagen(slot)
-                }
+                promptImagen={promptFeed?.slotId === slot.id ? promptFeed.prompt : ""}
                 onImagen={(dataUrl) => onImagen(slot.id, dataUrl)}
+                sistema={sistema}
               />
-            )}
-
-            {!elegida && !generando && (
-              <div className="flex flex-col items-center gap-2.5 rounded-xl border border-dashed border-line-strong bg-surface-subtle px-6 py-10 text-center">
-                <MousePointerClick className="h-5 w-5 text-ink-faint" strokeWidth={1.8} />
-                <p className="text-[12.5px] font-medium text-ink">Elegí una de las tres opciones</p>
-                <p className="max-w-xs text-[11.5px] leading-relaxed text-ink-muted">
-                  Recién ahí se genera el texto completo, los hashtags y el prompt de la imagen.
-                </p>
-              </div>
             )}
           </div>
         </div>
       </aside>
     </div>
+  )
+}
+
+/* ── Resumen de la idea ───────────────────────────────────────────────────── */
+
+/**
+ * La idea recomendada, con su objetivo y a quién le habla bien a la vista.
+ *
+ * Es lo que el usuario pidió que fuera visible: entender de un vistazo qué busca
+ * la pieza —dar a conocer, educar o convertir— y a qué perfil apunta.
+ */
+function IdeaResumen({ idea }: { idea: Opcion }) {
+  const objetivo: Objetivo | null =
+    idea.objetivo === "awareness" || idea.objetivo === "educacion" || idea.objetivo === "conversion"
+      ? idea.objetivo
+      : null
+
+  return (
+    <section className="rounded-xl border border-brand-200 bg-brand-50/60 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {objetivo && (
+          <Badge tone={tonoObjetivo(objetivo)} size="sm">
+            <Target className="h-3 w-3" strokeWidth={2.5} />
+            {OBJETIVO_LABEL[objetivo]}
+          </Badge>
+        )}
+        {idea.audiencia && AUDIENCIA_CORTO[idea.audiencia] && (
+          <Badge tone="neutral" size="sm">
+            <Users className="h-3 w-3" strokeWidth={2.5} />
+            {AUDIENCIA_CORTO[idea.audiencia]}
+          </Badge>
+        )}
+      </div>
+
+      {objetivo && (
+        <p className="mt-2 text-[11px] leading-relaxed text-brand-700/90">
+          Busca <b>{OBJETIVO_DESC[objetivo].toLowerCase()}</b>
+          {idea.audiencia ? ` · le habla a ${AUDIENCIA_LABEL[idea.audiencia].toLowerCase()}` : ""}.
+        </p>
+      )}
+
+      {idea.hook && (
+        <p className="mt-2.5 text-[12px] italic leading-relaxed text-ink-secondary">“{idea.hook}”</p>
+      )}
+
+      <dl className="mt-2.5 space-y-1.5 border-t border-brand-200/70 pt-2.5">
+        {idea.angulo && (
+          <div>
+            <dt className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-ink-faint">El posteo</dt>
+            <dd className="text-[11.5px] leading-relaxed text-ink-muted">{idea.angulo}</dd>
+          </div>
+        )}
+        {idea.imagen && (
+          <div>
+            <dt className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-ink-faint">La imagen</dt>
+            <dd className="text-[11.5px] leading-relaxed text-ink-muted">{idea.imagen}</dd>
+          </div>
+        )}
+      </dl>
+
+      {idea.porQue && (
+        <p className="mt-2.5 rounded-lg bg-surface px-2.5 py-1.5 text-[10.5px] leading-relaxed text-ink-secondary">
+          {idea.porQue}
+        </p>
+      )}
+    </section>
+  )
+}
+
+/* ── Regenerar la idea ────────────────────────────────────────────────────── */
+
+function RegenerarIdea({
+  idea,
+  regenerando,
+  tieneContenido,
+  onRegenerar,
+}: {
+  idea: Opcion
+  regenerando: boolean
+  tieneContenido: boolean
+  onRegenerar: (campos: CamposRegenerar) => void
+}) {
+  const [titulo, setTitulo] = useState(idea.titulo)
+  const [angulo, setAngulo] = useState(idea.angulo)
+  const [objetivo, setObjetivo] = useState<Objetivo>(
+    idea.objetivo === "educacion" || idea.objetivo === "conversion" ? idea.objetivo : "awareness"
+  )
+  const [audiencia, setAudiencia] = useState<Audiencia>(
+    idea.audiencia && idea.audiencia !== "todos" ? idea.audiencia : "decisores"
+  )
+  const [instruccion, setInstruccion] = useState("")
+
+  // Al cambiar de idea (otro slot), rearmar el formulario con sus valores.
+  const idRef = useRef(idea)
+  useEffect(() => {
+    if (idRef.current !== idea) {
+      idRef.current = idea
+      setTitulo(idea.titulo)
+      setAngulo(idea.angulo)
+      setObjetivo(
+        idea.objetivo === "educacion" || idea.objetivo === "conversion" ? idea.objetivo : "awareness"
+      )
+      setAudiencia(idea.audiencia && idea.audiencia !== "todos" ? idea.audiencia : "decisores")
+      setInstruccion("")
+    }
+  }, [idea])
+
+  return (
+    <section className="rounded-xl border border-line bg-surface-subtle p-4">
+      <p className="eyebrow mb-3 flex items-center gap-1.5">
+        <Wand2 className="h-3 w-3" />
+        Regenerar esta pieza
+      </p>
+
+      <div className="space-y-3">
+        <Campo label="Título">
+          <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} disabled={regenerando} />
+        </Campo>
+        <Campo label="Ángulo">
+          <textarea
+            value={angulo}
+            onChange={(e) => setAngulo(e.target.value)}
+            disabled={regenerando}
+            rows={2}
+            className="w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-[12.5px] text-ink outline-none transition-colors focus:border-brand-400 disabled:opacity-60"
+          />
+        </Campo>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Campo label="Objetivo">
+            <Select value={objetivo} onChange={(v) => setObjetivo(v as Objetivo)} disabled={regenerando}>
+              {OBJETIVOS.map((o) => (
+                <option key={o} value={o}>
+                  {OBJETIVO_LABEL[o]}
+                </option>
+              ))}
+            </Select>
+          </Campo>
+          <Campo label="Audiencia">
+            <Select value={audiencia} onChange={(v) => setAudiencia(v as Audiencia)} disabled={regenerando}>
+              {AUDIENCIAS_PIEZA.map((a) => (
+                <option key={a} value={a}>
+                  {AUDIENCIA_CORTO[a]}
+                </option>
+              ))}
+            </Select>
+          </Campo>
+        </div>
+
+        <Campo label="Instrucción (opcional)">
+          <Input
+            value={instruccion}
+            onChange={(e) => setInstruccion(e.target.value)}
+            disabled={regenerando}
+            placeholder="Ej: hacela más técnica, citá un caso real…"
+          />
+        </Campo>
+
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => onRegenerar({ titulo, angulo, objetivo, audiencia, instruccion })}
+            disabled={regenerando}
+          >
+            {regenerando ? <Loader2 className="animate-spin" /> : <Wand2 />}
+            {regenerando ? "Regenerando…" : "Regenerar idea"}
+          </Button>
+          {tieneContenido && (
+            <span className="text-[10.5px] leading-tight text-ink-muted">
+              Regenerar la idea borra el texto y la imagen actuales.
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.08em] text-ink-faint">
+        {label}
+      </span>
+      {children}
+    </label>
+  )
+}
+
+function Select({
+  value,
+  onChange,
+  disabled,
+  children,
+}: {
+  value: string
+  onChange: (v: string) => void
+  disabled?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      className="h-9 w-full rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink outline-none transition-colors focus:border-brand-400 disabled:opacity-60"
+    >
+      {children}
+    </select>
   )
 }
 
@@ -369,37 +489,24 @@ function ContenidoGenerado({
   imagen,
   promptImagen,
   onImagen,
-  sistema,
   armandoPrompt,
   nombreTemplateFeed,
+  sistema,
 }: {
   contenido: Contenido
   canal: string
   canalId: Canal
   imagen: string | null
-  sistema: SistemaVisual
   /** El camino 2 pasa por el servidor a traducir la pieza a variables: tarda. */
   armandoPrompt: boolean
   nombreTemplateFeed: string | null
-  /**
-   * El prompt real con el que se va a generar. Sale de la receta del template
-   * cuando la pieza tiene uno asignado, y del texto libre del modelo cuando no
-   * —los planes viejos—. Se pasa desde arriba y no se arma acá para que sea el
-   * MISMO que usa la generación en lote: dos formas de armarlo son dos piezas
-   * distintas saliendo del mismo botón.
-   */
   promptImagen: string
   onImagen: (dataUrl: string) => void
+  sistema: SistemaVisual
 }) {
   const [previa, setPrevia] = useState(false)
 
-  const todo = [
-    contenido.caption,
-    contenido.cta,
-    contenido.hashtags,
-  ]
-    .filter(Boolean)
-    .join("\n\n")
+  const todo = [contenido.caption, contenido.cta, contenido.hashtags].filter(Boolean).join("\n\n")
 
   return (
     <section className="space-y-3">
@@ -414,12 +521,7 @@ function ContenidoGenerado({
         </div>
       </div>
 
-      <Bloque
-        icono={Type}
-        titulo="Texto de la publicación"
-        texto={contenido.caption}
-        multilinea
-      />
+      <Bloque icono={Type} titulo="Texto de la publicación" texto={contenido.caption} multilinea />
       {contenido.captionCorto && (
         <Bloque icono={Type} titulo="Versión corta (story / anuncio)" texto={contenido.captionCorto} multilinea />
       )}
@@ -430,26 +532,20 @@ function ContenidoGenerado({
           prompt={promptImagen}
           imagen={imagen}
           onImagen={onImagen}
-          sistema={sistema}
           proporcionFija={proporcionDe(canalId)}
         />
       ) : (
         armandoPrompt && (
           <p className="flex items-center gap-1.5 rounded-xl border border-line bg-surface-subtle px-4 py-3 text-[11.5px] text-ink-muted">
             <Loader2 className="h-3 w-3 animate-spin" />
-            Traduciendo la pieza a las variables de {SISTEMA_LABEL.feed}
+            Traduciendo la pieza a las variables de {SISTEMA_LABEL[sistema]}
             {nombreTemplateFeed ? ` · ${nombreTemplateFeed}` : ""}…
           </p>
         )
       )}
 
       {previa && (
-        <VistaPrevia
-          canal={canalId}
-          contenido={contenido}
-          imagen={imagen}
-          onCerrar={() => setPrevia(false)}
-        />
+        <VistaPrevia canal={canalId} contenido={contenido} imagen={imagen} onCerrar={() => setPrevia(false)} />
       )}
     </section>
   )

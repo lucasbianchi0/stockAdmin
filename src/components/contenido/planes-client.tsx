@@ -3,15 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import {
-  Archive,
-  ArchiveRestore,
-  CalendarDays,
-  Copy,
-  LayoutGrid,
-  Sparkles,
-  Trash2,
-} from "lucide-react"
+import { Archive, ArchiveRestore, CalendarDays, Copy, FileText, Sparkles, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -148,9 +140,9 @@ export function PlanesClient() {
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
           <Button asChild variant="outline" size="sm">
-            <Link href="/contenido/plantillas">
-              <LayoutGrid />
-              Plantillas visuales
+            <Link href="/contenido/prompts">
+              <FileText />
+              Prompts
             </Link>
           </Button>
 

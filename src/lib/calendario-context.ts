@@ -57,19 +57,73 @@ export const VALID_FORMATOS = new Set([FORMATO_UNICO])
 
 /* ── Audiencia ────────────────────────────────────────────────────────────── */
 
-export const AUDIENCIAS = ["decisores", "negocio", "ambos"] as const
+/**
+ * A quién le habla una pieza. Los dos primeros son los decisores de compra; el
+ * tercero es la cara corporativa —marca empleadora, cultura, RH, otros
+ * departamentos— que no vende infraestructura pero construye la marca. "todos"
+ * es el objetivo del plan cuando se quiere cubrir los tres perfiles.
+ *
+ * Reemplazó al viejo par decisores/negocio + "ambos": los planes anteriores con
+ * audiencia "ambos" se leen como "todos" (ver `esAudiencia` y los defaults del
+ * server), así que no hace falta migrar la base.
+ */
+export const AUDIENCIAS = ["decisores", "negocio", "corporativo", "todos"] as const
 export type Audiencia = (typeof AUDIENCIAS)[number]
 
 export const AUDIENCIA_LABEL: Record<Audiencia, string> = {
   decisores: "Decisores técnicos (IT, CTO, infraestructura)",
   negocio: "Decisores de negocio (dueños, gerencia, finanzas)",
-  ambos: "Ambos perfiles",
+  corporativo: "Corporativo / RH (marca empleadora, cultura, equipo)",
+  todos: "Todos los perfiles",
+}
+
+/** Etiqueta corta, para el chip de cada pieza. */
+export const AUDIENCIA_CORTO: Record<Audiencia, string> = {
+  decisores: "Técnicos",
+  negocio: "Negocio",
+  corporativo: "Corporativo / RH",
+  todos: "Todos",
+}
+
+/* ── Objetivo de marketing ────────────────────────────────────────────────── */
+
+/**
+ * Para qué sirve una pieza dentro del embudo. Es lo que hace legible la
+ * estrategia del plan: de un vistazo se ve cuánto da a conocer, cuánto educa y
+ * cuánto empuja a la acción, en vez de una lista de quince posteos sin criterio.
+ */
+export const OBJETIVOS = ["awareness", "educacion", "conversion"] as const
+export type Objetivo = (typeof OBJETIVOS)[number]
+
+export const OBJETIVO_LABEL: Record<Objetivo, string> = {
+  awareness: "Awareness",
+  educacion: "Educación",
+  conversion: "Conversión",
+}
+
+/** Qué persigue cada objetivo, en una línea. Se muestra junto al chip. */
+export const OBJETIVO_DESC: Record<Objetivo, string> = {
+  awareness: "Dar a conocer la marca",
+  educacion: "Enseñar / generar consideración",
+  conversion: "Generar demanda / llamado a la acción",
+}
+
+export function esObjetivo(v: unknown): v is Objetivo {
+  return typeof v === "string" && (OBJETIVOS as readonly string[]).includes(v)
 }
 
 /* ── Parámetros del plan ──────────────────────────────────────────────────── */
 
 export const DIAS_PLAN = 15
-export const OPCIONES_POR_IDEA = 3
+/**
+ * Una sola idea por día: la recomendada.
+ *
+ * Antes eran tres opciones por slot y había que elegir. En la práctica se elegía
+ * casi siempre la recomendada, así que el plan tardaba el triple en cerrarse para
+ * terminar en el mismo lugar. Ahora el estratega propone una y, si no convence,
+ * se regenera con campos editables (título, ángulo, objetivo, audiencia).
+ */
+export const OPCIONES_POR_IDEA = 1
 export const CONTEXTO_MAX_LEN = 1200
 
 /**
@@ -88,16 +142,21 @@ export type Opcion = {
   id: string
   titulo: string
   hook: string
-  /** Una por slot. Sin una recomendación, tres opciones equivalentes trasladan
-   *  la decisión entera al usuario y el plan tarda el triple en cerrarse. */
+  /** El objetivo de marketing de la pieza: para qué sirve dentro del embudo. */
+  objetivo: Objetivo
+  /** A quién le habla esta pieza puntual. Puede variar dentro de un mismo plan:
+   *  una de conversión le habla a decisores y una de cultura, a corporativo/RH. */
+  audiencia: Audiencia
+  /** Sigue siendo `true` en el modelo de una sola idea: marca que es la propuesta
+   *  del estratega. Se conserva por compatibilidad con los planes de tres. */
   recomendada: boolean
-  /** Por qué esa es la recomendada. Una recomendación sin motivo no se discute
-   *  ni se acepta: se ignora. */
+  /** Por qué el estratega propone esta pieza. Sin motivo, una propuesta no se
+   *  discute ni se acepta: se ignora. */
   porQue: string
   /** De qué trata el posteo: el ángulo y qué se cuenta. */
   angulo: string
-  /** Qué se va a ver en la pieza. Elegir a ciegas entre tres títulos no alcanza:
-   *  la mitad del trabajo de una publicación es la imagen. */
+  /** Qué se va a ver en la pieza. La mitad del trabajo de una publicación es la
+   *  imagen, así que se propone junto con el texto. */
   imagen: string
   formato: string
 }

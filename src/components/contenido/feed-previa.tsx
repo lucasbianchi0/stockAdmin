@@ -16,7 +16,6 @@ import {
 
 import { fechaLarga, type Canal, type Slot } from "@/lib/calendario-context"
 import { ordenDeLectura } from "@/lib/secuencia"
-import { templatePorId } from "@/lib/templates-pieza"
 
 /**
  * Cómo queda TODO el feed, antes de generarlo.
@@ -26,10 +25,9 @@ import { templatePorId } from "@/lib/templates-pieza"
  * texto encima, y en la grilla eso se ve como una pared. Pero para enterarse
  * había que generar las once, a doce segundos cada una.
  *
- * Ahora no: con el template decidido al planificar, cada celda puede mostrar la
- * MINIATURA de su template —la última pieza que se generó con él— y el conjunto
- * se juzga sin gastar una sola generación. Lo que ya tiene imagen real se marca
- * distinto, así nunca se confunde una muestra con la pieza terminada.
+ * En el camino 2 no hay miniaturas de template guardadas, así que la celda sin
+ * imagen real muestra un placeholder con el nombre del formato que le tocó. El
+ * conjunto se sigue pudiendo juzgar por ritmo y por lo que ya tiene imagen.
  *
  * Las imágenes van en `<img>` plano: son data: URL de runtime o URLs firmadas
  * temporales, y next/image no puede optimizar ninguna de las dos.
@@ -40,13 +38,11 @@ const PERFIL = {
   linkedin: { nombre: "ACCEDRA S.A.", meta: "526 seguidores" },
 }
 
-/** Qué se dibuja en una celda y con qué grado de verdad. */
+/** Qué se dibuja en una celda. */
 type Celda = {
   slot: Slot
   /** La imagen real de la pieza, si ya se generó. */
   imagen: string | null
-  /** La muestra del template, cuando todavía no hay imagen real. */
-  muestra: string | null
   nombreTemplate: string | null
 }
 
@@ -54,13 +50,14 @@ export function FeedPrevia({
   canal,
   slots,
   imagenDe,
-  miniaturas,
+  nombreTemplate,
   onCerrar,
 }: {
   canal: Canal
   slots: Slot[]
   imagenDe: (slot: Slot) => string | null
-  miniaturas: Record<string, string>
+  /** El nombre del template del feed que le tocó a cada slot. */
+  nombreTemplate: (slot: Slot) => string | null
   onCerrar: () => void
 }) {
   const [detalle, setDetalle] = useState<Celda | null>(null)
@@ -75,16 +72,12 @@ export function FeedPrevia({
    */
   const celdas: Celda[] = useMemo(
     () =>
-      ordenDeLectura(slots, canal).map((slot) => {
-        const template = templatePorId(slot.templateSlug)
-        return {
-          slot,
-          imagen: imagenDe(slot),
-          muestra: template ? (miniaturas[template.id] ?? null) : null,
-          nombreTemplate: template?.nombre ?? null,
-        }
-      }),
-    [slots, canal, imagenDe, miniaturas]
+      ordenDeLectura(slots, canal).map((slot) => ({
+        slot,
+        imagen: imagenDe(slot),
+        nombreTemplate: nombreTemplate(slot),
+      })),
+    [slots, canal, imagenDe, nombreTemplate]
   )
 
   const reales = celdas.filter((c) => c.imagen).length
@@ -135,8 +128,8 @@ export function FeedPrevia({
 
         <p className="mx-auto mt-3 max-w-[375px] text-center text-[11px] leading-relaxed text-white/50">
           {canal === "linkedin"
-            ? "En orden de publicación. Cada texto está cortado donde lo corta LinkedIn. Las piezas marcadas “Template” son una muestra del formato, todavía no la imagen final."
-            : "La más nueva arriba a la izquierda, como en el perfil. Las piezas marcadas “Template” son una muestra del formato, todavía no la imagen final."}
+            ? "En orden de publicación. Cada texto está cortado donde lo corta LinkedIn. Las celdas sin imagen todavía no se generaron."
+            : "La más nueva arriba a la izquierda, como en el perfil. Las celdas sin imagen todavía no se generaron."}
         </p>
       </div>
     </div>
@@ -209,20 +202,10 @@ function GrillaInstagram({
  *
  * La advertencia la da una etiqueta, que dice lo mismo sin tocar la imagen.
  */
-function Relleno({ celda, detalle }: { celda: Celda; detalle?: boolean }) {
+function Relleno({ celda }: { celda: Celda; detalle?: boolean }) {
   if (celda.imagen) {
     // eslint-disable-next-line @next/next/no-img-element -- data: URL o firma temporal
     return <img src={celda.imagen} alt="" className="absolute inset-0 h-full w-full object-cover" />
-  }
-
-  if (celda.muestra) {
-    return (
-      <>
-        {/* eslint-disable-next-line @next/next/no-img-element -- firma temporal */}
-        <img src={celda.muestra} alt="" className="absolute inset-0 h-full w-full object-cover" />
-        <EtiquetaMuestra nombre={celda.nombreTemplate} detalle={detalle} />
-      </>
-    )
   }
 
   return (
@@ -230,29 +213,7 @@ function Relleno({ celda, detalle }: { celda: Celda; detalle?: boolean }) {
       <span className="text-[9px] leading-tight text-white/60">
         {celda.nombreTemplate ?? "Sin formato"}
       </span>
-      <span className="text-[8px] leading-tight text-white/30">sin muestra</span>
-    </span>
-  )
-}
-
-/**
- * "Esto todavía no es la pieza final".
- *
- * Arriba a la izquierda y chica: tiene que leerse sin tapar la composición, que
- * es lo que se vino a mirar. En la grilla de Instagram la celda mide un tercio
- * de 375px, así que ahí va sola la palabra; en las vistas grandes entra también
- * el nombre del template, que es información útil cuando se está decidiendo si
- * ese formato va o no va.
- */
-function EtiquetaMuestra({ nombre, detalle }: { nombre: string | null; detalle?: boolean }) {
-  return (
-    <span className="absolute left-1 top-1 flex items-center gap-1 rounded bg-black/65 px-1.5 py-0.5 backdrop-blur-[2px]">
-      <span className="text-[8px] font-bold uppercase tracking-[0.08em] leading-none text-white/90">
-        Template
-      </span>
-      {detalle && nombre && (
-        <span className="text-[9px] leading-none text-white/60">· {nombre}</span>
-      )}
+      <span className="text-[8px] leading-tight text-white/30">sin imagen</span>
     </span>
   )
 }
@@ -375,8 +336,8 @@ function textoDe(slot: Slot): string {
   const c = slot.contenido
   if (c) return [c.caption, c.cta, c.hashtags].filter(Boolean).join("\n\n")
 
-  const elegida = slot.opciones.find((o) => o.id === slot.elegida)
-  if (elegida) return [elegida.titulo, elegida.hook].filter(Boolean).join("\n\n")
+  const idea = slot.opciones.find((o) => o.id === slot.elegida) ?? slot.opciones[0]
+  if (idea) return [idea.titulo, idea.hook].filter(Boolean).join("\n\n")
 
-  return "Todavía sin elegir de las tres opciones"
+  return "Todavía sin contenido"
 }

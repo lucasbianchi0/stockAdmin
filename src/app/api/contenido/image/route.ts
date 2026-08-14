@@ -5,9 +5,6 @@ import { join } from "node:path"
 import { NextResponse } from "next/server"
 import sharp from "sharp"
 import { IMAGE_STYLE_SUFFIX } from "@/lib/contenido-context"
-import { supabase } from "@/lib/supabase"
-import { BUCKET_PLANTILLAS } from "@/lib/plantillas"
-import { promptDeTemplate, templatePorId, type TemplatePieza } from "@/lib/templates-pieza"
 import { conLogo, vinoEnmarcada } from "@/lib/logo-pieza"
 
 // El bloque de estilo sale del Brand Kit (ver IMAGE_STYLE_SUFFIX): antes vivía
@@ -102,36 +99,6 @@ function extraerImagen(data: RespuestaGemini): { b64: string; mime: string } | n
 }
 
 /**
- * La plantilla, si hay: baja el archivo y lo devuelve como bloque de entrada.
- *
- * Verificado contra la API: con una imagen de referencia adelante del texto, el
- * modelo copia fondo, luz y acento sin que se los nombre. Es la diferencia más
- * grande entre quince piezas sueltas y quince piezas de la misma marca.
- */
-async function bloqueDePlantilla(plantillaId: string) {
-  const { data: fila } = await supabase
-    .from("plantillas")
-    .select("storage_path, mime_type")
-    .eq("id", plantillaId)
-    .eq("activa", true)
-    .maybeSingle()
-
-  if (!fila?.storage_path) return null
-
-  const { data: archivo } = await supabase.storage
-    .from(BUCKET_PLANTILLAS)
-    .download(String(fila.storage_path))
-
-  if (!archivo) return null
-
-  return {
-    type: "image",
-    mime_type: String(fila.mime_type ?? "image/jpeg"),
-    data: Buffer.from(await archivo.arrayBuffer()).toString("base64"),
-  }
-}
-
-/**
  * La referencia de marca del camino 2. Es de Accedra, no de otra marca.
  *
  * Es la diferencia más grande medida hasta ahora en este sistema: las mismas dos
@@ -183,58 +150,153 @@ The new piece:
 
 `
 
+// ─── OpenRouter ─────────────────────────────────────────────────────────────
+// Con OPENROUTER_API_KEY cargada, el camino 2 genera por acá.
+//
+// Es el MISMO modelo que el camino directo —Gemini 3 Pro Image, que OpenRouter
+// publica como "Nano Banana Pro"— así que la pieza no cambia. Lo que cambia es
+// de qué cuenta sale la cuota y por dónde se factura.
+//
+// Y NO hay respaldo a Gemini si OpenRouter falla, por la misma razón que este
+// archivo nunca tuvo respaldo a OpenAI (ver el catch del final): un fallback
+// silencioso deja "salió la pieza" cuando lo que hubo fue un 402 de crédito
+// agotado, y el error real no aparece hasta que alguien mira la factura.
+
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/images"
+
+/**
+ * El endpoint de imágenes de OpenRouter es propio, no el de chat: recibe
+ * `prompt` suelto y devuelve el base64 en `data[0].b64_json`.
+ *
+ * Verificado contra la API el 14/8/2026: este modelo acepta `resolution`
+ * (1K/2K/4K), `aspect_ratio` (1:1, 4:5 y 16:9 entre otros) e `input_references`
+ * hasta 14 imágenes. O sea, las tres cosas que el camino 2 necesita —2K, el
+ * cuadrado del feed y la placa de referencia de marca— sin perder nada respecto
+ * de pegarle directo a Google.
+ */
+const OPENROUTER_MODEL = process.env.OPENROUTER_IMAGE_MODEL || "openai/gpt-image-2"
+
+type RespuestaOpenRouter = {
+  data?: Array<{ b64_json?: string; media_type?: string }>
+}
+
+/**
+ * El tamaño se pide distinto según de quién sea el modelo, y mandar el parámetro
+ * que no corresponde es un 400.
+ *
+ * Verificado contra el catálogo de OpenRouter el 14/8/2026:
+ *
+ * - `google/gemini-*-image` toma `resolution` ("1K"/"2K"/"4K") y acepta 4:5.
+ * - `openai/gpt-image-2` NO tiene `resolution` —usa `quality`— y su lista de
+ *   aspectos **no incluye 4:5**. El vertical más cercano que sí acepta es 3:4,
+ *   y como `conLogo` lleva la pieza a 1080×1350 igual, la diferencia se pierde
+ *   en el recorte final.
+ *
+ * `quality` se deja en el default a propósito: medido el 14/8/2026, "high"
+ * multiplica el costo por diez (US$ 0,023 → US$ 0,228) y quintuplica el tiempo,
+ * sin mejorar la composición ni el texto en las pruebas que hicimos.
+ */
+function paramsDeTamano(modelo: string, sizeKind: SizeKind): Record<string, string> {
+  if (modelo.startsWith("openai/")) {
+    return {
+      aspect_ratio: sizeKind === "portrait" ? "3:4" : GEMINI_ASPECTO[sizeKind],
+    }
+  }
+  return {
+    aspect_ratio: GEMINI_ASPECTO[sizeKind],
+    resolution: GEMINI_RESOLUCION,
+  }
+}
+
+async function generarConOpenRouter(
+  prompt: string,
+  sizeKind: SizeKind,
+  modelo: string = OPENROUTER_MODEL
+): Promise<string> {
+  const marca = await referenciaDeMarca()
+
+  const res = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: modelo,
+      // Sin la referencia la pieza sale peor pero sale, igual que en el camino
+      // directo: el bloque COPIA_LA_MARCA solo tiene sentido si la imagen viaja.
+      prompt: marca ? COPIA_LA_MARCA + prompt : prompt,
+      ...paramsDeTamano(modelo, sizeKind),
+      n: 1,
+      ...(marca
+        ? {
+            input_references: [
+              {
+                type: "image_url",
+                image_url: { url: `data:${marca.mime_type};base64,${marca.data}` },
+              },
+            ],
+          }
+        : {}),
+    }),
+  })
+
+  if (!res.ok) {
+    // El cuerpo va entero al mensaje a propósito. El fallo más probable acá es
+    // el 402 por crédito agotado, y "OpenRouter 402: Insufficient credits" se
+    // resuelve solo; "no se pudo generar la imagen" manda a alguien a revisar
+    // el prompt durante media hora.
+    throw new Error(`OpenRouter ${res.status}: ${(await res.text()).slice(0, 300)}`)
+  }
+
+  const cuerpo = (await res.json()) as RespuestaOpenRouter
+  const imagen = cuerpo.data?.[0]
+  if (!imagen?.b64_json) {
+    throw new Error("OpenRouter devolvió 200 sin imagen")
+  }
+
+  return `data:${imagen.media_type ?? "image/jpeg"};base64,${imagen.b64_json}`
+}
+
+// Los dos motores que el usuario puede elegir para el camino 2. "chatgpt" es
+// gpt-image-2 por OpenRouter; "gemini" es Gemini 3 Pro Image directo a Google.
+// No se exportan: Next.js solo admite exports de route (GET/POST/maxDuration…).
+type ModeloCamino2 = "gemini" | "chatgpt"
+const MODELO_CHATGPT = "openai/gpt-image-2"
+
+/**
+ * Por dónde sale el camino 2.
+ *
+ * Con una elección explícita del usuario, manda esa: "chatgpt" pega a OpenRouter
+ * con gpt-image-2, "gemini" va directo a Google. Sin elección —la generación en
+ * lote del calendario, los planes viejos— se mantiene el auto de siempre:
+ * OpenRouter si hay clave, directo a Google si no.
+ */
+function generarCamino2(
+  prompt: string,
+  sizeKind: SizeKind,
+  modelo?: ModeloCamino2
+): Promise<string> {
+  if (modelo === "chatgpt") return generarConOpenRouter(prompt, sizeKind, MODELO_CHATGPT)
+  if (modelo === "gemini") return generarConGemini(prompt, sizeKind, true)
+  return process.env.OPENROUTER_API_KEY
+    ? generarConOpenRouter(prompt, sizeKind)
+    : generarConGemini(prompt, sizeKind, true)
+}
+
 async function generarConGemini(
   prompt: string,
   sizeKind: SizeKind,
-  plantillaId?: string,
   conMarca = false
 ): Promise<string> {
-  // El camino 2 lleva la referencia de marca; el camino de siempre, la plantilla
-  // que se haya elegido. Nunca las dos: son dos instrucciones opuestas sobre qué
-  // hacer con la identidad de la imagen que se manda adelante.
+  // El camino 2 lleva adelante la referencia de marca de Accedra; el path del
+  // Content Studio manda solo el texto. Ya no hay plantillas de otras marcas: ese
+  // era el camino 1, que se retiró.
   if (conMarca) {
     const marca = await referenciaDeMarca()
     if (marca) return await pedirImagen([marca, { type: "text", text: COPIA_LA_MARCA + prompt }], sizeKind)
-    return await pedirImagen([{ type: "text", text: prompt }], sizeKind)
   }
-
-  const referencia = plantillaId ? await bloqueDePlantilla(plantillaId) : null
-
-  // La referencia va PRIMERO. Con el texto adelante el modelo la trata como
-  // algo a describir; adelante, como el molde a seguir.
-  //
-  // Y la instrucción separa explícitamente qué se copia de qué se descarta: las
-  // referencias son piezas de OTRAS marcas, subidas por su composición. Sin esta
-  // separación el modelo copia también el color y los signos de identidad, y la
-  // pieza sale con el verde de una y el rojo de la otra — que es exactamente lo
-  // que no puede pasar.
-  const input = referencia
-    ? [
-        referencia,
-        {
-          type: "text",
-          text: `La imagen de referencia es un MOLDE DE COMPOSICIÓN de otra marca. No es la marca para la que trabajás.
-
-COPIÁ de la referencia, y solo esto:
-- La estructura: dónde va el sujeto, cuánto espacio vacío queda y dónde.
-- El encuadre, la proporción y la jerarquía visual.
-- El tratamiento fotográfico: tipo de luz, contraste, nivel de minimalismo.
-- El grado de sobriedad y de "aire".
-
-IGNORÁ por completo de la referencia:
-- Su paleta. Los colores de la pieza nueva son ÚNICAMENTE los de la marca descrita abajo.
-- Sus logos, wordmarks, mascotas, sellos, badges, hashtags y dominios.
-- Sus textos y su contenido.
-- Cualquier elemento que identifique a esa marca.
-
-La pieza nueva es de Accedra y solo puede tener el lenguaje visual de Accedra:
-
-${prompt}`,
-        },
-      ]
-    : [{ type: "text", text: prompt }]
-
-  return await pedirImagen(input, sizeKind)
+  return await pedirImagen([{ type: "text", text: prompt }], sizeKind)
 }
 
 /** El pedido a Gemini y la lectura de la respuesta, ya armado el input. */
@@ -368,10 +430,11 @@ export async function POST(req: Request) {
    *
    * Los quince templates de `templates-feed.ts` ya traen adentro su paleta, su
    * tipografía y sus prohibiciones. Pegarles atrás el bloque de estilo del Brand
-   * Kit sería mandarle al generador dos sistemas de identidad en el mismo
-   * pedido, y de ahí no sale ninguno de los dos. Por lo mismo se ignora la
-   * plantilla de referencia: es una imagen de OTRA marca puesta como molde, y
-   * acá el molde ya lo pone el template.
+   * Kit sería mandarle al generador dos sistemas de identidad en el mismo pedido,
+   * y de ahí no sale ninguno de los dos.
+   *
+   * El otro path (crudo === false) es el del Content Studio del admin: manda un
+   * concepto suelto y se le pega el bloque de estilo del Brand Kit.
    */
   const crudo = raw.sistema === "feed"
 
@@ -383,18 +446,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Prompt requerido" }, { status: 400 })
   }
 
+  // Camino 2: qué motor eligió el usuario. Solo aplica en crudo; el path del
+  // Studio va siempre por Gemini directo. Sin elección, queda el auto por env.
+  const modeloCamino2: ModeloCamino2 | undefined =
+    crudo && (raw.modelo === "gemini" || raw.modelo === "chatgpt") ? raw.modelo : undefined
+
   const sizeKind: SizeKind =
     raw.size === "portrait" || raw.size === "landscape" ? raw.size : "square"
 
-  const plantillaId = typeof raw.plantillaId === "string" ? raw.plantillaId : undefined
-
-  const template = templatePorId(typeof raw.templateId === "string" ? raw.templateId : null)
-  const composicion = typeof raw.composicion === "string" ? raw.composicion.slice(0, 3000) : ""
-  const titular = typeof raw.titular === "string" ? raw.titular.trim().slice(0, 200) : ""
-  const sujeto = typeof raw.sujeto === "string" ? raw.sujeto.trim().slice(0, 400) : ""
-  const etiqueta = typeof raw.etiqueta === "string" ? raw.etiqueta.trim().slice(0, 30) : ""
-
-  // Carousel continuity note (keeps the slides looking like one set).
+  // Nota de continuidad de carrusel (mantiene las slides como un solo set). La
+  // usa el Content Studio; el feed genera piezas sueltas.
   let seriesNote = ""
   if (raw.carousel && typeof raw.carousel === "object" && !Array.isArray(raw.carousel)) {
     const c = raw.carousel as Record<string, unknown>
@@ -405,39 +466,35 @@ export async function POST(req: Request) {
     }
   }
 
-  // Con template, la receta manda y el bloque de estilo genérico sobra: repetir
-  // paleta y prohibiciones dos veces solo diluye la instrucción.
-  const receta: TemplatePieza | null = composicion
-    ? {
-        id: "adhoc",
-        nombre: "Prueba",
-        cuandoUsar: "",
-        // La densidad la lee el algoritmo de secuencia para armar la grilla, y
-        // una receta suelta escrita a mano no entra en ninguna: "mixta" es la
-        // que no impone restricciones. `promptDeTemplate` no la mira.
-        densidad: "mixta",
-        llevaFoto: true,
-        composicion,
-      }
-    : template
+  // El feed manda el prompt entero; el Studio pega el bloque de estilo del Brand.
+  const finalPrompt = crudo ? concept : `${concept}${seriesNote}${STYLE_SUFFIX}`
 
-  const finalPrompt = crudo
-    ? concept
-    : receta
-      ? promptDeTemplate({ template: receta, titular: titular || concept, sujeto, etiqueta })
-      : `${concept}${seriesNote}${STYLE_SUFFIX}`
-
-  if (!process.env.GEMINI_API_KEY) {
-    return NextResponse.json({ error: "Falta GEMINI_API_KEY" }, { status: 500 })
+  // El guard depende del motor: ChatGPT necesita OpenRouter, Gemini la clave de
+  // Google, el camino 2 en auto sale por cualquiera; el Studio, Gemini directo.
+  const faltaClave =
+    modeloCamino2 === "chatgpt"
+      ? !process.env.OPENROUTER_API_KEY
+      : modeloCamino2 === "gemini"
+        ? !process.env.GEMINI_API_KEY
+        : crudo
+          ? !process.env.OPENROUTER_API_KEY && !process.env.GEMINI_API_KEY
+          : !process.env.GEMINI_API_KEY
+  if (faltaClave) {
+    const falta =
+      modeloCamino2 === "chatgpt"
+        ? "OPENROUTER_API_KEY (necesaria para ChatGPT)"
+        : modeloCamino2 === "gemini"
+          ? "GEMINI_API_KEY (necesaria para Gemini)"
+          : crudo
+            ? "OPENROUTER_API_KEY o GEMINI_API_KEY"
+            : "GEMINI_API_KEY"
+    return NextResponse.json({ error: `Falta ${falta}` }, { status: 500 })
   }
 
   try {
-    let generada = await generarConGemini(
-      finalPrompt,
-      sizeKind,
-      crudo ? undefined : plantillaId,
-      crudo
-    )
+    let generada = crudo
+      ? await generarCamino2(finalPrompt, sizeKind, modeloCamino2)
+      : await generarConGemini(finalPrompt, sizeKind, false)
 
     // Un reintento y uno solo si la pieza vino enmarcada como mockup. Es un
     // fallo intermitente que no cede por prompt —le pegamos tres veces— y que
@@ -447,14 +504,25 @@ export async function POST(req: Request) {
       const bytes = Buffer.from(generada.split(",")[1] ?? "", "base64")
       if (await vinoEnmarcada(bytes)) {
         console.warn("[contenido/image] pieza enmarcada, regenerando")
-        generada = await generarConGemini(finalPrompt, sizeKind, undefined, true)
+        generada = await generarCamino2(finalPrompt, sizeKind, modeloCamino2)
       }
     }
 
     const image = crudo
       ? await componerLogo(generada, sizeKind)
       : await aMedida(generada, sizeKind)
-    return NextResponse.json({ image, model: GEMINI_MODEL, prompt: finalPrompt })
+    // Qué generó de verdad esta pieza. Con dos motores posibles y hasta una
+    // elección manual, decir siempre GEMINI_MODEL sería mentir en muchos casos.
+    const modelo = !crudo
+      ? GEMINI_MODEL
+      : modeloCamino2 === "chatgpt"
+        ? MODELO_CHATGPT
+        : modeloCamino2 === "gemini"
+          ? GEMINI_MODEL
+          : process.env.OPENROUTER_API_KEY
+            ? OPENROUTER_MODEL
+            : GEMINI_MODEL
+    return NextResponse.json({ image, model: modelo, prompt: finalPrompt })
   } catch (err) {
     // Sin respaldo a propósito: Claude analiza, Gemini genera y nadie más. Un
     // fallback a otro proveedor enmascaraba el error real —el 429 de una cuenta

@@ -15,7 +15,7 @@
  * se publica es un problema, no un detalle de estilo (ver `feed-variables.ts`).
  */
 
-import type { Densidad } from "@/lib/templates-pieza"
+import type { Densidad } from "@/lib/secuencia"
 import type { VariablesFeed } from "@/lib/feed-variables"
 
 /**
@@ -132,7 +132,8 @@ function si(cond: boolean, texto: string): string {
  * literal, así que se hereda acá aunque los prompts originales no la tuvieran.
  */
 const TEXTO_LITERAL = `TEXT ACCURACY — critical: reproduce every string given above EXACTLY, letter by letter, including Spanish accents (á é í ó ú ñ) and punctuation. Do not translate, rephrase, shorten or add any word. No lorem ipsum, no placeholder text, no repeated headline in a second size.
-Quotation marks in this prompt are delimiters, not content: never draw a quotation mark in the image. The only punctuation that gets rendered is the punctuation inside the strings themselves.`
+Quotation marks in this prompt are delimiters, not content: never draw a quotation mark in the image. The only punctuation that gets rendered is the punctuation inside the strings themselves.
+NOTHING ELSE IS WRITTEN. The piece contains the strings given above and not one word more. If no eyebrow label is given, the piece has NO eyebrow — do not invent a category, a section name or a heading to fill that slot, never copy one from the reference image, and never promote one of the list items into an eyebrow: a string belongs to the slot it was given for and to no other. The same goes for captions, taglines, dates, URLs, hashtags and made-up figures: if it was not given, it does not appear.`
 
 /**
  * Ningún logo dibujado, y el rincón reservado.
@@ -149,7 +150,7 @@ The word "Accedra" does not appear anywhere in this image. No wordmark, no monog
 
 The reference image shows that logo on every piece. That is exactly what you must NOT reproduce: those pieces are shown to you finished, and you are producing the stage before the logo goes on. Drawing it is the one failure that makes the output unusable, because it collides with the real one.
 
-RESERVED CORNER: the bottom-left region of the artwork — the leftmost 32% of the width, the bottom 14% of the height — carries no text, no icon, no graphic element and no bright or busy part of the photograph. It is dark and quiet.
+RESERVED CORNER: the bottom-left region of the artwork — the leftmost 35% of the width, the bottom 20% of the height — carries no text, no icon, no graphic element and no bright or busy part of the photograph. It is dark and quiet. Measured: the real logo lands between 90% and 93% of the height, so a label sitting at 85% still collides with it. Keep everything above 76%.
 
 Read that as a region INSIDE the artwork, not as a margin around it. The artwork still runs to all four edges of the square; the reserved corner is simply the calm part of it. Do NOT shrink, inset, frame or float the artwork to create that space, and do not add any border, backdrop or shadow around it — every pixel of the square, corner included, is the piece itself.
 
@@ -178,13 +179,30 @@ No third-party logos anywhere either, unless explicitly requested above.`
  * nombran como distancia DEL TEXTO a los bordes y el negro plano como "el
  * fondo", que es lo que se quería decir desde el principio.
  */
-const SISTEMA_GUIA = `TYPE SYSTEM — the headline is set in a geometric grotesque (Montserrat) at REGULAR or LIGHT weight: thin, even strokes, open counters, sentence case, generous line spacing. It is NOT bold, NOT semibold, NOT black, NOT condensed and never faux-bolded. Size carries the hierarchy, weight does not: the headline is large and thin, and it reads calm rather than loud. Only a standalone figure (a percentage, a year count) may be set heavier. Secondary lines and labels are the same face, smaller. Never Helvetica, Arial or a default system font.
+const SISTEMA_GUIA = `TYPE SYSTEM — the headline is set in a NEO-GROTESQUE with a tall x-height and a double-storey lowercase 'a' (Inter, Helvetica Now Display, SF Pro), at REGULAR or LIGHT weight: thin, even strokes, open counters, sentence case, generous line spacing. NOT geometric, NOT Futura-like, NOT Montserrat, NOT condensed, NOT a slab. It is NOT bold, NOT semibold, NOT black and never faux-bolded. Size carries the hierarchy, weight does not: the headline is large and thin, and it reads calm rather than loud. Only a standalone figure (a percentage, a year count) may be set heavier. Secondary lines and labels are the same face, smaller.
+
+VERTICAL LAYOUT — the square has four zones and EVERY zone has a job. A large empty region is a failed composition, not restraint:
+  · Zone A, top 6-13%: the eyebrow label, on the left margin.
+  · Zone B, 13-48%: the headline. Large, thin, left-aligned.
+  · Zone C, 46-76%: the secondary block — ONLY IF the brief below gives one. Most pieces have none, and that is normal.
+      — If the brief gives a list of items (services, features, capabilities), it is a VERTICAL STACK, one item per line, left-aligned to the same margin as the headline, spanning the zone: the items are spaced generously apart so the stack reaches down to about 76%, filling the left column. Never a single horizontal row squeezed under the headline — that leaves the whole left side dead and is the most common failure of this layout. Set them clearly larger than a caption, comfortably readable at a glance on a phone, each with a thin outline icon to its left, the icon sized to the text.
+      — If the brief gives NO secondary block, Zone C belongs to the image and to silence. Do NOT invent list items, bullets, pills, icons, captions or a call to action to fill it: an invented bullet is a worse defect than an empty zone. In that case the headline may be set larger and breathe further down, and the photograph carries the rest.
+  · Zone D, the bottom 20%: a clear band carrying ONLY the photograph or the background.
+
+THE BOTTOM BAND IS SACRED: everything written — eyebrow, headline, every label and every pill — lives entirely ABOVE 76% of the height. Below that line there is no text, no icon and no graphic, not even partially. The left portion of that band is where the real logo gets composited afterwards, and anything there collides with it.
+
+NO DEAD ZONE: no continuous region larger than about a quarter of the square may read as flat empty background. If a large void appears in the lower half, the composition failed — the fix is that the PHOTOGRAPH reaches into it with legible detail, or that the headline is set larger and lower. Never fill a void by inventing content: on a piece with no secondary block, calm background carrying a legible image is right, and made-up bullets are wrong.
+
+SCRIM, NOT ERASURE: where a photograph carries the piece, the black gradient falls ONLY behind the text, just enough to keep the type crisp. It protects the text; it does not erase the image. Where no text sits, the photograph keeps its brightness and its detail — a visible, atmospheric image reads far more premium than a black rectangle. And it is ONE photograph, selectively darkened: never a two-panel layout, never a vertical dividing line, never a seam.
 PALETTE, strictly: background flat #0B0D12 to #111827, surfaces and cards #1E293B, accent #3B82F6 used sparingly. No other color outside the photograph.
 TEXT COLOR: every word in the piece is WHITE #FFFFFF — the headline, the service labels, the list items, the pill text, the captions, the CTA. Grey text is a defect: it disappears against the black. The only exceptions are the small uppercase eyebrow label and the highlighted span of the headline, which are the accent blue.
 KEEP IT PLAIN: say things the simplest way they can be said. No decorative icons where a word does the job, no arrows or symbols standing in for words, no notation the reader has to decode, no ornament. If an element does not carry meaning on its own, it does not go in the piece.
-NEGATIVE SPACE: the text block occupies at most the upper third of the canvas and never crowds it. The text keeps a wide clear distance from all four edges — that is padding INSIDE the artwork, never a border around it: the background itself still runs edge to edge, behind and past the text. Large uninterrupted calm areas of that background are the point of this system, not empty space to fill — resist adding anything to them.
+NEGATIVE SPACE: the headline is BIG — its block runs to about 80% of the width and fills Zone B without crowding it. A small timid headline is the most common way to get this system wrong. The text keeps a wide clear distance from all four edges — that is padding INSIDE the artwork, never a border around it: the background itself still runs edge to edge, behind and past the text.
+
+MARGIN: one single left margin, about 7% of the width, shared by the eyebrow, the headline and the secondary block — they all start on the same vertical line.
 GRAPHICS: flat, thin, luminous line-work on black — outlines, dotted particle fields, fine curves. Never a rendered 3D object, never volumetric glow, never a chrome or glass surface, never small illegible characters or fake code inside a graphic.
 PHOTOGRAPHY: real photographs only, with the grain and imperfection of a real camera. Never a CGI render, never an illustration.
+NOT AI-LOOKING — this is what separates a real photograph from a generated one, and it is the difference people notice first. Refuse the clichés: no perfectly symmetric endless corridor with the vanishing point dead centre, no infinite receding rows of identical glowing lights, no mirror-polished reflective floor, no impossibly clean scene, no uniform blue glow bathing everything. Shoot it instead like a real photographer did: an off-centre frame, a specific piece of equipment closer to the lens, shallow depth of field with a genuine focal plane so parts of the frame fall out of focus, uneven and motivated light, visible grain, a little mess. A real place someone walked into with a camera — not a rendering of the idea of that place.
 ICONS: thin single-weight outline icons only, small, aligned to the text baseline. Never filled, never colorful, never illustrative.
 GRID: clean and hierarchical, everything aligned to a single left edge unless the template says otherwise.
 FULL BLEED — the artwork itself fills the entire square canvas, edge to edge to edge to edge. This is the finished post, NOT a presentation of it: no mockup, no card floating on a backdrop, no drop shadow around the piece, no framing margin, no device screen, no phone, no browser window, no perspective. Nothing may surround the artwork, because nothing is outside it.`
@@ -207,22 +225,26 @@ export const TEMPLATES_FEED: TemplateFeed[] = [
     familia: "tecnologia",
     cuandoUsar: "Networking y datacenter con servicios listados al pie. El formato de catálogo técnico.",
     densidad: "mixta",
-    pide: ["headline", "servicios"],
+    pide: ["category", "headline", "servicios"],
     cuerpo: (v) => `Create a premium square Instagram post template for Accedra, 1080x1080.
 
-Composition: the left 48% is a clean near-black area reserved for typography. The right 52% contains a cinematic photograph of a modern enterprise data center corridor with tall server racks and strong depth perspective.
+Composition: ONE single full-bleed photograph of a modern enterprise data center corridor — tall server racks receding in strong depth perspective, shot low and close so the racks fill the right side AND the lower half of the frame with real texture: cabling, vents, the fine grid of drive bays.
 
-THE PHOTOGRAPH IS VERY DARK — this is the most important instruction of the piece. The room is nearly unlit: the racks read as black silhouettes and the ONLY bright things in frame are the rows of small blue status LEDs and a faint cold glow along the ceiling line. No grey walls, no bright floor, no evenly-lit room. Think a long-exposure photograph taken in a room with the lights off.
+It is night-lit and moody, but NOT blown out and NOT erased: the racks read dark and you can still SEE them, lit by their own rows of small blue status LEDs and one restrained cold strip along the ceiling. No grey walls, no bright floor, no evenly-lit room.
 
-The photograph must dissolve into the black text area — no seam, no visible edge, no straight vertical border between the two halves. The darkness of the photo IS the background of the piece.
+A soft black gradient falls over the upper left, and only there, so the typography sits on calm ground. It is one photograph selectively darkened — never two panels, never a vertical border, never a seam. Where no text sits, the image keeps its detail.
 
 Realistic architectural photography, not futuristic or sci-fi.
 
-Typography area: large headline in modern clean sans-serif, set in ${v.headline.length} lines exactly as broken here:
+${si(
+      Boolean(v.category),
+      `Eyebrow at the upper left, above the headline: “${v.category.toUpperCase()}” — small, uppercase, letter-spaced, in the accent blue.`
+    )}
+Typography area: large headline set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
 ${destacado(v)}${si(
       v.servicios.length > 0,
-      `Below the headline, include ${v.servicios.length} small service labels with minimal outline icons: ${etiquetas(v.servicios)}`
+      `Below the headline, a VERTICAL STACK of ${v.servicios.length} service items — one per line, never a horizontal row — left-aligned to the headline margin and spaced generously apart so the stack spans from just under the headline down to about 76% of the height, filling the left column. Each item is a thin outline icon followed by its label, set clearly larger than a caption and comfortably readable on a phone: ${etiquetas(v.servicios)}`
     )}
 Visual identity: premium B2B technology company, elegant, minimal, high-end corporate design. Palette: #080B12, #111827, #1E293B, #3B82F6, white. No excessive glow, no cyberpunk aesthetic, no generic AI-looking graphics, no unnecessary decorative elements.`,
   },
@@ -258,8 +280,12 @@ Premium enterprise technology advertising, restrained lighting, precise composit
     familia: "foto-real",
     cuandoUsar: "Prueba de trabajo real: alguien de Accedra con las manos en el rack. Servicios al costado.",
     densidad: "foto",
-    pide: ["servicios", "headline"],
+    pide: ["category", "servicios", "headline"],
     cuerpo: (v) => `Create a premium square Instagram template for Accedra using REALISTIC HUMAN PHOTOGRAPHY.
+${si(
+      Boolean(v.category),
+      `Eyebrow at the upper left, above the headline: “${v.category.toUpperCase()}” — small, uppercase, letter-spaced, in the accent blue.`
+    )}
 
 Background image: candid documentary-style photograph of an IT/network technician working inside a real server room. Show the person from behind or in three-quarter back view while physically connecting or inspecting network equipment inside a rack.
 
@@ -276,7 +302,7 @@ On the left, a short headline in white, set in ${v.headline.length} lines exactl
 ${titular(v)}
 ${destacado(v)}${si(
       v.servicios.length > 0,
-      `Under it, a small minimal service list with thin outline icons: ${etiquetas(v.servicios)}`
+      `Under it, a VERTICAL STACK of ${v.servicios.length} service items — one per line, never a horizontal row — left-aligned to the headline margin and spaced generously apart so the stack runs down the left column to about 76% of the height. Each is a thin outline icon followed by its label, set clearly larger than a caption: ${etiquetas(v.servicios)}`
     )}
 
 Keep text minimal.
@@ -294,9 +320,9 @@ Avoid: AI-perfect faces, excessive blue grading, cyberpunk, staged stock photogr
     pide: ["category", "headline"],
     cuerpo: (v) => `Create a premium square Instagram post template for Accedra.
 
-Full-bleed cinematic photograph of a modern enterprise data center corridor. Server racks create strong architectural perspective from foreground to background. Very dark environment with restrained cold-blue LED illumination.
+Full-bleed cinematic photograph of a modern enterprise data center: shot low and close so one rack stands near the lens with real texture and the rest falls away in depth. Very dark environment, lit by its own restrained cold-blue LEDs. Not a symmetric corridor with the vanishing point dead centre.
 
-Add a subtle black gradient over the left 55% of the image to create a clean typography area.${si(
+A soft black gradient falls over the typography area, and only there, so the type sits on calm ground. It protects the text; it does not erase the image — the photograph stays visible and powerful on the right AND across the lower half.${si(
       Boolean(v.category),
       `At upper-left include a tiny uppercase eyebrow: “${v.category.toUpperCase()}”`
     )}
@@ -305,7 +331,6 @@ Below it, a large editorial headline set in ${v.headline.length} lines exactly a
 ${titular(v)}
 ${destacado(v)}
 
-The photograph should remain visible and powerful on the right side.
 Style: enterprise infrastructure campaign, architectural photography, premium, minimal, serious, expensive, clean. No futuristic holograms, no excessive glowing effects.`,
   },
   {
@@ -348,16 +373,19 @@ Avoid: stock-photo poses, everyone smiling at camera, artificial blue lighting, 
     familia: "tecnologia",
     cuandoUsar: "Seguridad IT: la tesis arriba y dos o tres capacidades en pastillas.",
     densidad: "texto",
-    pide: ["headline", "features"],
+    pide: ["category", "headline", "features"],
     cuerpo: (v) => `Create a premium dark Instagram template for Accedra, 1080x1080.
 
 Background: near-black #080B12 with subtle dark navy gradients.
-
+${si(
+      Boolean(v.category),
+      `Eyebrow at the upper left, above the headline: “${v.category.toUpperCase()}” — small, uppercase, letter-spaced, in the accent blue.`
+    )}
 Large headline positioned upper-left, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
 ${destacado(v)}${si(
       v.features.length > 0,
-      `Below the headline include ${v.features.length} compact horizontal feature pills with minimal outline icons: ${etiquetas(v.features)}`
+      `Below the headline, a VERTICAL STACK of ${v.features.length} rounded feature pills — one per line, never a horizontal row — left-aligned to the headline margin and spaced generously apart so the stack runs down to about 76% of the height. Each pill carries a thin outline icon and its label, set clearly larger than a caption: ${etiquetas(v.features)}`
     )}
 
 On the lower-right, add a sophisticated abstract cybersecurity visualization: a partially visible digital shield / secure network structure made from extremely thin blue lines, small nodes and subtle geometric data patterns.
@@ -536,7 +564,10 @@ ${titular(v)}${si(
         v.metricaLabel ? `, with the small white caption “${v.metricaLabel}” below it` : ""
       }.`
     )}
-${destacado(v)}${si(Boolean(v.cta), `Below, a short line: “${v.cta}” followed by “→”`)}
+${destacado(v)}${si(
+      Boolean(v.cta),
+      `Below, a short line: “${v.cta}” followed by “→”. It is the LAST element of the piece and it still ends above 76% of the height — the arrow included. Below it there is nothing: that band belongs to the logo.`
+    )}
 
 No photography. No unnecessary icons.
 Keep the text well clear of the four edges — as padding inside the piece, not as a border drawn around it — and use strong editorial typography. The overall design should feel like a high-end B2B technology case-study cover.`,

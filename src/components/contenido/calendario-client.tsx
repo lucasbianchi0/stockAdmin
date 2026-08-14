@@ -10,8 +10,9 @@ import {
   Eye,
   Loader2,
   PenLine,
-  Shuffle,
   Sparkles,
+  Target,
+  Users,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -19,46 +20,41 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { EmptyState, LoadingState } from "@/components/ui/states"
-import { PiezaPanel } from "@/components/contenido/pieza-panel"
-import { SelectorTemplate } from "@/components/contenido/selector-template"
+import { PiezaPanel, type CamposRegenerar } from "@/components/contenido/pieza-panel"
 import { cn } from "@/lib/utils"
 import {
+  AUDIENCIA_CORTO,
   CANAL_CORTO,
   CANAL_LABEL,
   ESTADOS,
   ESTADO_LABEL,
+  OBJETIVO_LABEL,
   etiquetaDia,
   fechaFinDe,
   nombreDePlan,
   type Canal,
   type EstadoPlan,
+  type Objetivo,
   type Opcion,
   type Plan,
   type Slot,
 } from "@/lib/calendario-context"
 import { FeedPrevia } from "@/components/contenido/feed-previa"
 import { MarcaCanal } from "@/components/admin/platform-icons"
-import { promptDeImagen } from "@/lib/prompt-pieza"
-import {
-  claveSistema,
-  esSistema,
-  pedirPromptFeed,
-  proporcionDe,
-  secuenciaFeed,
-  SISTEMAS,
-  SISTEMA_LABEL,
-  SISTEMA_NOTA,
-  type SistemaVisual,
-} from "@/lib/sistema-visual"
+import { templateFeedPorId } from "@/lib/templates-feed"
+import { pedirPromptFeed, proporcionDe, secuenciaFeed } from "@/lib/sistema-visual"
+
+/** El color del chip de objetivo, reusando los tonos del sistema. */
+function tonoObjetivo(o: Objetivo): "brand" | "warning" | "success" {
+  return o === "conversion" ? "success" : o === "educacion" ? "warning" : "brand"
+}
 
 /**
  * Un plan del calendario.
  *
- * Es la pantalla que antes era todo el calendario, con dos cosas nuevas encima:
- * cada pieza muestra y deja cambiar su TEMPLATE, y el feed se puede previsualizar
- * con las miniaturas de esos templates antes de generar una sola imagen. Poder
- * juzgar si el conjunto respira sin gastar veinte generaciones de doce segundos
- * es la razón entera de que el template se decida al planificar.
+ * Cada día trae UNA idea —la que recomendó el estratega— con su objetivo y a
+ * quién le habla a la vista. Si no convence, se regenera con campos editables
+ * desde el detalle. Las imágenes salen todas por el camino 2 (Feed 1080).
  */
 export function PlanClient({ planId }: { planId: string }) {
   const router = useRouter()
@@ -66,32 +62,17 @@ export function PlanClient({ planId }: { planId: string }) {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [slotAbierto, setSlotAbierto] = useState<string | null>(null)
-  const [eligiendo, setEligiendo] = useState(false)
   const [generandoSlot, setGenerandoSlot] = useState(false)
+  const [regenerandoSlot, setRegenerandoSlot] = useState(false)
   const [tab, setTab] = useState<Canal>("linkedin")
-  const [reordenando, setReordenando] = useState(false)
-  const [templateEnCurso, setTemplateEnCurso] = useState<string | null>(null)
   const [lote, setLote] = useState<{
     hechos: number
     total: number
     paso: "texto" | "imagen"
-    /** Qué publicación se está generando ahora mismo. */
     slotId: string | null
   } | null>(null)
   const [previaFeed, setPreviaFeed] = useState(false)
-  /**
-   * Con cuál de los dos sistemas visuales se generan las imágenes de este plan.
-   *
-   * Vive en localStorage y no en la base a propósito: es un experimento por
-   * plan, no una propiedad del plan. Cuando uno de los dos gane, esto se borra
-   * y el ganador queda solo.
-   */
-  const [sistema, setSistema] = useState<SistemaVisual>("accedra")
-  /** La última pieza generada con cada template. Es lo que se dibuja en el feed
-   *  para las piezas que todavía no tienen su imagen real. */
-  const [miniaturas, setMiniaturas] = useState<Record<string, string>>({})
-  /** Imágenes recién generadas, antes de que vuelva la versión persistida. Sin
-   *  esto, la pieza parpadea en vacío entre que sale del generador y se sube. */
+  /** Imágenes recién generadas, antes de que vuelva la versión persistida. */
   const [recienGeneradas, setRecienGeneradas] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -106,8 +87,6 @@ export function PlanClient({ planId }: { planId: string }) {
       .then((d) => {
         if (!vigente) return
         setPlan(d.plan)
-        // La pestaña arranca en un canal que el plan tenga: con el default fijo
-        // en LinkedIn, un plan solo de Meta abría vacío.
         const canales: Canal[] = d.plan?.canales ?? []
         if (canales.length > 0 && !canales.includes("linkedin")) setTab(canales[0])
       })
@@ -119,28 +98,6 @@ export function PlanClient({ planId }: { planId: string }) {
     }
   }, [planId])
 
-  useEffect(() => {
-    const guardado = window.localStorage.getItem(claveSistema(planId))
-    if (esSistema(guardado)) setSistema(guardado)
-  }, [planId])
-
-  const cambiarSistema = useCallback(
-    (s: SistemaVisual) => {
-      setSistema(s)
-      window.localStorage.setItem(claveSistema(planId), s)
-    },
-    [planId]
-  )
-
-  // Las miniaturas no bloquean nada: si fallan, el feed se dibuja con los
-  // nombres de los templates.
-  useEffect(() => {
-    fetch("/api/contenido/templates/miniaturas")
-      .then((r) => r.json())
-      .then((d) => setMiniaturas(d.miniaturas ?? {}))
-      .catch(() => {})
-  }, [])
-
   /** Reemplaza un slot en el plan sin volver a pedir todo al servidor. */
   const aplicarSlot = useCallback((actualizado: Slot) => {
     setPlan((prev) =>
@@ -149,83 +106,6 @@ export function PlanClient({ planId }: { planId: string }) {
         : prev
     )
   }, [])
-
-  const elegir = useCallback(
-    async (slotId: string, opcionId: string | null) => {
-      setEligiendo(true)
-      try {
-        const res = await fetch("/api/contenido/calendario/slot", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slotId, elegida: opcionId }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          toast.error(data.error ?? "No se pudo guardar la elección")
-          return
-        }
-        aplicarSlot(data.slot)
-      } catch {
-        toast.error("No se pudo conectar con el servidor")
-      } finally {
-        setEligiendo(false)
-      }
-    },
-    [aplicarSlot]
-  )
-
-  const cambiarTemplate = useCallback(
-    async (slotId: string, slug: string) => {
-      setTemplateEnCurso(slotId)
-      try {
-        const res = await fetch("/api/contenido/calendario/slot", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slotId, templateSlug: slug }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          toast.error(data.error ?? "No se pudo cambiar el formato")
-          return
-        }
-        aplicarSlot(data.slot)
-      } catch {
-        toast.error("No se pudo conectar con el servidor")
-      } finally {
-        setTemplateEnCurso(null)
-      }
-    },
-    [aplicarSlot]
-  )
-
-  /**
-   * Recalcula qué template le toca a cada pieza con otra semilla.
-   *
-   * Las que ya tienen imagen quedan clavadas y el resto se acomoda alrededor:
-   * el servidor las trata como posiciones fijas.
-   */
-  const reordenar = useCallback(async () => {
-    setReordenando(true)
-    try {
-      const res = await fetch(`/api/contenido/calendario/${planId}/secuencia`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // La semilla sale del reloj: cada click tiene que proponer otra cosa.
-        body: JSON.stringify({ semilla: Date.now() % 100000 }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error ?? "No se pudo reordenar")
-        return
-      }
-      setPlan((prev) => (prev ? { ...prev, slots: data.slots } : prev))
-      toast.success("Formatos reordenados")
-    } catch {
-      toast.error("No se pudo conectar con el servidor")
-    } finally {
-      setReordenando(false)
-    }
-  }, [planId])
 
   const generarContenido = useCallback(
     async (slotId: string, ajuste: string) => {
@@ -251,13 +131,39 @@ export function PlanClient({ planId }: { planId: string }) {
     [aplicarSlot]
   )
 
-  /**
-   * Guarda la imagen recién generada en el bucket.
-   *
-   * Antes vivía en memoria del navegador y recargar la pestaña tiraba cuatro
-   * minutos de generación. Se muestra al toque con el data URL y se reemplaza
-   * por la versión firmada cuando termina de subir.
-   */
+  const regenerarIdea = useCallback(
+    async (slotId: string, campos: CamposRegenerar) => {
+      setRegenerandoSlot(true)
+      try {
+        const res = await fetch("/api/contenido/calendario/slot/regenerar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slotId, ...campos }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          toast.error(data.error ?? "No se pudo regenerar la idea")
+          return
+        }
+        // Regenerar la idea limpia contenido e imagen: soltamos la recién hecha.
+        setRecienGeneradas((prev) => {
+          if (!(slotId in prev)) return prev
+          const resto = { ...prev }
+          delete resto[slotId]
+          return resto
+        })
+        aplicarSlot(data.slot)
+        toast.success("Idea regenerada")
+      } catch {
+        toast.error("No se pudo conectar con el servidor")
+      } finally {
+        setRegenerandoSlot(false)
+      }
+    },
+    [aplicarSlot]
+  )
+
+  /** Guarda la imagen recién generada en el bucket. */
   const guardarImagen = useCallback(
     async (slotId: string, dataUrl: string) => {
       setRecienGeneradas((prev) => ({ ...prev, [slotId]: dataUrl }))
@@ -271,8 +177,6 @@ export function PlanClient({ planId }: { planId: string }) {
         if (!res.ok) throw new Error(data.error)
         aplicarSlot(data.slot)
       } catch {
-        // La imagen sigue viéndose gracias al data URL, pero se pierde al
-        // recargar: hay que decirlo o el usuario cierra la pestaña tranquilo.
         toast.warning("La imagen se generó pero no se pudo guardar. Descargala antes de cerrar.")
       }
     },
@@ -325,10 +229,6 @@ export function PlanClient({ planId }: { planId: string }) {
     [recienGeneradas]
   )
 
-  /**
-   * Solo los días que tienen publicación en el canal activo. Mostrar los quince
-   * con nueve vacíos era hacer scrollear por casilleros donde no pasa nada.
-   */
   const slotsDelTab = useMemo(
     () =>
       (plan?.slots ?? [])
@@ -337,11 +237,7 @@ export function PlanClient({ planId }: { planId: string }) {
     [plan, tab]
   )
 
-  /**
-   * Lo que falta generar EN LA PESTAÑA ACTIVA. Acotarlo al canal no es un
-   * capricho: si el lote recorre los dos, la mitad del progreso ocurre en la
-   * pestaña que no estás mirando y la pantalla parece trabada.
-   */
+  /** Lo que falta generar EN LA PESTAÑA ACTIVA (elegida y sin contenido). */
   const pendientes = useMemo(
     () => slotsDelTab.filter((s) => s.elegida && !s.contenido),
     [slotsDelTab]
@@ -357,42 +253,29 @@ export function PlanClient({ planId }: { planId: string }) {
     }
   }, [plan, recienGeneradas])
 
-  /**
-   * Qué template del camino 2 le toca a cada pieza.
-   *
-   * Se calcula acá y no se guarda: es una función pura de los slots del plan,
-   * así que dos cálculos dan lo mismo. Guardarlo obligaría a una columna nueva
-   * para un sistema que todavía se está probando.
-   */
+  /** Qué template del feed le toca a cada pieza. Función pura de los slots. */
   const feedPorSlot = useMemo(
     () => (plan ? secuenciaFeed(plan.slots) : new Map<string, string>()),
     [plan]
   )
 
-  /**
-   * El prompt de una pieza, por el camino que esté activo.
-   *
-   * Único punto donde se decide: el lote y el panel tienen que armar el MISMO
-   * prompt o la comparación entre los dos sistemas no mide lo que se cree.
-   */
+  const nombreTemplateDe = useCallback(
+    (slot: Slot) => templateFeedPorId(feedPorSlot.get(slot.id) ?? null)?.nombre ?? null,
+    [feedPorSlot]
+  )
+
+  /** El prompt de imagen de una pieza, por el camino 2. */
   const promptDeSlot = useCallback(
     async (slot: Slot): Promise<string> => {
-      if (sistema !== "feed") return promptDeImagen(slot)
-
       const templateFeedId = feedPorSlot.get(slot.id)
       if (!templateFeedId) return ""
-
       const { prompt } = await pedirPromptFeed(slot.id, templateFeedId)
       return prompt
     },
-    [sistema, feedPorSlot]
+    [feedPorSlot]
   )
 
-  /**
-   * Genera todo lo elegido, de a una. En serie y no en paralelo a propósito: son
-   * llamadas caras a un modelo y lanzar once juntas termina en rate limit, con
-   * la mitad hecha y sin forma de saber cuál falló.
-   */
+  /** Genera todo lo elegido, de a una: texto y después imagen. En serie. */
   const generarTodas = useCallback(async () => {
     if (pendientes.length === 0) return
     setLote({ hechos: 0, total: pendientes.length, paso: "texto", slotId: null })
@@ -412,22 +295,13 @@ export function PlanClient({ planId }: { planId: string }) {
         } else {
           aplicarSlot(data.slot)
 
-          // Y la imagen. Sin esto el lote dejaba once textos y ninguna pieza
-          // visual, que es media publicación: había que entrar a cada día a
-          // generar la imagen a mano, justo lo que el botón venía a evitar.
           setLote({ hechos: i, total: pendientes.length, paso: "imagen", slotId: s.id })
           const prompt = await promptDeSlot(data.slot)
           if (prompt) {
             const img = await fetch("/api/contenido/image", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              // La proporción sale del canal, siempre. Antes iba "square" fija
-              // y una pieza de LinkedIn salía con la medida de Instagram.
-              body: JSON.stringify(
-                sistema === "feed"
-                  ? { prompt, size: proporcionDe(s.canal), sistema: "feed" }
-                  : { prompt, size: proporcionDe(s.canal) }
-              ),
+              body: JSON.stringify({ prompt, size: proporcionDe(s.canal), sistema: "feed" }),
             })
             const datosImg = await img.json()
             if (img.ok && datosImg.image) await guardarImagen(s.id, datosImg.image)
@@ -442,7 +316,7 @@ export function PlanClient({ planId }: { planId: string }) {
     setLote(null)
     if (fallaron === 0) toast.success("Todo el contenido está generado")
     else toast.warning(`Quedaron ${fallaron} sin generar. Probá de nuevo desde el detalle.`)
-  }, [pendientes, aplicarSlot, guardarImagen, promptDeSlot, sistema])
+  }, [pendientes, aplicarSlot, guardarImagen, promptDeSlot])
 
   const slot = plan?.slots.find((s) => s.id === slotAbierto) ?? null
 
@@ -468,17 +342,10 @@ export function PlanClient({ planId }: { planId: string }) {
   return (
     <>
       <div className="space-y-5">
-        <Resumen
-          plan={plan}
-          avance={avance}
-          onRenombrar={renombrar}
-          onEstado={cambiarEstado}
-        />
+        <Resumen plan={plan} avance={avance} onRenombrar={renombrar} onEstado={cambiarEstado} />
 
         {plan.analisis && <Analisis texto={plan.analisis} />}
 
-        {/* Dos generaciones distintas, no un filtro: lo que se publica en
-            LinkedIn y lo que va a Meta no se decide con el mismo criterio. */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 rounded-xl border border-line bg-surface p-1 shadow-e1">
             {plan.canales.map((c) => {
@@ -503,39 +370,7 @@ export function PlanClient({ planId }: { planId: string }) {
             })}
           </div>
 
-          {/* Con cuál de los dos sistemas se generan las imágenes. Está al lado
-              del botón que las genera y no escondido en un ajuste: la gracia es
-              generar la misma pieza por los dos caminos y comparar. */}
-          <div
-            className="flex gap-1 rounded-xl border border-line bg-surface p-1 shadow-e1"
-            title={SISTEMA_NOTA[sistema]}
-          >
-            {SISTEMAS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => cambiarSistema(s)}
-                disabled={Boolean(lote)}
-                title={SISTEMA_NOTA[s]}
-                className={cn(
-                  "rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium transition-colors disabled:opacity-50",
-                  sistema === s
-                    ? "bg-brand-50 text-brand-700"
-                    : "text-ink-muted hover:bg-surface-muted hover:text-ink"
-                )}
-              >
-                {SISTEMA_LABEL[s]}
-              </button>
-            ))}
-          </div>
-
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={reordenar} disabled={reordenando}>
-              {reordenando ? <Loader2 className="animate-spin" /> : <Shuffle />}
-              Reordenar formatos
-            </Button>
-            {/* Antes este botón exigía tener contenido generado. Es al revés: el
-                preview sirve JUSTAMENTE para decidir antes de generar. */}
             <Button
               variant="outline"
               size="sm"
@@ -545,11 +380,7 @@ export function PlanClient({ planId }: { planId: string }) {
               <Eye />
               Ver el feed
             </Button>
-            <Button
-              size="sm"
-              onClick={generarTodas}
-              disabled={pendientes.length === 0 || Boolean(lote)}
-            >
+            <Button size="sm" onClick={generarTodas} disabled={pendientes.length === 0 || Boolean(lote)}>
               {lote ? <Loader2 className="animate-spin" /> : <Sparkles />}
               {lote
                 ? `${lote.paso === "imagen" ? "Imagen" : "Texto"} ${lote.hechos + 1}/${lote.total}…`
@@ -564,12 +395,7 @@ export function PlanClient({ planId }: { planId: string }) {
               key={s.id}
               slot={s}
               imagen={imagenDe(s)}
-              miniaturas={miniaturas}
-              guardandoTemplate={templateEnCurso === s.id}
               enCurso={lote?.slotId === s.id ? lote.paso : null}
-              eligiendo={eligiendo}
-              onElegir={elegir}
-              onTemplate={cambiarTemplate}
               onAbrir={setSlotAbierto}
             />
           ))}
@@ -581,25 +407,21 @@ export function PlanClient({ planId }: { planId: string }) {
           canal={tab}
           slots={slotsDelTab}
           imagenDe={imagenDe}
-          miniaturas={miniaturas}
+          nombreTemplate={nombreTemplateDe}
           onCerrar={() => setPreviaFeed(false)}
         />
       )}
 
       <PiezaPanel
         slot={slot}
-        sistema={sistema}
         feedTemplateId={slot ? (feedPorSlot.get(slot.id) ?? null) : null}
-        eligiendo={eligiendo}
         generando={generandoSlot}
+        regenerando={regenerandoSlot}
         imagen={slot ? imagenDe(slot) : null}
-        miniaturas={miniaturas}
-        guardandoTemplate={Boolean(slot && templateEnCurso === slot.id)}
         onImagen={guardarImagen}
-        onTemplate={cambiarTemplate}
         onCerrar={() => setSlotAbierto(null)}
-        onElegir={elegir}
         onGenerar={generarContenido}
+        onRegenerar={regenerarIdea}
       />
     </>
   )
@@ -677,9 +499,7 @@ function Resumen({
           </p>
 
           {plan.arco && (
-            <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-ink-muted">
-              {plan.arco}
-            </p>
+            <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-ink-muted">{plan.arco}</p>
           )}
           {plan.contexto && (
             <p className="mt-2 max-w-2xl border-l-2 border-brand-200 pl-2.5 text-[11.5px] italic leading-relaxed text-ink-secondary">
@@ -716,7 +536,6 @@ function Resumen({
 
       <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-3.5">
         <Metrica valor={avance.total} label="publicaciones" />
-        <Metrica valor={avance.elegidos} label="elegidas" tono="brand" />
         <Metrica valor={avance.listos} label="con texto" tono="brand" />
         <Metrica valor={avance.conImagen} label="con imagen" tono="ok" />
 
@@ -727,9 +546,7 @@ function Resumen({
               style={{ width: `${pct}%` }}
             />
           </div>
-          <span className="num shrink-0 font-mono text-[11px] font-semibold text-ink-muted">
-            {pct}%
-          </span>
+          <span className="num shrink-0 font-mono text-[11px] font-semibold text-ink-muted">{pct}%</span>
         </div>
       </div>
     </div>
@@ -768,40 +585,53 @@ function Metrica({
   )
 }
 
+/* ── Chips de estrategia ──────────────────────────────────────────────────── */
+
+/** Objetivo + audiencia de una pieza, la lectura rápida de a quién y para qué. */
+function ChipsEstrategia({ idea }: { idea: Opcion }) {
+  const objetivo: Objetivo | null =
+    idea.objetivo === "awareness" || idea.objetivo === "educacion" || idea.objetivo === "conversion"
+      ? idea.objetivo
+      : null
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {objetivo && (
+        <Badge tone={tonoObjetivo(objetivo)} size="sm">
+          <Target className="h-3 w-3" strokeWidth={2.5} />
+          {OBJETIVO_LABEL[objetivo]}
+        </Badge>
+      )}
+      {idea.audiencia && AUDIENCIA_CORTO[idea.audiencia] && (
+        <Badge tone="neutral" size="sm">
+          <Users className="h-3 w-3" strokeWidth={2.5} />
+          {AUDIENCIA_CORTO[idea.audiencia]}
+        </Badge>
+      )}
+    </div>
+  )
+}
+
 /* ── Día ──────────────────────────────────────────────────────────────────── */
 
 /**
- * Un día del plan con sus tres opciones a la vista.
- *
- * Antes cada día era una celda de una grilla de quince y había que abrir un
- * panel para ver qué proponía. Elegir entre tres cosas que no se ven al mismo
- * tiempo no es elegir: es aceptar la primera. Acá las tres están abiertas y la
- * recomendada viene marcada con su motivo.
+ * Un día del plan con su única idea a la vista, ya con objetivo y audiencia.
+ * Todo el trabajo fino —regenerar, generar texto e imagen— pasa en el detalle.
  */
 function DiaPlan({
   slot,
   imagen,
-  miniaturas,
-  guardandoTemplate,
   enCurso,
-  eligiendo,
-  onElegir,
-  onTemplate,
   onAbrir,
 }: {
   slot: Slot
   imagen: string | null
-  miniaturas: Record<string, string>
-  guardandoTemplate: boolean
-  /** Qué se está generando de esta pieza ahora mismo, si es que algo. */
   enCurso: "texto" | "imagen" | null
-  eligiendo: boolean
-  onElegir: (slotId: string, opcionId: string) => void
-  onTemplate: (slotId: string, slug: string) => void
   onAbrir: (id: string) => void
 }) {
   const { diaSemana, numero, mes, finDeSemana } = etiquetaDia(slot.fecha)
   const listo = Boolean(slot.contenido)
+  const idea = slot.opciones.find((o) => o.id === slot.elegida) ?? slot.opciones[0] ?? null
 
   return (
     <div
@@ -835,13 +665,9 @@ function DiaPlan({
             <Check className="h-3 w-3" strokeWidth={3} />
             Contenido listo
           </Badge>
-        ) : slot.elegida ? (
-          <Badge tone="brand" size="sm">
-            Elegida
-          </Badge>
         ) : (
           <Badge tone="neutral" size="sm">
-            Sin elegir
+            Lista para generar
           </Badge>
         )}
         <Button size="xs" variant="ghost" onClick={() => onAbrir(slot.id)}>
@@ -850,135 +676,48 @@ function DiaPlan({
         </Button>
       </div>
 
-      {/* El formato de la pieza, arriba de las opciones: es lo que decide cómo
-          se va a ver en la grilla, y se elige antes de generar nada. */}
-      <div className="border-b border-line-soft px-3 py-2 sm:max-w-sm">
-        <SelectorTemplate
-          templateSlug={slot.templateSlug}
-          miniaturas={miniaturas}
-          guardando={guardandoTemplate}
-          yaTieneImagen={Boolean(slot.imagenPath)}
-          onElegir={(slug) => onTemplate(slot.id, slug)}
-        />
-      </div>
-
       {listo ? (
-        <PiezaLista slot={slot} imagen={imagen} enCurso={enCurso} onAbrir={() => onAbrir(slot.id)} />
+        <PiezaLista slot={slot} idea={idea} imagen={imagen} enCurso={enCurso} onAbrir={() => onAbrir(slot.id)} />
       ) : (
-        <div className="grid gap-2.5 p-3 lg:grid-cols-3">
-          {slot.opciones.map((o) => (
-            <OpcionCard
-              key={o.id}
-              opcion={o}
-              elegida={slot.elegida === o.id}
-              deshabilitado={eligiendo}
-              onElegir={() => onElegir(slot.id, o.id)}
-            />
-          ))}
-        </div>
+        <button
+          type="button"
+          onClick={() => onAbrir(slot.id)}
+          className="block w-full p-3.5 text-left transition-colors hover:bg-surface-subtle"
+        >
+          {idea && <ChipsEstrategia idea={idea} />}
+          {idea && (
+            <p className="mt-2 text-[13px] font-semibold leading-snug text-ink">{idea.titulo}</p>
+          )}
+          {idea?.hook && (
+            <p className="mt-1 text-[11.5px] italic leading-relaxed text-ink-secondary">“{idea.hook}”</p>
+          )}
+          {idea?.angulo && (
+            <p className="mt-2 line-clamp-2 text-[11.5px] leading-relaxed text-ink-muted">{idea.angulo}</p>
+          )}
+        </button>
       )}
     </div>
-  )
-}
-
-function OpcionCard({
-  opcion,
-  elegida,
-  deshabilitado,
-  onElegir,
-}: {
-  opcion: Opcion
-  elegida: boolean
-  deshabilitado: boolean
-  onElegir: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onElegir}
-      disabled={deshabilitado || elegida}
-      className={cn(
-        "flex flex-col rounded-xl border p-3 text-left transition-all duration-150",
-        elegida
-          ? "border-brand-300 bg-brand-50 shadow-e1"
-          : "border-line bg-surface hover:-translate-y-px hover:border-brand-200 hover:shadow-e1",
-        deshabilitado && !elegida && "opacity-60"
-      )}
-    >
-      <div className="flex items-start gap-2">
-        <span
-          className={cn(
-            "flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-bold uppercase",
-            elegida ? "bg-brand-600 text-white" : "bg-surface-muted text-ink-muted"
-          )}
-        >
-          {elegida ? <Check className="h-3 w-3" strokeWidth={3} /> : opcion.id}
-        </span>
-        <p className="min-w-0 flex-1 text-[12.5px] font-semibold leading-snug text-ink">
-          {opcion.titulo}
-        </p>
-      </div>
-
-      {opcion.recomendada && (
-        <span className="mt-2 inline-flex w-fit items-center gap-1 rounded-md bg-success-soft px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-success-text">
-          <Sparkles className="h-2.5 w-2.5" strokeWidth={2.5} />
-          Recomendada
-        </span>
-      )}
-
-      {opcion.hook && (
-        <p className="mt-2 text-[11.5px] italic leading-relaxed text-ink-secondary">“{opcion.hook}”</p>
-      )}
-
-      <dl className="mt-2.5 space-y-1.5 border-t border-line pt-2.5">
-        {opcion.angulo && (
-          <div>
-            <dt className="text-[9px] font-bold uppercase tracking-[0.09em] text-ink-faint">El posteo</dt>
-            <dd className="text-[11px] leading-relaxed text-ink-muted">{opcion.angulo}</dd>
-          </div>
-        )}
-        {opcion.imagen && (
-          <div>
-            <dt className="text-[9px] font-bold uppercase tracking-[0.09em] text-ink-faint">La imagen</dt>
-            <dd className="text-[11px] leading-relaxed text-ink-muted">{opcion.imagen}</dd>
-          </div>
-        )}
-      </dl>
-
-      {opcion.recomendada && opcion.porQue && (
-        <p className="mt-2.5 rounded-lg bg-success-soft/60 px-2.5 py-1.5 text-[10.5px] leading-relaxed text-success-text">
-          {opcion.porQue}
-        </p>
-      )}
-    </button>
   )
 }
 
 /* ── Análisis del plan ────────────────────────────────────────────────────── */
 
 /**
- * La lectura de marketer, arriba de todo.
- *
- * Un calendario sin explicación es una lista de tareas: se ejecuta sin criterio
- * y no se puede discutir. Con el reparto explicado —cuánto da a conocer, cuánto
- * educa, cuánto convierte— se puede estar en desacuerdo, que es justamente lo
- * que hace que alguien lo revise en serio.
+ * La lectura de marketer, arriba de todo: cuánto da a conocer, cuánto educa,
+ * cuánto convierte y a quién. Con el reparto explicado se puede discutir, que es
+ * lo que hace que alguien lo revise en serio.
  */
 function Analisis({ texto }: { texto: string }) {
   return (
     <div className="rounded-xl border border-brand-200 bg-brand-50 p-5">
-      <p className="eyebrow mb-2 text-brand-700">Por qué este plan</p>
-      <p className="max-w-3xl whitespace-pre-line text-[13px] leading-relaxed text-brand-700/90">
-        {texto}
-      </p>
+      <p className="eyebrow mb-2 text-brand-700">La estrategia de este plan</p>
+      <p className="max-w-3xl whitespace-pre-line text-[13px] leading-relaxed text-brand-700/90">{texto}</p>
     </div>
   )
 }
 
 /* ── Enlace al Studio ─────────────────────────────────────────────────────── */
 
-/** Va en las acciones de la cabecera: el calendario planifica, el Studio produce
- *  piezas sueltas fuera del plan. */
 export function EnlaceStudio() {
   return (
     <Button asChild variant="outline" size="sm">
@@ -990,27 +729,22 @@ export function EnlaceStudio() {
   )
 }
 
-/**
- * El día ya resuelto: la pieza como quedó.
- *
- * Con el contenido generado, mostrar otra vez las tres opciones es ruido —dos de
- * ellas ya no son alternativas—. Y la imagen tiene que estar acá: si solo se ve
- * abriendo el detalle, después de generar once piezas en lote no hay forma de
- * saber qué salió sin entrar once veces.
- */
+/* ── Pieza resuelta ───────────────────────────────────────────────────────── */
+
+/** El día ya resuelto: la pieza como quedó, con su imagen y el arranque del texto. */
 function PiezaLista({
   slot,
+  idea,
   imagen,
   enCurso,
   onAbrir,
 }: {
   slot: Slot
+  idea: Opcion | null
   imagen: string | null
   enCurso: "texto" | "imagen" | null
   onAbrir: () => void
 }) {
-  const elegida = slot.opciones.find((o) => o.id === slot.elegida)
-
   return (
     <div className="flex gap-3 p-3">
       <button
@@ -1033,10 +767,11 @@ function PiezaLista({
       </button>
 
       <div className="min-w-0 flex-1">
-        {elegida && (
-          <p className="text-[12.5px] font-semibold leading-snug text-ink">{elegida.titulo}</p>
+        {idea && <ChipsEstrategia idea={idea} />}
+        {idea && (
+          <p className="mt-1.5 text-[12.5px] font-semibold leading-snug text-ink">{idea.titulo}</p>
         )}
-        <p className="mt-1 line-clamp-3 text-[11.5px] leading-relaxed text-ink-muted">
+        <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-ink-muted">
           {slot.contenido?.caption}
         </p>
         <Button size="xs" variant="outline" className="mt-2" onClick={onAbrir}>

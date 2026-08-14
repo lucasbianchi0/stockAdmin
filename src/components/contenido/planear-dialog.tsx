@@ -55,7 +55,7 @@ export function PlanearDialog({
 }) {
   const [fechaInicio, setFechaInicio] = useState(hoyISO)
   const [canales, setCanales] = useState<Canal[]>([...CANALES])
-  const [audiencia, setAudiencia] = useState<Audiencia>("ambos")
+  const [audiencia, setAudiencia] = useState<Audiencia>("todos")
   const [contexto, setContexto] = useState("")
 
   useEffect(() => {
@@ -280,7 +280,7 @@ export function PlanearDialog({
           </div>
           {generando && (
             <p className="mt-2.5 text-center text-[11px] text-ink-muted">
-              Puede tardar hasta un minuto: son {totalPosts} publicaciones con 3 opciones cada una.
+              Puede tardar hasta un minuto: son {totalPosts} publicaciones, con la idea recomendada de cada una.
             </p>
           )}
         </div>

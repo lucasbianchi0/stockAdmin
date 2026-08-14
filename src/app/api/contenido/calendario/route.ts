@@ -4,8 +4,6 @@ import { NextResponse } from "next/server"
 import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { createSupabaseServer } from "@/lib/supabase-server"
-import { secuenciaRecomendada } from "@/lib/secuencia"
-import { templatesActivos } from "@/lib/templates-server"
 import {
   ACCEDRA_BRAND_CONTEXT,
   AUDIENCIA_LABEL,
@@ -13,11 +11,15 @@ import {
   CANAL_LABEL,
   DIAS_PLAN,
   FORMATO_UNICO,
+  OBJETIVOS,
+  OBJETIVO_DESC,
+  OBJETIVO_LABEL,
   OPCIONES_POR_IDEA,
   POSTS_POR_CANAL,
   esAudiencia,
   esCanal,
   esFechaISO,
+  esObjetivo,
   fechaLarga,
   sanitizarContexto,
   sumarDias,
@@ -170,7 +172,7 @@ export async function POST(req: Request) {
   }
   const fechaInicio = raw.fechaInicio
 
-  const audiencia: Audiencia = esAudiencia(raw.audiencia) ? raw.audiencia : "ambos"
+  const audiencia: Audiencia = esAudiencia(raw.audiencia) ? raw.audiencia : "todos"
   const contexto = sanitizarContexto(raw.contexto)
 
   const fechaFin = sumarDias(fechaInicio, DIAS_PLAN - 1)
@@ -204,26 +206,16 @@ export async function POST(req: Request) {
 
     if (planErr || !planRow) throw planErr ?? new Error("Sin plan")
 
-    /**
-     * El template de cada pieza se decide acá, junto con el plan.
-     *
-     * Se calcula sobre los slots ya validados y con ids provisorios —el índice—
-     * porque los definitivos los pone la base recién al insertar. Como la
-     * secuencia solo necesita fecha y canal para ordenar, alcanza.
-     */
-    const secuencia = secuenciaRecomendada(
-      plan.slots.map((s, i) => ({ id: String(i), fecha: s.fecha, canal: s.canal })),
-      await templatesActivos(),
-      { semilla: 0 }
-    )
-
+    // Con una sola idea por slot, el plan nace ya elegido: no hay nada que
+    // seleccionar entre tres, así que la pieza queda lista para generar de una.
+    // El template del feed lo asigna el cliente (`secuenciaFeed`), no la base.
     const filas = plan.slots.map((s, i) => ({
       plan_id: planRow.id,
       fecha: s.fecha,
       canal: s.canal,
       beat: s.beat,
       opciones: s.opciones,
-      template_slug: secuencia.get(String(i)) ?? null,
+      elegida: s.opciones[0]?.id ?? null,
       orden: i,
     }))
 
@@ -270,6 +262,18 @@ async function generarPlan({
     ? `\nCONTEXTO QUE DA EL USUARIO — tiene prioridad sobre cualquier idea genérica. Si menciona una fecha, un lanzamiento o un evento, el plan tiene que girar alrededor de eso y ubicar las publicaciones donde corresponda:\n"""\n${contexto}\n"""\n`
     : "\nEl usuario no dio contexto específico: armá un plan general de presencia de marca.\n"
 
+  const seccionObjetivos = OBJETIVOS.map(
+    (o) => `  - "${o}" (${OBJETIVO_LABEL[o]}): ${OBJETIVO_DESC[o]}`
+  ).join("\n")
+
+  // La audiencia del plan orienta el reparto, pero cada pieza declara a quién le
+  // habla: un plan puede empujar conversión a decisores y, la misma semana, subir
+  // una pieza de cultura dirigida a "corporativo".
+  const guiaAudiencia =
+    audiencia === "todos"
+      ? `La audiencia del plan es TODOS los perfiles. Repartí las piezas entre los tres: "decisores" (técnicos de IT), "negocio" (dueños y gerencia) y "corporativo" (marca empleadora, RH, cultura, otros departamentos).`
+      : `La audiencia principal es ${AUDIENCIA_LABEL[audiencia]} (código "${audiencia}"): la mayoría de las piezas le hablan a ese perfil. Podés sumar alguna de "corporativo" (marca empleadora / RH / cultura) si el arco lo pide.`
+
   // En streaming y no con create(): por encima de ~16 mil tokens de salida, una
   // request sin stream se come el timeout HTTP del SDK antes de que el modelo
   // termine. El resultado es el mismo mensaje, pero la conexión no se cae.
@@ -283,25 +287,29 @@ async function generarPlan({
 
 Sos el content strategist de Accedra. Armá el calendario de contenido desde el ${fechaLarga(fechaInicio)} hasta el ${fechaLarga(fechaFin)} (${DIAS_PLAN} días corridos).
 
-- Audiencia: ${AUDIENCIA_LABEL[audiencia]}
 - Total de publicaciones: ${totalPosts}, repartidas así:
 ${seccionCanales}
+- Audiencia del plan: ${guiaAudiencia}
 ${seccionContexto}
+OBJETIVO DE CADA PIEZA — toda publicación persigue exactamente UNO de estos, y lo declara:
+${seccionObjetivos}
+Un buen plan de 15 días NO es todo lo mismo: mezcla los tres. Demasiada conversión quema a la audiencia; solo awareness no genera negocio. Equilibralos con criterio y hacé que el arco progrese (más awareness/educación al principio, más conversión cuando ya hay contexto).
+
 Reglas del calendario:
 - Los ${DIAS_PLAN} días van del ${fechaInicio} al ${fechaFin}. Toda "fecha" tiene que caer dentro de ese rango, en formato YYYY-MM-DD.
 - Distribuí las publicaciones a lo largo de todo el período, no las amontones en los primeros días.
 - Evitá sábados y domingos salvo que el contexto del usuario lo pida: es B2B.
 - Como máximo una publicación por canal por día.
 - El conjunto cuenta UNA historia. LinkedIn y Meta son dos voces del mismo relato, no dos planes sueltos: si LinkedIn desarrolla un tema técnico, la pieza de Meta de esos días lo acompaña desde el lado humano o visual.
-- Cada publicación necesita exactamente ${OPCIONES_POR_IDEA} opciones creativas MUY distintas entre sí. No tres variantes del mismo título: tres ángulos que se podrían defender por separado.
-- En cada publicación, exactamente UNA de las tres opciones lleva "recomendada": true, con un "porQue" de una frase que explique por qué esa y no las otras dos. Las otras dos llevan "recomendada": false y "porQue": "".
+- Cada publicación es UNA sola idea, la que vos como estratega recomendás. No des variantes: proponé la mejor y bancala con un "porQue" de una frase.
+- Cada pieza declara su "objetivo" (uno de: ${OBJETIVOS.map((o) => `"${o}"`).join(", ")}) y su "audiencia" (uno de: "decisores", "negocio", "corporativo").
 - TODAS las piezas son de formato "imagen". No propongas carruseles, reels, videos, stories ni artículos: no hay quien los produzca y el plan se traba en la primera pieza que nadie puede hacer.
 
 Devolvé SOLO un JSON válido, sin markdown ni texto fuera del objeto:
 {
   "titulo": "Nombre del plan, máx 6 palabras",
   "arco": "Qué historia cuentan los 15 días, en 1 frase",
-  "analisis": "Lectura de marketer, 3 o 4 frases: por qué ESTE reparto y no otro. Qué proporción va a dar a conocer, qué proporción educa, qué proporción convierte, y por qué ese equilibrio le sirve a Accedra en estos 15 días. Concreto, sin humo.",
+  "analisis": "Lectura de marketer, 3 o 4 frases. Arrancá con el reparto CONCRETO de objetivos (ej: 'De las ${totalPosts} piezas: 6 awareness, 5 educación y 4 conversión') y a qué perfiles les habla. Después, por qué ESE equilibrio le sirve a Accedra en estos 15 días. Concreto, sin humo.",
   "slots": [
     {
       "fecha": "${fechaInicio}",
@@ -312,18 +320,20 @@ Devolvé SOLO un JSON válido, sin markdown ni texto fuera del objeto:
           "id": "a",
           "titulo": "Título de la publicación, máx 8 palabras",
           "hook": "Primera línea que frena el scroll, máx 15 palabras",
+          "objetivo": "awareness | educacion | conversion",
+          "audiencia": "decisores | negocio | corporativo",
           "angulo": "De qué trata el posteo: qué se cuenta, con qué estructura y para qué sirve. 2 frases concretas, nada de 'contenido sobre tecnología'",
           "imagen": "Qué se va a VER en la pieza: encuadre, sujeto, si es foto propia o placa. 2 frases",
           "formato": "imagen",
           "recomendada": true,
-          "porQue": "Por qué esta y no las otras dos. 1 frase. Vacío en las no recomendadas"
+          "porQue": "Por qué esta idea, en 1 frase: qué busca y a quién le habla"
         }
       ]
     }
   ]
 }
 
-Los "id" de las opciones son "a", "b", "c" dentro de cada slot.`,
+Cada slot tiene exactamente UNA opción, con "id": "a".`,
       },
     ],
   })
@@ -354,6 +364,10 @@ Los "id" de las opciones son "a", "b", "c" dentro de cada slot.`,
   const vistos = new Set<string>()
   const slots: SlotGenerado[] = []
 
+  // A quién le habla una pieza si el modelo no lo dijo: el perfil del plan, o
+  // "decisores" cuando el plan apunta a todos.
+  const audienciaDefault: Audiencia = audiencia === "todos" ? "decisores" : audiencia
+
   for (const s of parsed.slots as Record<string, unknown>[]) {
     const canal = s.canal
     if (!esCanal(canal) || !validos.has(canal)) continue
@@ -364,7 +378,7 @@ Los "id" de las opciones son "a", "b", "c" dentro de cada slot.`,
     if (vistos.has(clave)) continue
     vistos.add(clave)
 
-    const opciones = normalizarOpciones(s.opciones)
+    const opciones = normalizarOpciones(s.opciones, audienciaDefault)
     if (opciones.length === 0) continue
 
     slots.push({
@@ -505,7 +519,12 @@ function slotsCompletos(text: string): unknown[] {
 
 const LETRAS = ["a", "b", "c", "d"]
 
-function normalizarOpciones(raw: unknown): Opcion[] {
+/**
+ * `audienciaDefault` es a quién le habla la pieza si el modelo no lo declara: el
+ * perfil del plan, o "decisores" cuando el plan apunta a todos (es el prioritario
+ * en un B2B). Nunca "todos": eso es un objetivo del plan, no de una pieza suelta.
+ */
+function normalizarOpciones(raw: unknown, audienciaDefault: Audiencia): Opcion[] {
   if (!Array.isArray(raw)) return []
 
   const opciones = raw.slice(0, OPCIONES_POR_IDEA).flatMap((o, i): Opcion[] => {
@@ -514,35 +533,27 @@ function normalizarOpciones(raw: unknown): Opcion[] {
     const titulo = typeof op.titulo === "string" ? op.titulo.slice(0, 200) : ""
     if (!titulo) return []
 
+    const audienciaOp =
+      esAudiencia(op.audiencia) && op.audiencia !== "todos" ? op.audiencia : audienciaDefault
+
     return [
       {
         // El id lo ponemos nosotros: es la clave con la que después se marca la
-        // elegida, y si el modelo repite "a" en dos opciones se vuelve ambigua.
+        // elegida, y si el modelo repite "a" se vuelve ambigua.
         id: LETRAS[i] ?? String(i),
         titulo,
         hook: typeof op.hook === "string" ? op.hook.slice(0, 300) : "",
+        objetivo: esObjetivo(op.objetivo) ? op.objetivo : "awareness",
+        audiencia: audienciaOp,
         angulo: typeof op.angulo === "string" ? op.angulo.slice(0, 400) : "",
         imagen: typeof op.imagen === "string" ? op.imagen.slice(0, 400) : "",
         formato: FORMATO_UNICO,
-        recomendada: op.recomendada === true,
+        // Con una sola idea, siempre es "la recomendada".
+        recomendada: true,
         porQue: typeof op.porQue === "string" ? op.porQue.slice(0, 300) : "",
       },
     ]
   })
-
-  // Exactamente una recomendada. El modelo a veces marca dos o ninguna, y las
-  // dos fallas rompen lo mismo: si no hay una sola sugerencia clara, la
-  // recomendación deja de significar algo.
-  const marcadas = opciones.filter((o) => o.recomendada)
-  if (marcadas.length !== 1 && opciones.length > 0) {
-    opciones.forEach((o, i) => {
-      o.recomendada = i === 0
-      if (i !== 0) o.porQue = ""
-    })
-    if (!opciones[0].porQue) {
-      opciones[0].porQue = "Es la primera del set: el modelo no marcó una recomendación clara."
-    }
-  }
 
   return opciones
 }

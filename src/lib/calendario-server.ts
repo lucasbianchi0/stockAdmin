@@ -55,7 +55,8 @@ export function aPlanBase(fila: Fila): PlanBase {
     dias: Number(fila.dias) || 15,
     canales: canales as Canal[],
     contexto: texto(fila.contexto),
-    audiencia: esAudiencia(fila.audiencia) ? fila.audiencia : "ambos",
+    // Los planes viejos con "ambos" caen acá: se leen como "todos".
+    audiencia: esAudiencia(fila.audiencia) ? fila.audiencia : "todos",
     createdAt: String(fila.created_at),
   }
 }

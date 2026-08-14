@@ -22,7 +22,24 @@
  */
 
 import { CANALES, type Canal } from "@/lib/calendario-context"
-import type { Densidad, TemplatePieza } from "@/lib/templates-pieza"
+
+/**
+ * Cuánto pesa la foto de una pieza vista de lejos. Es lo que el algoritmo mira
+ * para alternar formatos en la grilla. Vivía en `templates-pieza.ts` (el camino
+ * 1, retirado); ahora es del algoritmo, que es su único dueño real.
+ */
+export type Densidad = "foto" | "mixta" | "texto"
+
+/**
+ * Lo mínimo que el repartidor necesita de un template para ubicarlo: su id, su
+ * densidad y si su foto es a color (para alternar claro y oscuro en Instagram).
+ * Cualquier template más gordo —los del feed— entra igual por su forma.
+ */
+export type TemplatePieza = {
+  id: string
+  densidad: Densidad
+  fotoColor?: boolean
+}
 
 /**
  * Cuántos templates distintos entran en un plan.
