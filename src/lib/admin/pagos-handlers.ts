@@ -76,44 +76,44 @@ export async function listarPagos(tipo: TipoPago, req: Request) {
   })
 }
 
-/* ── POST · alta ──────────────────────────────────────────────────────────── */
+/* ── Validación, compartida por el alta y la edición ──────────────────────── */
 
 /**
- * Un recibo se guarda en tres inserts: la cabecera, las imputaciones y los
- * movimientos. Supabase no expone transacciones desde el cliente, así que si
- * algo falla en el medio hay que deshacer a mano — y eso es exactamente lo que
- * hace el `borrar` de abajo. Un recibo a medio guardar sería peor que ninguno:
- * dejaría facturas canceladas sin plata que las respalde.
+ * Todo lo que hay que chequear antes de escribir un recibo.
+ *
+ * Está afuera de `crearPago` porque editar un recibo valida exactamente lo
+ * mismo: las mismas facturas, el mismo control de cuadratura, las mismas
+ * conversiones de moneda. La única diferencia es `pagoId`, que al editar hace
+ * que el saldo de cada factura ignore lo que este recibo ya le había imputado.
  */
-export async function crearPago(tipo: TipoPago, req: Request) {
+type PiezasPago = {
+  cabecera: Record<string, unknown>
+  imputaciones: Record<string, unknown>[]
+  retenciones: Record<string, unknown>[]
+  movimientos: Record<string, unknown>[]
+}
+
+async function validarPago(
+  tipo: TipoPago,
+  raw: Record<string, unknown>,
+  pagoId: string | null
+): Promise<{ piezas: PiezasPago } | { respuesta: NextResponse }> {
   const cfg = CFG[tipo]
-
-  let body: unknown
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: "Body inválido" }, { status: 400 })
-  }
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return NextResponse.json({ error: "Body inválido" }, { status: 400 })
-  }
-
-  const raw = body as Record<string, unknown>
 
   /* ── Validación ───────────────────────────────────────────────────────── */
 
   const entidadId = typeof raw.entidadId === "string" ? raw.entidadId : ""
   if (!entidadId) {
-    return NextResponse.json(
+    return { respuesta: NextResponse.json(
       { error: tipo === "cobro" ? "Elegí el cliente" : "Elegí el proveedor" },
       { status: 400 }
-    )
+    ) }
   }
 
   const fecha = typeof raw.fecha === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.fecha)
     ? raw.fecha
     : null
-  if (!fecha) return NextResponse.json({ error: "La fecha es obligatoria" }, { status: 400 })
+  if (!fecha) return { respuesta: NextResponse.json({ error: "La fecha es obligatoria" }, { status: 400 }) }
 
   const moneda = esMoneda(raw.moneda) ? raw.moneda : "ARS"
 
@@ -160,10 +160,10 @@ export async function crearPago(tipo: TipoPago, req: Request) {
       tipoRet === "iibb" && esJurisdiccion(r.jurisdiccion) ? r.jurisdiccion : null
 
     if (tipoRet === "iibb" && jurisdiccion === null) {
-      return NextResponse.json(
+      return { respuesta: NextResponse.json(
         { error: "Elegí la jurisdicción de la retención de Ingresos Brutos" },
         { status: 400 }
-      )
+      ) }
     }
 
     const base = Number(r.base)
@@ -189,20 +189,20 @@ export async function crearPago(tipo: TipoPago, req: Request) {
   for (const r of retenciones) {
     const clave = `${r.tipo}·${r.jurisdiccion ?? ""}`
     if (claves.has(clave)) {
-      return NextResponse.json(
+      return { respuesta: NextResponse.json(
         { error: "Hay dos retenciones del mismo tipo y jurisdicción: juntalas en un solo renglón" },
         { status: 400 }
-      )
+      ) }
     }
     claves.add(clave)
   }
 
   const imputacionesRaw = Array.isArray(raw.imputaciones) ? raw.imputaciones : []
   if (imputacionesRaw.length === 0) {
-    return NextResponse.json(
+    return { respuesta: NextResponse.json(
       { error: `Elegí al menos un comprobante para imputar ${cfg.nombre}` },
       { status: 400 }
-    )
+    ) }
   }
 
   const mediosRaw = Array.isArray(raw.medios) ? raw.medios : []
@@ -215,13 +215,34 @@ export async function crearPago(tipo: TipoPago, req: Request) {
     .filter((v): v is string => typeof v === "string")
 
   const { data: facturas, error: errFacturas } = await supabase
-    .from("comprobantes_saldo")
+    .from("comprobantes_vigentes")
     .select(`id, moneda, saldo, clase, punto_venta, numero, ${cfg.campoEntidad}, tipo`)
     .in("id", ids)
 
+  /**
+   * Lo que este mismo recibo ya tenía imputado, al editarlo.
+   *
+   * Sin esto, abrir un recibo que canceló una factura entera y guardarlo sin
+   * cambiar nada daría "no se puede imputar 4.683.122,50: su saldo es 0". El
+   * saldo de la factura ya descuenta lo que este recibo le imputó, así que para
+   * validar la versión nueva hay que devolvérselo.
+   */
+  const yaImputado = new Map<string, number>()
+  if (pagoId) {
+    const { data: previas } = await supabase
+      .from("imputaciones")
+      .select("comprobante_id, importe")
+      .eq("pago_id", pagoId)
+
+    for (const i of previas ?? []) {
+      const cid = i.comprobante_id as string
+      yaImputado.set(cid, (yaImputado.get(cid) ?? 0) + Number(i.importe))
+    }
+  }
+
   if (errFacturas) {
     console.error(`[${tipo} facturas]`, errFacturas)
-    return NextResponse.json({ error: "No se pudieron verificar los comprobantes" }, { status: 500 })
+    return { respuesta: NextResponse.json({ error: "No se pudieron verificar los comprobantes" }, { status: 500 }) }
   }
 
   const porId = new Map((facturas ?? []).map((f) => [f.id as string, f as Record<string, unknown>]))
@@ -232,14 +253,14 @@ export async function crearPago(tipo: TipoPago, req: Request) {
   // de un "no cuadra por 4.679.859".
   const hayMonedaCruzada = (facturas ?? []).some((f) => f.moneda !== moneda)
   if (hayMonedaCruzada && tc === null) {
-    return NextResponse.json(
+    return { respuesta: NextResponse.json(
       {
         error:
           `Estás ${tipo === "cobro" ? "cobrando" : "pagando"} en ${moneda === "ARS" ? "pesos" : "dólares"} ` +
           `un comprobante en ${moneda === "ARS" ? "dólares" : "pesos"}: cargá el tipo de cambio.`,
       },
       { status: 400 }
-    )
+    ) }
   }
 
   let imputadoEnMonedaRecibo = 0
@@ -252,13 +273,13 @@ export async function crearPago(tipo: TipoPago, req: Request) {
 
     const f = porId.get(id)
     if (!f) {
-      return NextResponse.json({ error: "Uno de los comprobantes ya no existe" }, { status: 409 })
+      return { respuesta: NextResponse.json({ error: "Uno de los comprobantes ya no existe" }, { status: 409 }) }
     }
     if (
       f.tipo !== cfg.tipoComprobante ||
       (f as Record<string, unknown>)[cfg.campoEntidad] !== entidadId
     ) {
-      return NextResponse.json(
+      return { respuesta: NextResponse.json(
         {
           error:
             tipo === "cobro"
@@ -266,22 +287,23 @@ export async function crearPago(tipo: TipoPago, req: Request) {
               : "Hay un comprobante que no es de este proveedor",
         },
         { status: 400 }
-      )
+      ) }
     }
     if (!Number.isFinite(importe) || importe <= 0) {
-      return NextResponse.json(
+      return { respuesta: NextResponse.json(
         { error: "Los importes imputados tienen que ser mayores a cero" },
         { status: 400 }
-      )
+      ) }
     }
     // Medio centavo de tolerancia por el redondeo de la conversión.
-    if (importe > Number(f.saldo) + 0.01) {
-      return NextResponse.json(
+    const disponible = Number(f.saldo) + (yaImputado.get(id) ?? 0)
+    if (importe > disponible + 0.01) {
+      return { respuesta: NextResponse.json(
         {
-          error: `No se puede imputar ${importe} a ${f.clase} ${f.punto_venta}-${f.numero}: su saldo es ${f.saldo}`,
+          error: `No se puede imputar ${importe} a ${f.clase} ${f.punto_venta}-${f.numero}: su saldo es ${disponible.toFixed(2)}`,
         },
         { status: 409 }
-      )
+      ) }
     }
 
     filasImputacion.push({
@@ -329,7 +351,7 @@ export async function crearPago(tipo: TipoPago, req: Request) {
 
     const monedaCuenta = monedaDeCuenta.get(cuentaId)
     if (!monedaCuenta) {
-      return NextResponse.json({ error: "Una de las cuentas elegidas ya no existe" }, { status: 409 })
+      return { respuesta: NextResponse.json({ error: "Una de las cuentas elegidas ya no existe" }, { status: 409 }) }
     }
 
     // El control de cuadratura corre en la moneda del recibo, así que suma el
@@ -338,10 +360,10 @@ export async function crearPago(tipo: TipoPago, req: Request) {
 
     const cruzada = monedaCuenta !== moneda
     if (cruzada && tc === null) {
-      return NextResponse.json(
+      return { respuesta: NextResponse.json(
         { error: `La cuenta elegida está en ${monedaCuenta} y el recibo en ${moneda}: cargá el tipo de cambio.` },
         { status: 400 }
-      )
+      ) }
     }
 
     filasMovimiento.push({
@@ -373,7 +395,7 @@ export async function crearPago(tipo: TipoPago, req: Request) {
   const balance = balancear(imputadoEnMonedaRecibo, totalMedios, totalRetenciones)
 
   if (!balance.cuadra) {
-    return NextResponse.json(
+    return { respuesta: NextResponse.json(
       {
         error:
           `El recibo no cuadra por ${balance.diferencia.toFixed(2)}. ` +
@@ -381,8 +403,57 @@ export async function crearPago(tipo: TipoPago, req: Request) {
           `retenciones ${balance.retenciones.toFixed(2)}.`,
       },
       { status: 400 }
-    )
+    ) }
   }
+
+
+  return {
+    piezas: {
+      cabecera: {
+        tipo,
+        [cfg.campoEntidad]: entidadId,
+        fecha,
+        moneda,
+        tc,
+        observaciones:
+          typeof raw.observaciones === "string"
+            ? raw.observaciones.trim().slice(0, 1000) || null
+            : null,
+      },
+      imputaciones: filasImputacion,
+      retenciones,
+      movimientos: filasMovimiento,
+    },
+  }
+}
+
+/* ── POST · alta ──────────────────────────────────────────────────────────── */
+
+/**
+ * Un recibo se guarda en tres inserts: la cabecera, las imputaciones y los
+ * movimientos. Supabase no expone transacciones desde el cliente, así que si
+ * algo falla en el medio hay que deshacer a mano — y eso es exactamente lo que
+ * hace el `borrar` de abajo. Un recibo a medio guardar sería peor que ninguno:
+ * dejaría facturas canceladas sin plata que las respalde.
+ */
+export async function crearPago(tipo: TipoPago, req: Request) {
+  const cfg = CFG[tipo]
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: "Body inválido" }, { status: 400 })
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Body inválido" }, { status: 400 })
+  }
+
+  const raw = body as Record<string, unknown>
+
+  const validado = await validarPago(tipo, raw, null)
+  if ("respuesta" in validado) return validado.respuesta
+  const { cabecera, imputaciones: filasImputacion, retenciones, movimientos: filasMovimiento } = validado.piezas
 
   /* ── Escritura ────────────────────────────────────────────────────────── */
 
@@ -393,16 +464,7 @@ export async function crearPago(tipo: TipoPago, req: Request) {
 
   const { data: pago, error: errPago } = await supabase
     .from("pagos")
-    .insert({
-      tipo,
-      [cfg.campoEntidad]: entidadId,
-      fecha,
-      moneda,
-      tc,
-      observaciones:
-        typeof raw.observaciones === "string" ? raw.observaciones.trim().slice(0, 1000) || null : null,
-      created_by: user?.id ?? null,
-    })
+    .insert({ ...cabecera, created_by: user?.id ?? null })
     .select("id")
     .single()
 
@@ -466,4 +528,153 @@ export async function crearPago(tipo: TipoPago, req: Request) {
     { [tipo]: completo ? aCobro(completo) : null },
     { status: 201 }
   )
+}
+
+/* ── PATCH · edición ──────────────────────────────────────────────────────── */
+
+/**
+ * Editar un recibo ya cargado.
+ *
+ * Hasta ahora la única forma de corregir un cobro mal cargado era borrarlo y
+ * rehacerlo entero: volver a buscar el cliente, volver a tildar las facturas,
+ * volver a escribir las retenciones. Por un dígito mal tipeado en el número de
+ * transferencia.
+ *
+ * CÓMO SE HACE SIN TRANSACCIONES
+ *
+ * Un recibo son cuatro tablas y Supabase no expone transacciones desde el
+ * cliente, así que "reemplazar los hijos" puede fallar por la mitad. La
+ * secuencia de abajo hace que eso no pierda datos:
+ *
+ *   1. Se valida la versión nueva **entera** antes de tocar nada. Si algo no
+ *      cierra, el recibo viejo sigue intacto y nadie se enteró.
+ *   2. Se guarda una copia en memoria de los hijos actuales.
+ *   3. Se borran y se insertan los nuevos.
+ *   4. Si algo falla, se reponen los de la copia.
+ *
+ * El id del recibo no cambia, que es lo que hace que los enlaces desde el
+ * extracto del banco sigan funcionando.
+ */
+export async function editarPago(tipo: TipoPago, req: Request, id: string) {
+  const cfg = CFG[tipo]
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: "Body inválido" }, { status: 400 })
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Body inválido" }, { status: 400 })
+  }
+
+  const { data: existente } = await supabase
+    .from("pagos")
+    .select("id")
+    .eq("id", id)
+    .eq("tipo", tipo)
+    .maybeSingle()
+
+  if (!existente) {
+    return NextResponse.json({ error: `No se encontró ${cfg.nombre}` }, { status: 404 })
+  }
+
+  // 1 · Validar la versión nueva. `id` como tercer argumento es lo que hace que
+  // el saldo de cada factura ignore lo que este mismo recibo ya le imputaba.
+  const validado = await validarPago(tipo, body as Record<string, unknown>, id)
+  if ("respuesta" in validado) return validado.respuesta
+
+  const { cabecera, imputaciones, retenciones, movimientos } = validado.piezas
+
+  // 2 · La copia de seguridad de los hijos actuales.
+  const [{ data: impPrevias }, { data: retPrevias }, { data: movPrevios }] = await Promise.all([
+    supabase.from("imputaciones").select("*").eq("pago_id", id),
+    supabase.from("pago_retenciones").select("*").eq("pago_id", id),
+    supabase.from("movimientos").select("*").eq("pago_id", id),
+  ])
+
+  const reponer = async () => {
+    await Promise.all([
+      supabase.from("imputaciones").delete().eq("pago_id", id),
+      supabase.from("pago_retenciones").delete().eq("pago_id", id),
+      supabase.from("movimientos").delete().eq("pago_id", id),
+    ])
+    // Sin las columnas generadas, que Postgres rechaza en un INSERT.
+    const limpiar = (filas: Record<string, unknown>[] | null) =>
+      (filas ?? []).map((f) => {
+        const copia = { ...f }
+        delete copia.signo
+        delete copia.importe_ars
+        delete copia.importe_usd
+        return copia
+      })
+
+    await Promise.all([
+      impPrevias?.length ? supabase.from("imputaciones").insert(impPrevias) : null,
+      retPrevias?.length ? supabase.from("pago_retenciones").insert(retPrevias) : null,
+      movPrevios?.length ? supabase.from("movimientos").insert(limpiar(movPrevios)) : null,
+    ])
+  }
+
+  // 3 · Fuera lo viejo, adentro lo nuevo.
+  const borrados = await Promise.all([
+    supabase.from("imputaciones").delete().eq("pago_id", id),
+    supabase.from("pago_retenciones").delete().eq("pago_id", id),
+    supabase.from("movimientos").delete().eq("pago_id", id),
+  ])
+
+  const errBorrado = borrados.find((r) => r.error)?.error
+  if (errBorrado) {
+    console.error(`[${tipo} PATCH borrado]`, errBorrado)
+    await reponer()
+    return NextResponse.json({ error: `No se pudo actualizar ${cfg.nombre}` }, { status: 500 })
+  }
+
+  const supabaseUsuario = await createSupabaseServer()
+  const {
+    data: { user },
+  } = await supabaseUsuario.auth.getUser()
+
+  const { error: errCabecera } = await supabase
+    .from("pagos")
+    .update(cabecera)
+    .eq("id", id)
+
+  if (errCabecera) {
+    console.error(`[${tipo} PATCH cabecera]`, errCabecera)
+    await reponer()
+    return NextResponse.json({ error: `No se pudo actualizar ${cfg.nombre}` }, { status: 500 })
+  }
+
+  const inserciones = await Promise.all([
+    imputaciones.length
+      ? supabase.from("imputaciones").insert(imputaciones.map((f) => ({ ...f, pago_id: id })))
+      : { error: null },
+    retenciones.length
+      ? supabase.from("pago_retenciones").insert(retenciones.map((f) => ({ ...f, pago_id: id })))
+      : { error: null },
+    movimientos.length
+      ? supabase
+          .from("movimientos")
+          .insert(movimientos.map((f) => ({ ...f, pago_id: id, created_by: user?.id ?? null })))
+      : { error: null },
+  ])
+
+  const errInsercion = inserciones.find((r) => r.error)?.error
+  if (errInsercion) {
+    console.error(`[${tipo} PATCH insercion]`, errInsercion)
+    await reponer()
+    return NextResponse.json(
+      { error: `No se pudo actualizar ${cfg.nombre}: ${errInsercion.message}` },
+      { status: 500 }
+    )
+  }
+
+  const { data: completo } = await supabase
+    .from("pagos")
+    .select(SELECT_COBRO)
+    .eq("id", id)
+    .single()
+
+  return NextResponse.json({ [tipo]: completo ? aCobro(completo) : null })
 }

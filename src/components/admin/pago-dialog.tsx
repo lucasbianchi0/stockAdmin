@@ -18,6 +18,7 @@ import {
   balancear,
   convertir,
   sumaRetenciones,
+  type Cobro,
   type CuentaFinanciera,
   type Pendiente,
   type Jurisdiccion,
@@ -67,19 +68,28 @@ type RenglonRetencion = {
 export function PagoDialog({
   tipo,
   abierto,
+  cobro,
   onCerrar,
   onGuardado,
 }: {
   /** cobro = entra plata de un cliente; pago = sale hacia un proveedor. */
   tipo: TipoPago
   abierto: boolean
+  /** El recibo que se está editando, o `null` para uno nuevo. Al editar se
+   *  precarga todo —entidad, facturas tildadas, retenciones, medios— y se manda
+   *  un PATCH en vez de un POST, conservando el id del recibo. */
+  cobro?: Cobro | null
   onCerrar: () => void
   onGuardado: () => void
 }) {
+  const editando = Boolean(cobro)
   const esCobro = tipo === "cobro"
   const recurso = esCobro ? "cobros" : "pagos"
   const rotuloEntidad = esCobro ? "Cliente" : "Proveedor"
-  const [cliente, setCliente] = useState<Cliente | null>(null)
+  /** Solo lo que el formulario usa de la ficha. Pedir el `Cliente` completo
+   *  obligaría a traerla entera del servidor para poder editar un recibo, y de
+   *  la ficha acá solo se muestra el nombre. */
+  const [cliente, setCliente] = useState<{ id: string; razonSocial: string } | null>(null)
   const [fecha, setFecha] = useState(hoyISO)
   const [moneda, setMoneda] = useState<Moneda>("ARS")
   const [tc, setTc] = useState("")
@@ -99,19 +109,75 @@ export function PagoDialog({
 
   const cotizacion = useCotizacion()
 
+  const cargarPendientes = useCallback(
+    async (id: string, incluirPago?: string) => {
+    setCargandoPendientes(true)
+    try {
+      // `incluirPago` trae también las facturas que este recibo ya canceló, que
+      // por definición dejaron de estar pendientes.
+      const params = new URLSearchParams({ entidadId: id })
+      if (incluirPago) params.set("incluirPago", incluirPago)
+      const res = await fetch(`/api/admin/${recurso}/pendientes?${params}`)
+      const data = await res.json()
+      setPendientes(data.pendientes ?? [])
+    } catch {
+      setPendientes([])
+    } finally {
+      setCargandoPendientes(false)
+    }
+    },
+    [recurso]
+  )
+
   useEffect(() => {
     if (!abierto) return
-    setCliente(null)
-    setFecha(hoyISO())
-    setMoneda("ARS")
-    setTc("")
-    setPendientes([])
-    setImputado({})
-    setMedios([{ cuentaId: "", importe: "", referencia: "" }])
-    setRetenciones([])
-    setObservaciones("")
     setError(null)
-  }, [abierto])
+
+    if (!cobro) {
+      setCliente(null)
+      setFecha(hoyISO())
+      setMoneda("ARS")
+      setTc("")
+      setPendientes([])
+      setImputado({})
+      setMedios([{ cuentaId: "", importe: "", referencia: "" }])
+      setRetenciones([])
+      setObservaciones("")
+      return
+    }
+
+    // Editar: se repone exactamente lo que el recibo tenía. Las facturas se
+    // cargan aparte —el efecto de `cliente`— y `imputado` las espera con los
+    // importes ya puestos.
+    setCliente({ id: cobro.clienteId, razonSocial: cobro.clienteNombre ?? "" })
+    setFecha(cobro.fecha)
+    setMoneda(cobro.moneda)
+    setTc(cobro.tc ? String(cobro.tc) : "")
+    setImputado(
+      Object.fromEntries(
+        cobro.imputaciones.map((i) => [i.comprobanteId, String(i.importe)] as const)
+      )
+    )
+    setMedios(
+      cobro.medios.length > 0
+        ? cobro.medios.map((m) => ({
+            cuentaId: m.cuentaId,
+            importe: String(m.importe),
+            referencia: m.referencia ?? "",
+          }))
+        : [{ cuentaId: "", importe: "", referencia: "" }]
+    )
+    setRetenciones(
+      cobro.retenciones.map((r) => ({
+        tipo: r.tipo,
+        jurisdiccion: r.jurisdiccion,
+        importe: String(r.importe),
+        numeroCertificado: r.numeroCertificado ?? "",
+      }))
+    )
+    setObservaciones(cobro.observaciones ?? "")
+    cargarPendientes(cobro.clienteId, cobro.id)
+  }, [abierto, cobro, cargarPendientes])
 
   useEffect(() => {
     if (!abierto) return
@@ -129,18 +195,6 @@ export function PagoDialog({
     return () => window.removeEventListener("keydown", onKey)
   }, [onCerrar, guardando])
 
-  const cargarPendientes = useCallback(async (id: string) => {
-    setCargandoPendientes(true)
-    try {
-      const res = await fetch(`/api/admin/${recurso}/pendientes?entidadId=${id}`)
-      const data = await res.json()
-      setPendientes(data.pendientes ?? [])
-    } catch {
-      setPendientes([])
-    } finally {
-      setCargandoPendientes(false)
-    }
-  }, [recurso])
 
   /* ── Cálculos ────────────────────────────────────────────────────────────── */
 
@@ -220,8 +274,10 @@ export function PagoDialog({
     setError(null)
 
     try {
-      const res = await fetch(`/api/admin/${recurso}`, {
-        method: "POST",
+      const res = await fetch(
+        editando ? `/api/admin/${recurso}/${cobro!.id}` : `/api/admin/${recurso}`,
+        {
+        method: editando ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           entidadId: cliente.id,
@@ -251,7 +307,8 @@ export function PagoDialog({
             })),
           observaciones,
         }),
-      })
+        }
+      )
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? `No se pudo registrar el ${tipo}`)
       onGuardado()
@@ -808,9 +865,9 @@ function SelectorEntidad({
   onElegir,
 }: {
   tipo: TipoPago
-  cliente: Cliente | null
+  cliente: { id: string; razonSocial: string } | null
   disabled?: boolean
-  onElegir: (c: Cliente) => void
+  onElegir: (c: { id: string; razonSocial: string }) => void
 }) {
   const [q, setQ] = useState("")
   const [abierto, setAbierto] = useState(false)

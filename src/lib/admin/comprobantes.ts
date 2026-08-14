@@ -230,6 +230,16 @@ export type Comprobante = {
   cuentaContableId: string | null
   cuentaContableNombre: string | null
   detalle: string | null
+  /**
+   * En qué punto de su vida está.
+   *
+   *   borrador    se está cargando · no suma a ningún saldo · sin asiento
+   *   confirmado  es un dato: entra en saldos, IVA y mayor
+   *   anulado     dejó de valer, pero conserva su número
+   */
+  estado: EstadoComprobante
+  /** Cuándo se confirmó, que no es lo mismo que cuándo se cargó. */
+  confirmadoAt: string | null
   moneda: Moneda
   /**
    * Pesos por dólar de ESTE comprobante. Obligatorio en dólares (el TC al que se
@@ -264,6 +274,31 @@ export type Comprobante = {
    *  desincroniza el día que alguien anula un recibo. */
   imputado: number
   saldo: number
+}
+
+/* ── Estado del comprobante ───────────────────────────────────────────────── */
+
+export const ESTADOS_COMPROBANTE = ["borrador", "confirmado", "anulado"] as const
+export type EstadoComprobante = (typeof ESTADOS_COMPROBANTE)[number]
+
+export const ESTADO_LABEL: Record<EstadoComprobante, string> = {
+  borrador: "Borrador",
+  confirmado: "Confirmado",
+  anulado: "Anulado",
+}
+
+/** El tono del badge de cada estado, para que sea el mismo en las seis
+ *  pantallas que lo muestran. */
+export const ESTADO_TONO: Record<EstadoComprobante, "warning" | "success" | "neutral"> = {
+  borrador: "warning",
+  confirmado: "success",
+  anulado: "neutral",
+}
+
+/** Un borrador se edita entero. Un confirmado, solo mientras nadie lo haya
+ *  imputado — y eso lo decide el servidor, que es quien ve las imputaciones. */
+export function esEditableSinRestriccion(estado: EstadoComprobante): boolean {
+  return estado === "borrador"
 }
 
 /* ── Estado de cobranza ───────────────────────────────────────────────────── */

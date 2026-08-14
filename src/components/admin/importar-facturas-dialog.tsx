@@ -198,7 +198,12 @@ export function ImportarFacturasDialog({
             numero,
             detalle: c.detalle,
             moneda: c.moneda,
-            tc: c.moneda === "USD" ? (parsearImporte(c.tc) ?? 0) : 1,
+            tc: parsearImporte(c.tc) ?? null,
+            // Lo leído de un PDF entra como borrador, siempre. El modelo puede
+            // haber leído mal un dígito, y una factura confirmada ya suma al
+            // saldo del cliente y genera su asiento. Se revisan las seis en el
+            // listado y se confirman en lote cuando están.
+            estado: "borrador",
             netoGravado: parsearImporte(c.netoGravado) ?? 0,
             alicuotaIva: Number(c.alicuotaIva) || 0,
             iva: parsearImporte(c.iva) ?? 0,
@@ -235,7 +240,10 @@ export function ImportarFacturasDialog({
 
     setGuardando(false)
     if (ok > 0) {
-      toast.success(`${ok} factura${ok !== 1 ? "s" : ""} registrada${ok !== 1 ? "s" : ""}`)
+      toast.success(
+        `${ok} factura${ok !== 1 ? "s" : ""} cargada${ok !== 1 ? "s" : ""} como borrador`,
+        { description: "Revisalas en el listado y confirmalas cuando estén." }
+      )
       onImportadas(ok)
     }
   }

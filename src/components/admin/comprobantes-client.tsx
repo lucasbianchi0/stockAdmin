@@ -1,7 +1,19 @@
 "use client"
 
 import { useCallback, useMemo, useState } from "react"
-import { Eye, FileInput, FileText, Pencil, Plus, Search, Trash2, X } from "lucide-react"
+import {
+  Check,
+  Eye,
+  FileInput,
+  FileText,
+  Loader2,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { ConfirmarDialog } from "@/components/admin/confirmar-dialog"
@@ -33,6 +45,9 @@ import {
   formatearNumero,
   type Comprobante,
   type TipoComprobante,
+  ESTADO_LABEL,
+  ESTADO_TONO,
+  type EstadoComprobante,
 } from "@/lib/admin/comprobantes"
 import { formatearFecha } from "@/lib/admin/fecha"
 import {
@@ -73,10 +88,18 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
 
   const [vencimiento, setVencimiento] = useState<FiltroVencimiento>("")
   const [moneda, setMoneda] = useState<"" | "ARS" | "USD">("")
+  const [estado, setEstado] = useState<"" | EstadoComprobante>("")
+  /** Los borradores tildados para confirmar en lote. */
+  const [elegidos, setElegidos] = useState<Set<string>>(new Set())
+  const [confirmando, setConfirmando] = useState<string | null>(null)
 
   const filtros = useMemo(
-    () => ({ vencimiento: vencimiento || undefined, moneda: moneda || undefined }),
-    [vencimiento, moneda]
+    () => ({
+      vencimiento: vencimiento || undefined,
+      moneda: moneda || undefined,
+      estado: estado || undefined,
+    }),
+    [vencimiento, moneda, estado]
   )
 
   const tabla = useTablaAdmin<Comprobante>({
@@ -95,6 +118,84 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
   const [importando, setImportando] = useState(false)
 
   const { recargar } = tabla
+
+  const borradores = tabla.filas.filter((c) => c.estado === "borrador")
+  const elegidosVisibles = borradores.filter((c) => elegidos.has(c.id))
+
+  /** Confirmar uno. Es la acción principal de un borrador, así que va en la fila
+   *  y no escondida adentro del detalle. */
+  const confirmar = useCallback(
+    async (c: Comprobante) => {
+      setConfirmando(c.id)
+      try {
+        const res = await fetch(`/api/admin/${recurso}/${c.id}/estado`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ estado: "confirmado" }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "No se pudo confirmar")
+        toast.success("Comprobante confirmado", { description: data.aviso ?? undefined })
+        recargar()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "No se pudo confirmar")
+      } finally {
+        setConfirmando(null)
+      }
+    },
+    [recurso, recargar]
+  )
+
+  /** Volver a borrador: la forma de corregir algo ya confirmado que nadie cobró
+   *  todavía. Con un recibo imputado el servidor lo frena y explica por qué. */
+  const volverABorrador = useCallback(
+    async (c: Comprobante) => {
+      setConfirmando(c.id)
+      try {
+        const res = await fetch(`/api/admin/${recurso}/${c.id}/estado`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ estado: "borrador" }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "No se pudo pasar a borrador")
+        toast.success("Volvió a borrador — ya se puede editar")
+        recargar()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "No se pudo pasar a borrador")
+      } finally {
+        setConfirmando(null)
+      }
+    },
+    [recurso, recargar]
+  )
+
+  const confirmarLote = useCallback(async () => {
+    const ids = elegidosVisibles.map((c) => c.id)
+    if (ids.length === 0) return
+    setConfirmando("lote")
+    try {
+      const res = await fetch(`/api/admin/${recurso}/confirmar`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "No se pudieron confirmar")
+
+      if (data.fallidos?.length) {
+        toast.warning(`${data.confirmados} confirmados · ${data.fallidos.length} con problemas`)
+      } else {
+        toast.success(`${data.confirmados} comprobantes confirmados`)
+      }
+      setElegidos(new Set())
+      recargar()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudieron confirmar")
+    } finally {
+      setConfirmando(null)
+    }
+  }, [elegidosVisibles, recurso, recargar])
 
   const alGuardar = useCallback(
     (c: Comprobante, esNuevo: boolean) => {
@@ -210,6 +311,34 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
             )}
           </div>
 
+          {/* Los borradores no se esconden por defecto: el listado es el lugar
+              de trabajo, y una factura a medio cargar que no se ve es una
+              factura que se olvida. El filtro está para poder concentrarse en
+              ellos, no para taparlos. */}
+          <div className="flex items-center gap-1 rounded-lg border border-line bg-surface p-0.5">
+            {(
+              [
+                ["", "Todos"],
+                ["borrador", "Borradores"],
+                ["confirmado", "Confirmados"],
+              ] as const
+            ).map(([v, etiqueta]) => (
+              <button
+                key={v}
+                onClick={() => setEstado(v)}
+                aria-pressed={estado === v}
+                className={cn(
+                  "rounded-md px-2.5 py-1.5 text-[11.5px] font-medium transition-colors",
+                  estado === v
+                    ? "bg-brand-50 text-brand-700"
+                    : "text-ink-muted hover:bg-surface-muted hover:text-ink"
+                )}
+              >
+                {etiqueta}
+              </button>
+            ))}
+          </div>
+
           <div className="flex items-center gap-2 lg:ml-auto">
             <Button variant="outline" onClick={() => setImportando(true)}>
               <FileInput className="h-3.5 w-3.5" />
@@ -259,6 +388,23 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[36px] pr-0">
+                      {borradores.length > 0 && (
+                        <input
+                          type="checkbox"
+                          aria-label="Elegir todos los borradores de la página"
+                          checked={
+                            borradores.length > 0 && elegidosVisibles.length === borradores.length
+                          }
+                          onChange={(e) =>
+                            setElegidos(
+                              e.target.checked ? new Set(borradores.map((c) => c.id)) : new Set()
+                            )
+                          }
+                          className="h-3.5 w-3.5 cursor-pointer accent-brand-500"
+                        />
+                      )}
+                    </TableHead>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Comprobante</TableHead>
                     <TableHead>{rotuloEntidad}</TableHead>
@@ -276,14 +422,26 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
                       <Fila
                         key={c.id}
                         c={c}
+                        elegido={elegidos.has(c.id)}
+                        ocupado={confirmando === c.id}
                         onVer={() => setVerId(c.id)}
                         onEditar={() => setDialogo({ abierto: true, comprobante: c })}
                         onEliminar={() => setAEliminar(c)}
+                        onElegir={(v) =>
+                          setElegidos((prev) => {
+                            const proximo = new Set(prev)
+                            if (v) proximo.add(c.id)
+                            else proximo.delete(c.id)
+                            return proximo
+                          })
+                        }
+                        onConfirmar={() => confirmar(c)}
+                        onVolverABorrador={() => volverABorrador(c)}
                       />
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="p-0">
+                      <TableCell colSpan={8} className="p-0">
                         <EmptyState
                           icon={FileText}
                           title={
@@ -357,6 +515,31 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
         onImportadas={() => recargar()}
       />
 
+      {/* La barra de lote aparece solo cuando hay algo elegido, fija abajo:
+          confirmar seis facturas no debería obligar a scrollear hasta un botón
+          que quedó arriba de todo. */}
+      {elegidosVisibles.length > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-5">
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-2.5 shadow-e3">
+            <span className="text-[12.5px] text-ink">
+              <strong className="num">{elegidosVisibles.length}</strong>{" "}
+              {elegidosVisibles.length === 1 ? "borrador elegido" : "borradores elegidos"}
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => setElegidos(new Set())}>
+              Cancelar
+            </Button>
+            <Button size="sm" disabled={confirmando === "lote"} onClick={confirmarLote}>
+              {confirmando === "lote" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Check className="h-3.5 w-3.5" />
+              )}
+              Confirmar {elegidosVisibles.length}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <ConfirmarDialog
         abierto={aEliminar !== null}
         titulo={esCompra ? "¿Eliminar el comprobante?" : "¿Eliminar la factura?"}
@@ -388,24 +571,56 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
 
 function Fila({
   c,
+  elegido,
+  ocupado,
   onVer,
   onEditar,
   onEliminar,
+  onElegir,
+  onConfirmar,
+  onVolverABorrador,
 }: {
   c: Comprobante
+  elegido: boolean
+  ocupado: boolean
   onVer: () => void
   onEditar: () => void
   onEliminar: () => void
+  onElegir: (v: boolean) => void
+  onConfirmar: () => void
+  onVolverABorrador: () => void
 }) {
   const clase = buscarClase(c.tipo, c.clase)
   const esNota = clase?.signo === -1
   const saldado = estadoDeSaldo(c.total, c.saldo) === "saldado"
+  const esBorrador = c.estado === "borrador"
 
   return (
     <TableRow
       onClick={onVer}
-      className={cn("cursor-pointer", claseFilaVencimiento(c.fechaVencimiento, saldado))}
+      className={cn(
+        "cursor-pointer",
+        claseFilaVencimiento(c.fechaVencimiento, saldado),
+        // Un borrador se distingue de un vistazo: raya al costado y fondo
+        // apenas teñido. No cuenta para ningún saldo, y que se parezca a una
+        // factura confirmada es la forma de que alguien lo dé por cargado.
+        esBorrador && "border-l-2 border-l-warning bg-warning-soft/20"
+      )}
     >
+      {/* La tilde solo en los borradores: seleccionar algo ya confirmado no
+          habilita ninguna acción, y una casilla que no hace nada es ruido. */}
+      <TableCell onClick={(e) => e.stopPropagation()} className="w-[36px] pr-0">
+        {esBorrador ? (
+          <input
+            type="checkbox"
+            checked={elegido}
+            onChange={(e) => onElegir(e.target.checked)}
+            aria-label="Elegir para confirmar en lote"
+            className="h-3.5 w-3.5 cursor-pointer accent-brand-500"
+          />
+        ) : null}
+      </TableCell>
+
       <TableCell className="num whitespace-nowrap text-ink-secondary">
         {formatearFecha(c.fecha)}
       </TableCell>
@@ -421,6 +636,11 @@ function Fila({
           <span className="num text-[12px] text-ink-secondary">
             {formatearNumero(c.puntoVenta, c.numero)}
           </span>
+          {c.estado !== "confirmado" && (
+            <Badge tone={ESTADO_TONO[c.estado]} size="sm">
+              {ESTADO_LABEL[c.estado]}
+            </Badge>
+          )}
         </div>
         {c.detalle && (
           <span className="block truncate text-[11.5px] text-ink-muted" title={c.detalle}>
@@ -490,6 +710,42 @@ function Fila({
 
       <TableCell onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-end gap-0.5">
+          {/* Confirmar es la acción principal de un borrador: va primero y con
+              texto, no como un ícono más entre otros cuatro. */}
+          {esBorrador ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={ocupado}
+              onClick={onConfirmar}
+              className="mr-1"
+            >
+              {ocupado ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Check className="h-3.5 w-3.5" />
+              )}
+              Confirmar
+            </Button>
+          ) : (
+            c.estado === "confirmado" && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={ocupado}
+                onClick={onVolverABorrador}
+                aria-label="Volver a borrador"
+                title="Volver a borrador para poder editarlo"
+              >
+                {ocupado ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            )
+          )}
+
           <Button variant="ghost" size="icon-sm" onClick={onVer} aria-label="Ver detalle">
             <Eye className="h-3.5 w-3.5" />
           </Button>

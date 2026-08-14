@@ -24,6 +24,17 @@ import {
  * son cuatro líneas cada una.
  */
 
+/** Contra qué columna se cuelga cada ficha en `comprobantes`. */
+const CAMPO_ENTIDAD: Record<TipoEntidad, string> = {
+  cliente: "cliente_id",
+  proveedor: "proveedor_id",
+}
+
+/** Techo del filtro "con deuda". Con más comprobantes pendientes que esto en
+ *  total, el filtro se quedaría corto — es un escenario que hoy no existe y que
+ *  igual daría una lista incompleta antes que un error. */
+const TOPE_CON_DEUDA = 5000
+
 type Config = {
   tabla: TablaEntidad
   /** De qué lado del mostrador está: define contra qué comprobantes se calcula
@@ -42,7 +53,7 @@ export const CONFIG_CLIENTES: Config = {
   tipo: "cliente",
   singular: "el cliente",
   plural: "los clientes",
-  select: "*, vendedor:vendedores (id, nombre)",
+  select: "*, vendedor:vendedores (id, nombre), categoria:categorias_entidad (id, nombre)",
   mapear: aCliente,
   clave: "clientes",
 }
@@ -52,7 +63,7 @@ export const CONFIG_PROVEEDORES: Config = {
   tipo: "proveedor",
   singular: "el proveedor",
   plural: "los proveedores",
-  select: "*",
+  select: "*, categoria:categorias_entidad (id, nombre)",
   mapear: aProveedor,
   clave: "proveedores",
 }
@@ -68,11 +79,55 @@ export async function listarEntidades(cfg: Config, req: Request) {
   )
   const q = url.searchParams.get("q")?.trim() ?? ""
   const estado = url.searchParams.get("estado") ?? "activos"
+  const categoriaId = url.searchParams.get("categoriaId") ?? ""
+  const provincia = url.searchParams.get("provincia") ?? ""
+  const conDeuda = url.searchParams.get("conDeuda") === "1"
 
   let query = supabase.from(cfg.tabla).select(cfg.select, { count: "exact" })
 
   if (estado === "activos") query = query.eq("activo", true)
   else if (estado === "inactivos") query = query.eq("activo", false)
+
+  // `sin` es su propio filtro: "los que todavía no clasifiqué" es la pregunta
+  // que aparece apenas se empieza a usar la categoría, y sin esto hay que
+  // recorrer la lista a ojo para encontrarlos.
+  if (categoriaId === "sin") query = query.is("categoria_id", null)
+  else if (categoriaId) query = query.eq("categoria_id", categoriaId)
+
+  if (provincia) query = query.eq("provincia", provincia)
+
+  /**
+   * "Mostrame solo los que me deben."
+   *
+   * El saldo no es una columna de `clientes` —se calcula contra los
+   * comprobantes—, así que no se puede filtrar directo. Se resuelve al revés:
+   * primero se pregunta qué fichas tienen algún comprobante con saldo y después
+   * se filtra la lista por esos ids.
+   *
+   * Va antes de la paginación a propósito. Filtrar después de traer la página
+   * daría "3 de 25" en pantalla pero seguiría diciendo que hay 200 en total, y
+   * las páginas siguientes quedarían medio vacías.
+   */
+  if (conDeuda) {
+    const { data: conSaldo } = await supabase
+      .from("comprobantes_vigentes")
+      .select(CAMPO_ENTIDAD[cfg.tipo])
+      .eq("tipo", cfg.tipo === "cliente" ? "venta" : "compra")
+      .gt("saldo", 0)
+      .limit(TOPE_CON_DEUDA)
+
+    const ids = [
+      ...new Set(
+        (conSaldo ?? [])
+          .map((f) => (f as unknown as Record<string, unknown>)[CAMPO_ENTIDAD[cfg.tipo]])
+          .filter((v): v is string => typeof v === "string")
+      ),
+    ]
+
+    // Sin deudores, `in` con lista vacía devuelve todo en PostgREST. Un id
+    // imposible es la forma de decir "ninguno" sin un caso especial.
+    query = query.in("id", ids.length > 0 ? ids : ["00000000-0000-0000-0000-000000000000"])
+  }
 
   if (q) query = query.or(terminosDeBusqueda(q))
 

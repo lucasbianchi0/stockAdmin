@@ -14,6 +14,7 @@ import {
   Vacio,
 } from "@/components/admin/detalle-dialog"
 import { SemaforoVencimiento } from "@/components/admin/semaforo-vencimiento"
+import { AdjuntosPanel } from "@/components/admin/adjuntos-panel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -24,6 +25,8 @@ import {
   formatearNumero,
   type Comprobante,
   type TipoComprobante,
+  ESTADO_LABEL,
+  ESTADO_TONO,
 } from "@/lib/admin/comprobantes"
 import type { ComprobanteDetalle as Datos } from "@/lib/admin/detalle"
 import { formatearFecha, formatearFechaLarga } from "@/lib/admin/fecha"
@@ -96,9 +99,22 @@ export function ComprobanteDetalle({
       }
       badges={
         c && (
-          <Badge tone={estado === "saldado" ? "success" : esNota ? "warning" : "neutral"} size="sm">
-            {esNota ? "Ajusta deuda" : etiquetaSaldo(estado, c.tipo)}
-          </Badge>
+          <>
+            {/* El estado primero: si es un borrador, todo lo demás que dice este
+                panel —el saldo, lo que falta cobrar— todavía no cuenta para
+                nada, y esa es la información más importante de la pantalla. */}
+            {c.estado !== "confirmado" && (
+              <Badge tone={ESTADO_TONO[c.estado]} size="sm">
+                {ESTADO_LABEL[c.estado]}
+              </Badge>
+            )}
+            <Badge
+              tone={estado === "saldado" ? "success" : esNota ? "warning" : "neutral"}
+              size="sm"
+            >
+              {esNota ? "Ajusta deuda" : etiquetaSaldo(estado, c.tipo)}
+            </Badge>
+          </>
         )
       }
       acciones={
@@ -165,6 +181,12 @@ export function ComprobanteDetalle({
               <Importe rotulo="Otros impuestos" valor={c.otrosImpuestos} moneda={c.moneda} />
               <Importe rotulo="Total" valor={c.total} moneda={c.moneda} destacado />
             </div>
+          </Bloque>
+
+          {/* Los archivos van arriba de los datos: cuando alguien abre un
+              comprobante para verificar algo, lo que quiere es mirar el papel. */}
+          <Bloque titulo="Archivos">
+            <AdjuntosPanel comprobanteId={c.id} />
           </Bloque>
 
           <Bloque titulo="Datos del comprobante">

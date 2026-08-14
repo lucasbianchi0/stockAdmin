@@ -1,5 +1,6 @@
 import { exigirModulo } from "@/lib/guard-api"
 import { ruta } from "@/lib/admin/ruta"
+import { editarPago } from "@/lib/admin/pagos-handlers"
 import { anularPago, obtenerPago } from "@/lib/admin/pagos-detalle-server"
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -23,4 +24,13 @@ export const DELETE = ruta("cobros DELETE", async (_req: Request, ctx: Ctx) => {
   if (sinPermiso) return sinPermiso
   const { id } = await ctx.params
   return anularPago("cobro", id)
+})
+
+/** Editar un recibo ya cargado, sin perder su id — así los enlaces desde el
+ *  extracto del banco siguen funcionando. */
+export const PATCH = ruta("cobros PATCH", async (req: Request, ctx: Ctx) => {
+  const sinPermiso = await exigirModulo("administracion")
+  if (sinPermiso) return sinPermiso
+  const { id } = await ctx.params
+  return editarPago("cobro", req, id)
 })

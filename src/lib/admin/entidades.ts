@@ -124,6 +124,10 @@ export type Entidad = {
    * entidad y solo se toca cuando la factura es la excepción.
    */
   cuentaContableId: string | null
+  /** El rubro de la ficha: "Networking", "Mayorista". Es lo que permite filtrar
+   *  y agrupar el listado por algo que no sea el nombre. */
+  categoriaId: string | null
+  categoriaNombre: string | null
   notas: string | null
   activo: boolean
   createdAt: string
@@ -135,6 +139,15 @@ export type Cliente = Entidad & {
 }
 
 export type Vendedor = { id: string; nombre: string }
+
+export type CategoriaEntidad = {
+  id: string
+  nombre: string
+  tipo: TipoEntidad | "ambos"
+  descripcion: string | null
+  activo: boolean
+  orden: number
+}
 
 /* ── Validación compartida por el formulario y el handler ─────────────────── */
 

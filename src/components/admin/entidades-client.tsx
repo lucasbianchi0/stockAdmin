@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import {
   Ban,
   Eye,
@@ -35,7 +36,12 @@ import {
 } from "@/components/ui/table"
 import { formatearCuit } from "@/lib/admin/cuit"
 import { RESUMEN_VACIO, type EntidadConResumen } from "@/lib/admin/detalle"
-import { type Cliente, type TipoEntidad, type Vendedor } from "@/lib/admin/entidades"
+import {
+  type CategoriaEntidad,
+  type Cliente,
+  type TipoEntidad,
+  type Vendedor,
+} from "@/lib/admin/entidades"
 import { formatearImporte } from "@/lib/admin/moneda"
 import { useTablaAdmin } from "@/lib/admin/use-tabla"
 import { cn } from "@/lib/utils"
@@ -72,8 +78,18 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
   const rotuloPlural = esProveedor ? "proveedores" : "clientes"
 
   const [estado, setEstado] = useState<Estado>("activos")
+  const [categoriaId, setCategoriaId] = useState("")
+  const [conDeuda, setConDeuda] = useState(false)
+  const [categorias, setCategorias] = useState<CategoriaEntidad[]>([])
 
-  const filtros = useMemo(() => ({ estado }), [estado])
+  const filtros = useMemo(
+    () => ({
+      estado,
+      categoriaId: categoriaId || undefined,
+      conDeuda: conDeuda ? "1" : undefined,
+    }),
+    [estado, categoriaId, conDeuda]
+  )
 
   const tabla = useTablaAdmin<EntidadConResumen>({
     endpoint: `/api/admin/${recurso}`,
@@ -107,6 +123,13 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
   useEffect(() => {
     cargarVendedores()
   }, [cargarVendedores])
+
+  useEffect(() => {
+    fetch(`/api/admin/categorias?tipo=${esProveedor ? "proveedor" : "cliente"}`)
+      .then((r) => r.json())
+      .then((d) => setCategorias(d.categorias ?? []))
+      .catch(() => setCategorias([]))
+  }, [esProveedor])
 
   const { recargar } = tabla
 
@@ -206,6 +229,37 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
             ))}
           </div>
 
+          {/* El filtro que convierte el listado en algo que contesta preguntas:
+              "¿quiénes son mis proveedores de networking?" en vez de recorrer
+              nombres a ojo. */}
+          <select
+            value={categoriaId}
+            onChange={(e) => setCategoriaId(e.target.value)}
+            aria-label="Filtrar por categoría"
+            className="h-9 rounded-lg border border-line-strong bg-surface px-3 text-[12.5px] text-ink"
+          >
+            <option value="">Todas las categorías</option>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+            <option value="sin">— Sin categoría —</option>
+          </select>
+
+          <button
+            onClick={() => setConDeuda((v) => !v)}
+            aria-pressed={conDeuda}
+            className={cn(
+              "h-9 rounded-lg border px-3 text-[11.5px] font-medium transition-colors",
+              conDeuda
+                ? "border-brand-300 bg-brand-50 text-brand-700"
+                : "border-line bg-surface text-ink-muted hover:border-line-strong hover:text-ink"
+            )}
+          >
+            {esProveedor ? "Con deuda" : "Que deben"}
+          </button>
+
           <div className="flex items-center gap-2 sm:ml-auto">
             <Button variant="outline" onClick={() => setLeyendo(true)}>
               <FileInput className="h-3.5 w-3.5" />
@@ -235,6 +289,7 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Razón social</TableHead>
+                    <TableHead>Categoría</TableHead>
                     <TableHead>Contacto</TableHead>
                     <TableHead className="text-right">
                       {esProveedor ? "Le debemos" : "Nos debe"}
@@ -252,6 +307,7 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
                         key={c.id}
                         cliente={c}
                         ocupado={ocupado === c.id}
+                        href={`/admin/${esProveedor ? "proveedores" : "clientes"}/${c.id}`}
                         mostrarVendedor={!esProveedor}
                         onVer={() => setVerId(c.id)}
                         onEditar={() => setDialogo({ abierto: true, cliente: c })}
@@ -261,7 +317,7 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={esProveedor ? 6 : 7} className="p-0">
+                      <TableCell colSpan={esProveedor ? 7 : 8} className="p-0">
                         <EmptyState
                           icon={Users}
                           title={
@@ -367,6 +423,7 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
 function Fila({
   cliente: c,
   ocupado,
+  href,
   mostrarVendedor,
   onVer,
   onEditar,
@@ -375,6 +432,9 @@ function Fila({
 }: {
   cliente: EntidadConResumen
   ocupado: boolean
+  /** A dónde lleva el nombre. Lo arma el listado, que es quien sabe de qué
+   *  maestro son estas filas. */
+  href: string
   mostrarVendedor: boolean
   onVer: () => void
   onEditar: () => void
@@ -396,7 +456,17 @@ function Fila({
     >
       <TableCell>
         <div className="flex items-center gap-2">
-          <span className="font-medium text-ink">{c.razonSocial}</span>
+          {/* Entrar a la ficha es el gesto principal de la fila: es donde está
+              todo lo del cliente, no solo lo que entra en estas columnas. El
+              panel lateral sigue disponible con el ojo, para espiar sin salir
+              del listado. */}
+          <Link
+            href={href}
+            onClick={(e) => e.stopPropagation()}
+            className="font-medium text-ink hover:text-brand-600 hover:underline"
+          >
+            {c.razonSocial}
+          </Link>
           {c.origen === "exterior" && (
             <Badge tone="neutral" size="sm">
               Exterior
@@ -410,6 +480,16 @@ function Fila({
         </div>
         {c.cuit && (
           <span className="num text-[11.5px] text-ink-muted">{formatearCuit(c.cuit)}</span>
+        )}
+      </TableCell>
+
+      <TableCell>
+        {c.categoriaNombre ? (
+          <Badge tone="neutral" size="sm">
+            {c.categoriaNombre}
+          </Badge>
+        ) : (
+          <span className="text-[11.5px] text-ink-faint">Sin categoría</span>
         )}
       </TableCell>
 

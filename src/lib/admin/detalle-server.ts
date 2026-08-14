@@ -75,7 +75,10 @@ export async function resumenPorEntidad(
   const cfg = CIRCUITO[tipo]
 
   const { data, error } = await supabase
-    .from("comprobantes_saldo")
+    // Vigentes y no `comprobantes_saldo`: un borrador todavía no es deuda. Que
+    // aparezca en "cuánto me debe este cliente" sería contar plata que nadie
+    // pidió todavía.
+    .from("comprobantes_vigentes")
     .select(`${cfg.campo}, moneda, saldo, signo, fecha_vencimiento`)
     .eq("tipo", cfg.tipoComprobante)
     .in(cfg.campo, ids)

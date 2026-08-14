@@ -194,7 +194,7 @@ export function ComprobanteDialog({
   const faltaTc = f.moneda === "USD" && tc <= 0
   const puedeGuardar = Boolean(f.entidadId) && total > 0 && !faltaTc && !guardando
 
-  const guardar = async () => {
+  const guardar = async (estado: "borrador" | "confirmado") => {
     if (!puedeGuardar) return
     setGuardando(true)
     setError(null)
@@ -217,7 +217,8 @@ export function ComprobanteDialog({
             cuentaContableId: f.cuentaContableId || null,
             detalle: f.detalle,
             moneda: f.moneda,
-            tc: f.moneda === "USD" ? tc : 1,
+            tc: tc > 0 ? tc : null,
+            estado,
             ...importes,
             condicionPago: f.condicionPago,
             observaciones: f.observaciones,
@@ -628,9 +629,26 @@ export function ComprobanteDialog({
             <Button variant="outline" onClick={onCerrar} disabled={guardando}>
               Cancelar
             </Button>
-            <Button onClick={guardar} disabled={!puedeGuardar}>
+
+            {/* Dos salidas, y la de la derecha es la que se usa nueve de cada
+                diez veces. Guardar como borrador está para cuando falta un dato
+                —el número, la cuenta contable— y no se quiere perder lo tipeado:
+                queda cargado, visible en el listado, y sin sumar a ningún saldo
+                hasta que alguien lo confirme. */}
+            {(!editando || comprobante?.estado === "borrador") && (
+              <Button
+                variant="outline"
+                onClick={() => guardar("borrador")}
+                disabled={!puedeGuardar}
+              >
+                {guardando && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Guardar como borrador
+              </Button>
+            )}
+
+            <Button onClick={() => guardar("confirmado")} disabled={!puedeGuardar}>
               {guardando && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {editando ? "Guardar cambios" : "Registrar comprobante"}
+              {editando ? "Guardar y confirmar" : "Registrar y confirmar"}
             </Button>
           </div>
         </div>

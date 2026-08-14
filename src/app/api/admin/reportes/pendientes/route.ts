@@ -29,7 +29,7 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
   const esVenta = tipo === "venta"
 
   const { data, error } = await supabase
-    .from("comprobantes_saldo")
+    .from("comprobantes_vigentes")
     .select(
       `id, clase, punto_venta, numero, fecha, fecha_vencimiento, moneda, tc, total, imputado, saldo, detalle, signo,
        cliente:clientes (id, razon_social),

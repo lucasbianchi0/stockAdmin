@@ -48,6 +48,7 @@ export async function listarComprobantes(tipo: TipoComprobante, req: Request) {
   const desdeFecha = url.searchParams.get("desde") ?? ""
   const hastaFecha = url.searchParams.get("hasta") ?? ""
   const vencimiento = url.searchParams.get("vencimiento") ?? ""
+  const estado = url.searchParams.get("estado") ?? ""
 
   let query = supabase
     .from("comprobantes")
@@ -55,6 +56,10 @@ export async function listarComprobantes(tipo: TipoComprobante, req: Request) {
     .eq("tipo", tipo)
 
   if (entidadId) query = query.eq(CAMPO_ENTIDAD[tipo], entidadId)
+  // Sin filtro se ven todos, borradores incluidos: el listado es el lugar de
+  // trabajo y esconder lo que está a medio cargar es la forma más rápida de que
+  // se olvide para siempre.
+  if (estado) query = query.eq("estado", estado)
   if (moneda === "ARS" || moneda === "USD") query = query.eq("moneda", moneda)
   if (desdeFecha) query = query.gte("fecha", desdeFecha)
   if (hastaFecha) query = query.lte("fecha", hastaFecha)
@@ -140,6 +145,140 @@ export async function crearComprobante(tipo: TipoComprobante, req: Request) {
   return NextResponse.json({ comprobante: aComprobante(data) }, { status: 201 })
 }
 
+/* ── Confirmar, volver a borrador, anular ─────────────────────────────────── */
+
+/**
+ * El cambio de estado, que es lo único que puede pasarle a un comprobante que ya
+ * está bien cargado.
+ *
+ * Cada transición hace algo distinto por debajo, y todo lo caro lo resuelve la
+ * base: confirmar dispara el asiento, volver a borrador lo borra, y anular lo
+ * borra conservando el número. Acá solo se valida que la transición pedida tenga
+ * sentido y se traduce el error del trigger a algo legible.
+ */
+export async function cambiarEstadoComprobante(
+  tipo: TipoComprobante,
+  req: Request,
+  id: string
+) {
+  const body = await leerBody(req)
+  if ("error" in body) return body.error
+
+  const estado = body.raw.estado
+  if (estado !== "borrador" && estado !== "confirmado" && estado !== "anulado") {
+    return NextResponse.json({ error: "Estado inválido" }, { status: 400 })
+  }
+
+  const { data: actual, error: errLectura } = await supabase
+    .from("comprobantes")
+    .select("id, estado, cuenta_contable_id, total")
+    .eq("id", id)
+    .eq("tipo", tipo)
+    .maybeSingle()
+
+  if (errLectura) {
+    console.error(`[${tipo} estado]`, errLectura)
+    return NextResponse.json({ error: "No se pudo leer el comprobante" }, { status: 500 })
+  }
+  if (!actual) return NextResponse.json({ error: "Comprobante no encontrado" }, { status: 404 })
+  if (actual.estado === estado) {
+    return NextResponse.json({ error: `El comprobante ya está ${estado}` }, { status: 409 })
+  }
+
+  // Confirmar sin cuenta contable deja el comprobante en los saldos pero fuera
+  // del mayor. Se avisa en vez de bloquear: hay casos —una nota de crédito de
+  // ajuste— en que se quiere confirmar igual y completar la imputación después.
+  const aviso =
+    estado === "confirmado" && !actual.cuenta_contable_id
+      ? "Se confirmó sin cuenta contable imputada: no va a generar asiento hasta que se le asigne una."
+      : null
+
+  const supabaseUsuario = await createSupabaseServer()
+  const {
+    data: { user },
+  } = await supabaseUsuario.auth.getUser()
+
+  const { data, error } = await supabase
+    .from("comprobantes")
+    .update({
+      estado,
+      confirmado_at: estado === "confirmado" ? new Date().toISOString() : null,
+      confirmado_por: estado === "confirmado" ? (user?.id ?? null) : null,
+    })
+    .eq("id", id)
+    .eq("tipo", tipo)
+    .select(SELECT_COMPROBANTE)
+    .maybeSingle()
+
+  if (error) {
+    // El trigger `comprobantes_estado_valido` frena sacar de confirmado algo que
+    // ya tiene un recibo imputado. Su mensaje ya explica qué hacer.
+    if (error.code === "23514" || error.message?.includes("imputado")) {
+      return NextResponse.json({ error: error.message }, { status: 409 })
+    }
+    console.error(`[${tipo} estado]`, error)
+    return NextResponse.json({ error: "No se pudo cambiar el estado" }, { status: 500 })
+  }
+  if (!data) return NextResponse.json({ error: "Comprobante no encontrado" }, { status: 404 })
+
+  const [comprobante] = await conSaldos([aComprobante(data as unknown as Record<string, unknown>)])
+  return NextResponse.json({ comprobante, aviso })
+}
+
+/**
+ * Confirmar varios de una vez.
+ *
+ * Es lo que hace que la carga inteligente sirva de verdad: se adjuntan seis PDF,
+ * quedan seis borradores, se revisan con calma y se confirman los seis juntos.
+ * Uno que falle no frena a los demás — se devuelve el detalle de cada uno.
+ */
+export async function confirmarLote(tipo: TipoComprobante, req: Request) {
+  const body = await leerBody(req)
+  if ("error" in body) return body.error
+
+  const ids = Array.isArray(body.raw.ids)
+    ? body.raw.ids.filter((v): v is string => typeof v === "string")
+    : []
+
+  if (ids.length === 0) {
+    return NextResponse.json({ error: "Elegí al menos un comprobante" }, { status: 400 })
+  }
+  if (ids.length > 200) {
+    return NextResponse.json({ error: "Se pueden confirmar hasta 200 por vez" }, { status: 400 })
+  }
+
+  const supabaseUsuario = await createSupabaseServer()
+  const {
+    data: { user },
+  } = await supabaseUsuario.auth.getUser()
+
+  // Uno por uno y no un update masivo: el trigger del motor de asientos corre
+  // por fila, y si uno falla hay que saber cuál fue y seguir con el resto.
+  const confirmados: string[] = []
+  const fallidos: { id: string; error: string }[] = []
+
+  for (const id of ids) {
+    const { error } = await supabase
+      .from("comprobantes")
+      .update({
+        estado: "confirmado",
+        confirmado_at: new Date().toISOString(),
+        confirmado_por: user?.id ?? null,
+      })
+      .eq("id", id)
+      .eq("tipo", tipo)
+      .eq("estado", "borrador")
+
+    if (error) fallidos.push({ id, error: error.message })
+    else confirmados.push(id)
+  }
+
+  return NextResponse.json({
+    confirmados: confirmados.length,
+    fallidos,
+  })
+}
+
 /* ── Edición ──────────────────────────────────────────────────────────────── */
 
 export async function editarComprobante(tipo: TipoComprobante, req: Request, id: string) {
@@ -149,6 +288,32 @@ export async function editarComprobante(tipo: TipoComprobante, req: Request, id:
   const validado = validarComprobante(body.raw, tipo)
   if ("error" in validado) {
     return NextResponse.json({ error: validado.error }, { status: validado.status })
+  }
+
+  /**
+   * Un comprobante que ya tiene un recibo imputado no se edita.
+   *
+   * Cambiarle el importe movería el saldo del cliente sin que nadie haya cobrado
+   * ni facturado nada, y el recibo pasaría a cancelar un número que no existió
+   * nunca. La salida correcta es una nota de crédito, que deja los dos hechos
+   * registrados en vez de reescribir uno.
+   */
+  const { data: imputado } = await supabase
+    .from("imputaciones")
+    .select("id")
+    .eq("comprobante_id", id)
+    .limit(1)
+    .maybeSingle()
+
+  if (imputado) {
+    return NextResponse.json(
+      {
+        error:
+          "Este comprobante ya tiene un recibo imputado y no se puede editar. " +
+          "Si el importe está mal, emitile una nota de crédito.",
+      },
+      { status: 409 }
+    )
   }
 
   const { data, error } = await supabase

@@ -20,6 +20,7 @@ import {
   type Origen,
   type TipoEntidad,
   type Vendedor,
+  type CategoriaEntidad,
 } from "@/lib/admin/entidades"
 import { cn } from "@/lib/utils"
 
@@ -56,6 +57,7 @@ export type BorradorCliente = {
   vendedor: string
   condicionPagoDias: string
   cuentaContableId: string
+  categoriaId: string
   notas: string
 }
 
@@ -72,6 +74,7 @@ const VACIO: BorradorCliente = {
   vendedor: "",
   condicionPagoDias: "",
   cuentaContableId: "",
+  categoriaId: "",
   notas: "",
 }
 
@@ -89,6 +92,7 @@ function aBorrador(c: Cliente): BorradorCliente {
     vendedor: c.vendedorNombre ?? "",
     condicionPagoDias: c.condicionPagoDias?.toString() ?? "",
     cuentaContableId: c.cuentaContableId ?? "",
+    categoriaId: c.categoriaId ?? "",
     notas: c.notas ?? "",
   }
 }
@@ -123,6 +127,14 @@ export function EntidadDialog({
 
   const editando = cliente !== null
   const esProveedor = tipo === "proveedor"
+  const [categorias, setCategorias] = useState<CategoriaEntidad[]>([])
+
+  useEffect(() => {
+    fetch(`/api/admin/categorias?tipo=${tipo}`)
+      .then((r) => r.json())
+      .then((d) => setCategorias(d.categorias ?? []))
+      .catch(() => setCategorias([]))
+  }, [tipo])
   const recurso = esProveedor ? "proveedores" : "clientes"
   const rotulo = esProveedor ? "proveedor" : "cliente"
 
@@ -380,6 +392,32 @@ export function EntidadDialog({
           {/* La imputación habitual de esta ficha. Se guarda una vez acá y el
               formulario de comprobantes la completa solo: es lo que hace que las
               224 cuentas del plan no se sientan al cargar factura por factura. */}
+          <Campo
+            id="categoriaId"
+            rotulo="Categoría"
+            opcional
+            ayuda={
+              esProveedor
+                ? "El rubro del proveedor. Es lo que permite filtrar el listado por tipo."
+                : "El tipo de cliente. Es lo que permite filtrar y agrupar el listado."
+            }
+          >
+            <select
+              id="categoriaId"
+              value={f.categoriaId}
+              onChange={(e) => set("categoriaId", e.target.value)}
+              disabled={guardando}
+              className="h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-[13px] text-ink"
+            >
+              <option value="">Sin categoría</option>
+              {categorias.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}
+                </option>
+              ))}
+            </select>
+          </Campo>
+
           <Campo
             id="cuentaContableId"
             rotulo="Cuenta contable habitual"

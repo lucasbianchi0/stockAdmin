@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useState } from "react"
-import { Eye, HandCoins, Plus, Trash2 } from "lucide-react"
+import { Eye, HandCoins, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { PagoDialog } from "@/components/admin/pago-dialog"
@@ -47,6 +47,7 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
   })
 
   const [nuevo, setNuevo] = useState(false)
+  const [editando, setEditando] = useState<Cobro | null>(null)
   const [ver, setVer] = useState<Cobro | null>(null)
   const [aAnular, setAAnular] = useState<Cobro | null>(null)
   const [anulando, setAnulando] = useState(false)
@@ -202,6 +203,19 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
                             >
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
+                            {/* Editar en vez de anular y rehacer. Reemplaza las
+                                imputaciones, las retenciones y los movimientos
+                                del recibo conservando su id, así los enlaces
+                                desde el extracto del banco siguen sirviendo. */}
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => setEditando(c)}
+                              aria-label="Editar"
+                              title={`Editar el ${tipo}`}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="icon-sm"
@@ -263,9 +277,16 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
 
       <PagoDialog
         tipo={tipo}
-        abierto={nuevo}
-        onCerrar={() => setNuevo(false)}
-        onGuardado={alGuardar}
+        abierto={nuevo || editando !== null}
+        cobro={editando}
+        onCerrar={() => {
+          setNuevo(false)
+          setEditando(null)
+        }}
+        onGuardado={() => {
+          setEditando(null)
+          alGuardar()
+        }}
       />
 
       <ConfirmarDialog

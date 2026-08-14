@@ -145,6 +145,13 @@ export function validarComprobante(
     observaciones: textoONull(raw.observaciones, 1000),
   }
 
+  // El estado solo se acepta si el formulario lo mandó explícitamente. Sin él la
+  // fila conserva el que ya tenía —o el default `confirmado` en un alta—, que es
+  // lo que hace que nada de lo existente cambie de comportamiento.
+  if (raw.estado === "borrador" || raw.estado === "confirmado") {
+    fila.estado = raw.estado
+  }
+
   if (tipo === "venta") {
     fila.cliente_id = entidadId
     fila.proveedor_id = null
@@ -212,6 +219,8 @@ export function aComprobante(fila: FilaCompleta): Comprobante {
     cuentaContableId: fila.cuenta?.id ?? null,
     cuentaContableNombre: fila.cuenta ? `${fila.cuenta.codigo} · ${fila.cuenta.nombre}` : null,
     detalle: (fila.detalle as string | null) ?? null,
+    estado: (fila.estado as Comprobante["estado"]) ?? "confirmado",
+    confirmadoAt: (fila.confirmado_at as string | null) ?? null,
     moneda: fila.moneda as Comprobante["moneda"],
     tc: numONull(fila.tc),
     netoGravado: num(fila.neto_gravado),

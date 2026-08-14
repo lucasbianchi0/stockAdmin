@@ -101,6 +101,9 @@ export async function validarEntidad(
     cuenta_contable_id: typeof raw.cuentaContableId === "string" && raw.cuentaContableId
       ? raw.cuentaContableId
       : null,
+    categoria_id: typeof raw.categoriaId === "string" && raw.categoriaId
+      ? raw.categoriaId
+      : null,
     notas: textoONull(raw.notas, LARGO_MAX.notas),
   }
 
@@ -188,6 +191,10 @@ type FilaConVendedor = Record<string, unknown> & {
   vendedor?: { id: string; nombre: string } | null
 }
 
+type FilaConCategoria = Record<string, unknown> & {
+  categoria?: { id: string; nombre: string } | null
+}
+
 /** Los campos que clientes y proveedores comparten, que son casi todos. */
 function aEntidad(fila: Record<string, unknown>): Entidad {
   return {
@@ -203,6 +210,8 @@ function aEntidad(fila: Record<string, unknown>): Entidad {
     email: (fila.email as string | null) ?? null,
     condicionPagoDias: (fila.condicion_pago_dias as number | null) ?? null,
     cuentaContableId: (fila.cuenta_contable_id as string | null) ?? null,
+    categoriaId: (fila.categoria_id as string | null) ?? null,
+    categoriaNombre: (fila as FilaConCategoria).categoria?.nombre ?? null,
     notas: (fila.notas as string | null) ?? null,
     activo: Boolean(fila.activo),
     createdAt: fila.created_at as string,
