@@ -1,14 +1,14 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, HandCoins, Loader2, Plus, Search, Trash2, X } from "lucide-react"
+import { AlertTriangle, HandCoins, Loader2, Plus, Trash2, X } from "lucide-react"
 
+import { SelectorEntidad } from "@/components/admin/selector-entidad"
 import { SemaforoVencimiento } from "@/components/admin/semaforo-vencimiento"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { formatearCuit } from "@/lib/admin/cuit"
 import { formatearNumero } from "@/lib/admin/comprobantes"
 import {
   JURISDICCIONES,
@@ -24,7 +24,6 @@ import {
   type Jurisdiccion,
   type Retencion,
 } from "@/lib/admin/cobros"
-import type { Cliente } from "@/lib/admin/entidades"
 import type { TipoPago } from "@/lib/admin/cobros-server"
 import {
   MONEDAS,
@@ -364,8 +363,10 @@ export function PagoDialog({
           {/* Cliente y fecha */}
           <section className="space-y-4">
             <SelectorEntidad
-              tipo={tipo}
-              cliente={cliente}
+              id="cliente-cobro"
+              tipo={tipo === "cobro" ? "cliente" : "proveedor"}
+              valor={cliente?.id ?? ""}
+              nombre={cliente?.razonSocial ?? ""}
               disabled={guardando}
               onElegir={(c) => {
                 setCliente(c)
@@ -855,89 +856,6 @@ function Cifra({
         {formatearImporte(valor, moneda)}
       </span>
     </span>
-  )
-}
-
-function SelectorEntidad({
-  tipo,
-  cliente,
-  disabled,
-  onElegir,
-}: {
-  tipo: TipoPago
-  cliente: { id: string; razonSocial: string } | null
-  disabled?: boolean
-  onElegir: (c: { id: string; razonSocial: string }) => void
-}) {
-  const [q, setQ] = useState("")
-  const [abierto, setAbierto] = useState(false)
-  const [resultados, setResultados] = useState<Cliente[]>([])
-  const recurso = tipo === "cobro" ? "clientes" : "proveedores"
-
-  useEffect(() => {
-    if (!abierto) return
-    const t = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({ porPagina: "8", estado: "activos" })
-        if (q.trim()) params.set("q", q.trim())
-        const res = await fetch(`/api/admin/${recurso}?${params}`)
-        const data = await res.json()
-        setResultados(data[recurso] ?? [])
-      } catch {
-        setResultados([])
-      }
-    }, 250)
-    return () => clearTimeout(t)
-  }, [q, abierto, recurso])
-
-  return (
-    <div className="relative">
-      <label htmlFor="cliente-cobro" className="text-[12.5px] font-semibold text-ink">
-        {tipo === "cobro" ? "Cliente" : "Proveedor"}
-      </label>
-      <div className="relative mt-1.5">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
-        <Input
-          id="cliente-cobro"
-          value={abierto ? q : (cliente?.razonSocial ?? "")}
-          onChange={(e) => {
-            setQ(e.target.value)
-            setAbierto(true)
-          }}
-          onFocus={() => {
-            setQ("")
-            setAbierto(true)
-          }}
-          onBlur={() => setTimeout(() => setAbierto(false), 150)}
-          placeholder="Buscar por razón social o CUIT…"
-          className={cn("pl-9", cliente && !abierto && "font-medium")}
-          disabled={disabled}
-          autoComplete="off"
-        />
-      </div>
-
-      {abierto && (
-        <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-e3">
-          {resultados.length === 0 ? (
-            <p className="px-3 py-3 text-[12px] text-ink-muted">Sin resultados</p>
-          ) : (
-            resultados.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onMouseDown={() => onElegir(c)}
-                className="flex w-full flex-col items-start px-3 py-2 text-left transition-colors hover:bg-brand-50"
-              >
-                <span className="text-[13px] font-medium text-ink">{c.razonSocial}</span>
-                {c.cuit && (
-                  <span className="num text-[11px] text-ink-muted">{formatearCuit(c.cuit)}</span>
-                )}
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </div>
   )
 }
 

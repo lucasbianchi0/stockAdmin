@@ -1,14 +1,14 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, Check, FileText, Loader2, Search, X } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { AlertTriangle, FileText, Loader2, X } from "lucide-react"
 
 import { CampoMoneda } from "@/components/admin/campo-moneda"
 import { SelectorCuenta } from "@/components/admin/selector-cuenta"
+import { SelectorEntidad } from "@/components/admin/selector-entidad"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { formatearCuit } from "@/lib/admin/cuit"
 import {
   ALICUOTAS,
   ALICUOTA_LABEL,
@@ -20,7 +20,6 @@ import {
   type Comprobante,
   type TipoComprobante,
 } from "@/lib/admin/comprobantes"
-import type { Cliente } from "@/lib/admin/entidades"
 import {
   MONEDAS,
   NOMBRE_MONEDA,
@@ -29,6 +28,8 @@ import {
   parsearImporte,
   type Moneda,
 } from "@/lib/admin/moneda"
+import { sumarDias } from "@/lib/admin/fecha"
+import type { Impacto } from "@/lib/admin/impacto"
 import { useCotizacion } from "@/lib/admin/use-cotizacion"
 import { cn } from "@/lib/utils"
 
@@ -124,7 +125,9 @@ export function ComprobanteDialog({
   tipo: TipoComprobante
   comprobante: Comprobante | null
   onCerrar: () => void
-  onGuardado: (c: Comprobante, esNuevo: boolean) => void
+  /** El tercer argumento es el resumen de lo que se movió en otros módulos.
+   *  Llega sólo cuando el alta quedó confirmada: un borrador no mueve nada. */
+  onGuardado: (c: Comprobante, esNuevo: boolean, impacto: Impacto | null) => void
 }) {
   const [f, setF] = useState<Borrador>(VACIO)
   const [guardando, setGuardando] = useState(false)
@@ -227,7 +230,11 @@ export function ComprobanteDialog({
       )
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudo guardar")
-      onGuardado(data.comprobante as Comprobante, !editando)
+      onGuardado(
+        data.comprobante as Comprobante,
+        !editando,
+        (data.impacto as Impacto | null) ?? null
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar")
     } finally {
@@ -276,10 +283,15 @@ export function ComprobanteDialog({
           {/* ── Quién y qué ──────────────────────────────────────────────── */}
           <Seccion titulo="Comprobante">
             <SelectorEntidad
-              tipo={tipo}
+              id="cliente"
+              tipo={esCompra ? "proveedor" : "cliente"}
               valor={f.entidadId}
               nombre={f.clienteNombre}
               disabled={guardando}
+              // Cargar a mano la factura de un proveedor nuevo tiene que ser
+              // posible sin abandonar la carga: la carga por PDF ya lo permitía
+              // y esta pantalla no, que era una asimetría sin defensa.
+              permitirAlta
               onElegir={(c) => {
                 setF((prev) => {
                   // La condición de pago de la ficha propone el vencimiento. Es
@@ -657,145 +669,7 @@ export function ComprobanteDialog({
   )
 }
 
-/* ── Selector de cliente ──────────────────────────────────────────────────── */
-
-/**
- * Buscador con resultados del servidor. Un `<select>` con todos los clientes
- * dejaría de servir apenas pasen los cien, y `datalist` no permite quedarse con
- * el id — que es lo que hay que guardar, no el nombre.
- */
-function SelectorEntidad({
-  tipo,
-  valor,
-  nombre,
-  disabled,
-  onElegir,
-}: {
-  tipo: TipoComprobante
-  valor: string
-  nombre: string
-  disabled?: boolean
-  onElegir: (c: Cliente) => void
-}) {
-  const [q, setQ] = useState("")
-  const [abierto, setAbierto] = useState(false)
-  const [resultados, setResultados] = useState<Cliente[]>([])
-  const [buscando, setBuscando] = useState(false)
-  const caja = useRef<HTMLDivElement>(null)
-  const recurso = tipo === "compra" ? "proveedores" : "clientes"
-  const rotulo = tipo === "compra" ? "proveedor" : "cliente"
-
-  useEffect(() => {
-    if (!abierto) return
-    const t = setTimeout(async () => {
-      setBuscando(true)
-      try {
-        const params = new URLSearchParams({ porPagina: "8", estado: "activos" })
-        if (q.trim()) params.set("q", q.trim())
-        const res = await fetch(`/api/admin/${recurso}?${params}`)
-        const data = await res.json()
-        setResultados(data[recurso] ?? [])
-      } catch {
-        setResultados([])
-      } finally {
-        setBuscando(false)
-      }
-    }, 250)
-    return () => clearTimeout(t)
-  }, [q, abierto, recurso])
-
-  useEffect(() => {
-    const fuera = (e: MouseEvent) => {
-      if (caja.current && !caja.current.contains(e.target as Node)) setAbierto(false)
-    }
-    document.addEventListener("mousedown", fuera)
-    return () => document.removeEventListener("mousedown", fuera)
-  }, [])
-
-  return (
-    <div ref={caja} className="relative">
-      <div className="flex items-baseline gap-2">
-        <label htmlFor="cliente" className="text-[12.5px] font-semibold text-ink">
-          {rotulo === "proveedor" ? "Proveedor" : "Cliente"}
-        </label>
-      </div>
-
-      <div className="relative mt-1.5">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
-        <Input
-          id="cliente"
-          value={abierto ? q : nombre}
-          onChange={(e) => {
-            setQ(e.target.value)
-            setAbierto(true)
-          }}
-          onFocus={() => {
-            setQ("")
-            setAbierto(true)
-          }}
-          placeholder="Buscar por razón social o CUIT…"
-          className={cn("pl-9", valor && !abierto && "font-medium")}
-          disabled={disabled}
-          autoComplete="off"
-        />
-        {valor && !abierto && (
-          <Check className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-success" />
-        )}
-      </div>
-
-      {abierto && (
-        <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-e3">
-          {buscando && resultados.length === 0 ? (
-            <p className="px-3 py-3 text-[12px] text-ink-muted">Buscando…</p>
-          ) : resultados.length === 0 ? (
-            <p className="px-3 py-3 text-[12px] text-ink-muted">
-              No hay resultados. Cargalo primero en el maestro.
-            </p>
-          ) : (
-            resultados.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => {
-                  onElegir(c)
-                  setAbierto(false)
-                }}
-                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-brand-50"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-medium text-ink">
-                    {c.razonSocial}
-                  </span>
-                  {c.cuit && (
-                    <span className="num block text-[11px] text-ink-muted">
-                      {formatearCuit(c.cuit)}
-                    </span>
-                  )}
-                </span>
-                {c.condicionPagoDias !== null && (
-                  <span className="num shrink-0 text-[11px] text-ink-faint">
-                    {c.condicionPagoDias} d
-                  </span>
-                )}
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
 /* ── Piezas ───────────────────────────────────────────────────────────────── */
-
-function sumarDias(iso: string, dias: number): string {
-  const [a, m, d] = iso.split("-").map(Number)
-  const f = new Date(a, m - 1, d)
-  f.setDate(f.getDate() + dias)
-  return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}-${String(
-    f.getDate()
-  ).padStart(2, "0")}`
-}
 
 function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (

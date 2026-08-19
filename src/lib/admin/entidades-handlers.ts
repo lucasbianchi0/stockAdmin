@@ -182,8 +182,12 @@ export async function crearEntidad(cfg: Config, req: Request) {
 
   if (error) return respuestaDeErrorDeBase(error, "crear", cfg.singular)
 
+  // `cfg.tipo` y no `cfg.clave.slice(0, -1)`: sacarle la última letra a
+  // "proveedores" da "proveedore", así que el alta de un proveedor venía
+  // devolviendo la ficha bajo una clave que no existe en ningún lado. No se
+  // notaba porque hasta ahora nadie leía la respuesta, sólo recargaba la tabla.
   return NextResponse.json(
-    { [cfg.clave.slice(0, -1)]: cfg.mapear(data as unknown as Record<string, unknown>) },
+    { [cfg.tipo]: cfg.mapear(data as unknown as Record<string, unknown>) },
     { status: 201 }
   )
 }

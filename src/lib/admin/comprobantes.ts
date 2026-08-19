@@ -44,18 +44,38 @@ export const CLASES_VENTA: Clase[] = [
   clase("NDEA", "Nota de débito E"),
 ]
 
-/** Las que recibe de proveedores. */
+/**
+ * Las que recibe de proveedores.
+ *
+ * Están las B y las C además de las A, aunque no den crédito fiscal: el
+ * proveedor monotributista factura C y el chico que no discrimina IVA factura B,
+ * y las dos son gastos reales que hay que registrar. Sin ellas en la lista, la
+ * carga de una factura C terminaba en «el tipo FCC no es un comprobante de
+ * compra» y la única salida era anotarla como A, que inventa un IVA crédito que
+ * nadie puede computar.
+ */
 export const CLASES_COMPRA: Clase[] = [
   clase("FCA", "Factura A"),
+  clase("FCB", "Factura B"),
   clase("FCC", "Factura C"),
   clase("NCA", "Nota de crédito A"),
+  clase("NCB", "Nota de crédito B"),
   clase("NCC", "Nota de crédito C"),
   clase("NDA", "Nota de débito A"),
+  clase("NDB", "Nota de débito B"),
+  clase("NDC", "Nota de débito C"),
 ]
 
 export function clasesDe(tipo: TipoComprobante): Clase[] {
   return tipo === "venta" ? CLASES_VENTA : CLASES_COMPRA
 }
+
+/** Todos los códigos que el sistema entiende, de los dos circuitos. Lo usa la
+ *  extracción: el modelo lee el papel sin saber de qué lado del mostrador está,
+ *  y recién después se valida que la clase corresponda al tipo. */
+export const CODIGOS_CLASE: string[] = [
+  ...new Set([...CLASES_VENTA, ...CLASES_COMPRA].map((c) => c.codigo)),
+]
 
 export function buscarClase(tipo: TipoComprobante, codigo: string): Clase | undefined {
   return clasesDe(tipo).find((c) => c.codigo === codigo.toUpperCase())

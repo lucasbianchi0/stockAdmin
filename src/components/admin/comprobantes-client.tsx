@@ -16,7 +16,9 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
+import { AvisoSinAsiento } from "@/components/admin/aviso-sin-asiento"
 import { ConfirmarDialog } from "@/components/admin/confirmar-dialog"
+import { ImpactoDialog } from "@/components/admin/impacto-dialog"
 import { ComprobanteDetalle } from "@/components/admin/comprobante-detalle"
 import { ComprobanteDialog } from "@/components/admin/comprobante-dialog"
 import { ImportarFacturasDialog } from "@/components/admin/importar-facturas-dialog"
@@ -50,6 +52,7 @@ import {
   type EstadoComprobante,
 } from "@/lib/admin/comprobantes"
 import { formatearFecha } from "@/lib/admin/fecha"
+import type { Impacto } from "@/lib/admin/impacto"
 import {
   formatearCompacto,
   formatearContravalor,
@@ -92,6 +95,12 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
   /** Los borradores tildados para confirmar en lote. */
   const [elegidos, setElegidos] = useState<Set<string>>(new Set())
   const [confirmando, setConfirmando] = useState<string | null>(null)
+  /** El resumen de lo que se movió, que se abre después de guardar. `null` es
+   *  "no hay nada que informar", que es el estado normal. */
+  const [impacto, setImpacto] = useState<Impacto | null>(null)
+  /** Se incrementa al confirmar algo, para que el cartel vuelva a consultar:
+   *  confirmar es justo lo que puede dejar un comprobante fuera del mayor. */
+  const [refrescoAvisos, setRefrescoAvisos] = useState(0)
 
   const filtros = useMemo(
     () => ({
@@ -135,7 +144,10 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? "No se pudo confirmar")
-        toast.success("Comprobante confirmado", { description: data.aviso ?? undefined })
+        if (data.aviso) toast.warning("Comprobante confirmado", { description: data.aviso })
+        if (data.impacto) setImpacto(data.impacto as Impacto)
+        else toast.success("Comprobante confirmado")
+        setRefrescoAvisos((n) => n + 1)
         recargar()
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "No se pudo confirmar")
@@ -185,9 +197,11 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
 
       if (data.fallidos?.length) {
         toast.warning(`${data.confirmados} confirmados · ${data.fallidos.length} con problemas`)
-      } else {
-        toast.success(`${data.confirmados} comprobantes confirmados`)
       }
+      // Con cero confirmados no hay nada que informar: el aviso de arriba ya
+      // dijo lo único que pasó, que es que fallaron.
+      if (data.confirmados > 0 && data.impacto) setImpacto(data.impacto as Impacto)
+      setRefrescoAvisos((n) => n + 1)
       setElegidos(new Set())
       recargar()
     } catch (e) {
@@ -198,13 +212,18 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
   }, [elegidosVisibles, recurso, recargar])
 
   const alGuardar = useCallback(
-    (c: Comprobante, esNuevo: boolean) => {
+    (c: Comprobante, esNuevo: boolean, imp: Impacto | null) => {
       setDialogo({ abierto: false, comprobante: null })
-      toast.success(
-        esNuevo
-          ? `${c.clase} ${formatearNumero(c.puntoVenta, c.numero)} registrado`
-          : "Cambios guardados"
-      )
+      // Con resumen no va también el toast: son el mismo mensaje dos veces y el
+      // toast tapa la esquina del diálogo que acaba de abrirse.
+      setRefrescoAvisos((n) => n + 1)
+      if (imp) setImpacto(imp)
+      else
+        toast.success(
+          esNuevo
+            ? `${c.clase} ${formatearNumero(c.puntoVenta, c.numero)} registrado`
+            : "Cambios guardados"
+        )
       recargar()
     },
     [recargar]
@@ -251,6 +270,15 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
 
   return (
     <>
+      {/* Antes que la tabla: es lo único de esta pantalla que está mal y hay
+          que arreglar. Se remonta al recargar para que desaparezca solo cuando
+          ya no queda nada. */}
+      <AvisoSinAsiento
+        key={`aviso-${refrescoAvisos}`}
+        filtro={{ origen: "comprobante", tipo }}
+        onCorregido={recargar}
+      />
+
       <div className="panel overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-line bg-surface-subtle px-4 py-3 lg:flex-row lg:items-center">
           <div className="relative flex-1 lg:max-w-xs">
@@ -512,8 +540,17 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
         tipo={tipo}
         abierto={importando}
         onCerrar={() => setImportando(false)}
-        onImportadas={() => recargar()}
+        onImportadas={(i) => {
+          recargar()
+          // El diálogo de carga se cierra solo al informar: dos modales
+          // apilados no se leen, y lo que sigue —revisar los borradores— está
+          // atrás, no adentro.
+          setImportando(false)
+          setImpacto(i)
+        }}
       />
+
+      <ImpactoDialog impacto={impacto} onCerrar={() => setImpacto(null)} />
 
       {/* La barra de lote aparece solo cuando hay algo elegido, fija abajo:
           confirmar seis facturas no debería obligar a scrollear hasta un botón

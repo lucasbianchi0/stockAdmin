@@ -3,21 +3,25 @@
 import { useCallback, useRef, useState } from "react"
 import {
   AlertTriangle,
+  Building2,
   Check,
   FileInput,
   FileText,
   Loader2,
   Sparkles,
   Trash2,
+  UserPlus,
   Upload,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
 
+import { SelectorCuenta } from "@/components/admin/selector-cuenta"
+import { SelectorEntidad } from "@/components/admin/selector-entidad"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { formatearCuit } from "@/lib/admin/cuit"
+import { errorDeCuit, esCuitValido, formatearCuit } from "@/lib/admin/cuit"
 import {
   ALICUOTAS,
   ALICUOTA_LABEL,
@@ -29,8 +33,11 @@ import {
 import {
   ARCHIVOS_MAX,
   TAMANO_MAX_MB,
+  type AltaSugerida,
   type Borrador,
 } from "@/lib/admin/extraccion"
+import { sumarDias } from "@/lib/admin/fecha"
+import { IMPACTO_VACIO, type Impacto } from "@/lib/admin/impacto"
 import { formatearImporte, parsearImporte, type Moneda } from "@/lib/admin/moneda"
 import { cn } from "@/lib/utils"
 
@@ -51,6 +58,24 @@ import { cn } from "@/lib/utils"
  * Nada se guarda hasta que alguien aprieta el botón, y se guarda una factura por
  * vez contra el mismo endpoint que usa la carga manual — con sus mismas
  * validaciones, incluido el índice único que rechaza duplicados.
+ *
+ * QUE ARRASTRA CADA FACTURA
+ *
+ * Esta pantalla es la puerta de entrada del sistema, así que lo que se decide
+ * acá no termina en la tabla de comprobantes:
+ *
+ *  · **La ficha.** El proveedor que no está se da de alta con lo que dice el
+ *    papel; el que está se engancha por CUIT. De ahí en más la factura suma a
+ *    su cuenta corriente.
+ *  · **La imputación.** La cuenta contable que tiene guardada la ficha es lo que
+ *    hace que al confirmar el asiento se genere solo. Un proveedor nuevo todavía
+ *    no tiene ninguna: su primera factura entra sin imputar y el módulo la
+ *    muestra para corregirla, y esa corrección queda anotada en la ficha.
+ *  · **El vencimiento.** Del papel, o de los días de plazo de la ficha. Es lo
+ *    que la ordena en pagos pendientes y lo que la pinta de rojo cuando vence.
+ *
+ * Las tres se muestran y se pueden corregir antes de guardar. Un alta que ocurre
+ * en silencio es la que llena el maestro de proveedores duplicados.
  */
 
 type Fila = {
@@ -59,7 +84,13 @@ type Fila = {
   /** Los valores editables, ya normalizados a texto de formulario. */
   campos: Campos
   incluida: boolean
-  clienteId: string | null
+  /** La ficha del maestro, si ya está resuelta. */
+  entidadId: string | null
+  entidadNombre: string
+  /** Los datos con los que se va a dar de alta, cuando no hay ficha. */
+  alta: AltaSugerida | null
+  /** El buscador de ficha existente, abierto a pedido. */
+  buscando: boolean
   estado: "pendiente" | "guardando" | "guardada" | "error"
   mensaje?: string
 }
@@ -69,6 +100,7 @@ type Campos = {
   numeroCompleto: string
   fecha: string
   fechaVencimiento: string
+  cuentaContableId: string
   moneda: Moneda
   tc: string
   netoGravado: string
@@ -85,6 +117,25 @@ type Campos = {
 
 const n = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v))
 
+/**
+ * Si la fila tiene resuelta la identidad de la contraparte.
+ *
+ * El CUIT es lo único que identifica: la razón social se escribe de cinco
+ * maneras y se repite entre empresas. Por eso un alta sin CUIT válido no está
+ * lista para guardar aunque tenga todos los demás campos perfectos — el servidor
+ * la va a rechazar, y es mejor que se vea acá que como un error por fila después
+ * de apretar el botón.
+ *
+ * La excepción es el proveedor del exterior, que no tiene CUIT porque el CUIT no
+ * existe fuera de Argentina.
+ */
+function identidadResuelta(f: Fila): boolean {
+  if (f.entidadId) return true
+  if (!f.alta || !f.alta.razonSocial.trim()) return false
+  if (f.alta.origen === "exterior") return true
+  return esCuitValido(f.alta.cuit)
+}
+
 function aCampos(b: Borrador): Campos {
   const e = b.extraccion
   return {
@@ -94,7 +145,10 @@ function aCampos(b: Borrador): Campos {
         ? formatearNumero(e.puntoVenta, e.numero)
         : "",
     fecha: e?.fecha ?? "",
-    fechaVencimiento: e?.fechaVencimiento ?? "",
+    // El servidor ya lo completó con el plazo de la ficha cuando el papel no lo
+    // traía; acá solo se muestra lo que propuso.
+    fechaVencimiento: b.fechaVencimiento ?? e?.fechaVencimiento ?? "",
+    cuentaContableId: b.cuentaContableId ?? "",
     moneda: e?.moneda ?? "ARS",
     tc: n(e?.tc),
     netoGravado: n(e?.netoGravado),
@@ -119,7 +173,9 @@ export function ImportarFacturasDialog({
   tipo: TipoComprobante
   abierto: boolean
   onCerrar: () => void
-  onImportadas: (cantidad: number) => void
+  /** Se llama con el resumen de lo que entró. La pantalla de atrás es la que lo
+   *  muestra: acá adentro sería un modal arriba de otro. */
+  onImportadas: (impacto: Impacto) => void
 }) {
   const esCompra = tipo === "compra"
   const recurso = esCompra ? "compras" : "ventas"
@@ -143,16 +199,23 @@ export function ImportarFacturasDialog({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudieron leer los archivos")
 
-      const nuevas: Fila[] = (data.borradores as Borrador[]).map((b, i) => ({
+      const nuevas: Fila[] = (data.borradores as Borrador[]).map((b, i) => {
+        const fila: Fila = {
         id: `${Date.now()}-${i}`,
         borrador: b,
         campos: aCampos(b),
-        // Lo que no se pudo leer o no tiene cliente nace desmarcado: guardar por
-        // accidente algo que ni siquiera se pudo revisar es el peor resultado.
-        incluida: !b.error && Boolean(b.cliente),
-        clienteId: b.cliente?.id ?? null,
+        incluida: false,
+        entidadId: b.entidad?.id ?? null,
+        entidadNombre: b.entidad?.razonSocial ?? "",
+        alta: b.entidad ? null : (b.alta ?? null),
+        buscando: false,
         estado: "pendiente",
-      }))
+        }
+        // Nace tildada sólo si se pudo leer y se sabe con certeza de quién es.
+        // Un CUIT que no se leyó deja la fila desmarcada hasta que alguien lo
+        // complete: guardar sin identidad es lo que duplica el maestro.
+        return { ...fila, incluida: !b.error && identidadResuelta(fila) }
+      })
 
       setFilas((prev) => [...prev, ...nuevas])
 
@@ -170,12 +233,23 @@ export function ImportarFacturasDialog({
       prev.map((f) => (f.id === id ? { ...f, campos: { ...f.campos, [k]: v } } : f))
     )
 
+  const setFila = (id: string, cambio: Partial<Fila>) =>
+    setFilas((prev) => prev.map((f) => (f.id === id ? { ...f, ...cambio } : f)))
+
   const guardarTodas = async () => {
     const aGuardar = filas.filter((f) => f.incluida && f.estado !== "guardada")
     if (aGuardar.length === 0) return
 
     setGuardando(true)
     let ok = 0
+    /** Las fichas que el guardado dio de alta, sin repetir: seis facturas del
+     *  mismo proveedor nuevo crean una sola y el resumen tiene que decir una. */
+    const nuevas = new Set<string>()
+    /** Todas las fichas tocadas, nuevas o no. Se acumulan en el bucle y no se
+     *  leen de `filas` al final: dentro de esta función `filas` es el estado
+     *  congelado de antes de guardar, sin ninguno de los ids que resolvió el
+     *  servidor. */
+    const tocadas = new Set<string>()
 
     for (const fila of aGuardar) {
       setFilas((prev) =>
@@ -190,10 +264,18 @@ export function ImportarFacturasDialog({
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            entidadId: fila.clienteId,
+            entidadId: fila.entidadId,
+            /* Lo que dice el papel sobre la contraparte, se haya resuelto la
+               ficha o no. Sin ficha, el servidor la busca por CUIT y la da de
+               alta —allá y no acá, para que seis archivos del mismo proveedor
+               nuevo terminen en una ficha sola—. Con ficha ya elegida, sirve
+               para completarle el CUIT si estaba cargada sin él. */
+            entidadNueva:
+              fila.alta ?? (fila.borrador.cuitEntidad ? { cuit: fila.borrador.cuitEntidad } : null),
             clase: c.clase,
             fecha: c.fecha,
             fechaVencimiento: c.fechaVencimiento || null,
+            cuentaContableId: c.cuentaContableId || null,
             puntoVenta,
             numero,
             detalle: c.detalle,
@@ -220,8 +302,27 @@ export function ImportarFacturasDialog({
         if (!res.ok) throw new Error(data.error ?? "No se pudo guardar")
 
         ok++
+        if (data.entidadCreada) nuevas.add(data.entidadCreada as string)
+
+        // El id que resolvió el servidor vuelve a la fila. Importa para las
+        // siguientes del mismo proveedor: ya no hay nada que dar de alta.
+        const entidadId =
+          (data.comprobante?.proveedorId as string | null) ??
+          (data.comprobante?.clienteId as string | null) ??
+          fila.entidadId
+        const entidadNombre =
+          (data.comprobante?.proveedorNombre as string | null) ??
+          (data.comprobante?.clienteNombre as string | null) ??
+          fila.entidadNombre
+
+        if (entidadId) tocadas.add(entidadId)
+
         setFilas((prev) =>
-          prev.map((f) => (f.id === fila.id ? { ...f, estado: "guardada" } : f))
+          prev.map((f) =>
+            f.id === fila.id
+              ? { ...f, estado: "guardada", entidadId, entidadNombre, alta: null }
+              : f
+          )
         )
       } catch (e) {
         setFilas((prev) =>
@@ -239,18 +340,35 @@ export function ImportarFacturasDialog({
     }
 
     setGuardando(false)
-    if (ok > 0) {
-      toast.success(
-        `${ok} factura${ok !== 1 ? "s" : ""} cargada${ok !== 1 ? "s" : ""} como borrador`,
-        { description: "Revisalas en el listado y confirmalas cuando estén." }
-      )
-      onImportadas(ok)
-    }
+
+    if (ok === 0) return
+
+    /**
+     * El resumen se arma acá y no se le pide al servidor.
+     *
+     * Todo lo que entró quedó en borrador, así que el impacto contable y el de
+     * cobranza son cero por definición: no hay nada que consultar. Lo único que
+     * el navegador no podría saber solo —qué fichas se dieron de alta— vino en
+     * la respuesta de cada guardado. Preguntarle al servidor sería una consulta
+     * por factura para que conteste que todavía no pasó nada.
+     */
+    onImportadas({
+      ...IMPACTO_VACIO(tipo),
+      estado: "borrador",
+      comprobantes: ok,
+      entidadesNuevas: [...nuevas],
+      entidades: tocadas.size,
+    })
   }
 
   if (!abierto) return null
 
   const listas = filas.filter((f) => f.incluida && f.estado !== "guardada").length
+  /** Las que no se pueden guardar porque no se sabe de quién son. Se cuentan
+   *  aparte para que el pie diga por qué faltan, y no sólo cuántas hay. */
+  const sinIdentidad = filas.filter(
+    (f) => !f.borrador.error && f.estado !== "guardada" && !identidadResuelta(f)
+  ).length
   const trabajando = leyendo || guardando
 
   return (
@@ -350,11 +468,8 @@ export function ImportarFacturasDialog({
               tipo={tipo}
               fila={fila}
               onCampo={(k, v) => setCampo(fila.id, k, v)}
-              onIncluir={(v) =>
-                setFilas((prev) =>
-                  prev.map((f) => (f.id === fila.id ? { ...f, incluida: v } : f))
-                )
-              }
+              onFila={(cambio) => setFila(fila.id, cambio)}
+              onIncluir={(v) => setFila(fila.id, { incluida: v })}
               onQuitar={() => setFilas((prev) => prev.filter((f) => f.id !== fila.id))}
             />
           ))}
@@ -363,9 +478,19 @@ export function ImportarFacturasDialog({
         <div className="shrink-0 border-t border-line bg-surface-subtle px-5 py-4 sm:px-6">
           <div className="flex items-center justify-end gap-2">
             <p className="mr-auto text-[12px] text-ink-muted">
-              {filas.length === 0
-                ? "Todavía no adjuntaste nada"
-                : `${listas} de ${filas.length} lista${listas !== 1 ? "s" : ""} para registrar`}
+              {filas.length === 0 ? (
+                "Todavía no adjuntaste nada"
+              ) : (
+                <>
+                  {listas} de {filas.length} lista{listas !== 1 ? "s" : ""} para registrar
+                  {sinIdentidad > 0 && (
+                    <span className="text-warning-text">
+                      {" · "}
+                      {sinIdentidad} sin CUIT
+                    </span>
+                  )}
+                </>
+              )}
             </p>
             <Button variant="outline" onClick={onCerrar} disabled={trabajando}>
               Cerrar
@@ -387,12 +512,14 @@ function TarjetaBorrador({
   tipo,
   fila,
   onCampo,
+  onFila,
   onIncluir,
   onQuitar,
 }: {
   tipo: TipoComprobante
   fila: Fila
   onCampo: (k: keyof Campos, v: string) => void
+  onFila: (cambio: Partial<Fila>) => void
   onIncluir: (v: boolean) => void
   onQuitar: () => void
 }) {
@@ -429,6 +556,7 @@ function TarjetaBorrador({
   }
 
   const guardada = fila.estado === "guardada"
+  const listaParaGuardar = identidadResuelta(fila)
 
   return (
     <div
@@ -443,9 +571,12 @@ function TarjetaBorrador({
           type="checkbox"
           className="checkbox mt-0.5"
           checked={fila.incluida}
-          disabled={guardada || fila.estado === "guardando"}
+          // Sin identidad resuelta el servidor la rechaza igual. Bloquear el
+          // tilde lo dice antes, en vez de después de apretar Registrar.
+          disabled={guardada || fila.estado === "guardando" || !listaParaGuardar}
           onChange={(e) => onIncluir(e.target.checked)}
           aria-label={`Incluir ${b.archivo}`}
+          title={listaParaGuardar ? undefined : "Falta identificar con qué CUIT se carga"}
         />
 
         <div className="min-w-0 flex-1">
@@ -472,26 +603,6 @@ function TarjetaBorrador({
               </Badge>
             )}
           </div>
-
-          {/* Cliente */}
-          <p className="mt-1 text-[12px] text-ink-secondary">
-            {b.cliente ? (
-              <>
-                {tipo === "compra" ? "Proveedor" : "Cliente"}:{" "}
-                <strong className="font-medium text-ink">{b.cliente.razonSocial}</strong>
-                {b.cliente.cuit && (
-                  <span className="num text-ink-muted"> · {formatearCuit(b.cliente.cuit)}</span>
-                )}
-              </>
-            ) : (
-              <span className="text-warning-text">
-                Sin {tipo === "compra" ? "proveedor" : "cliente"} asignado
-                {b.cuitCliente && (
-                  <span className="num"> — CUIT {formatearCuit(b.cuitCliente)}</span>
-                )}
-              </span>
-            )}
-          </p>
         </div>
 
         {!guardada && (
@@ -500,6 +611,8 @@ function TarjetaBorrador({
           </Button>
         )}
       </div>
+
+      <BloqueEntidad tipo={tipo} fila={fila} onFila={onFila} onCampo={onCampo} />
 
       {/* Avisos */}
       {b.avisos.length > 0 && (
@@ -603,6 +716,26 @@ function TarjetaBorrador({
           </Campo>
         </div>
 
+        {/* La imputación. Es el campo que decide si esta factura llega o no al
+            mayor, así que va acá arriba y no escondido detrás de un "avanzado":
+            sin cuenta, el comprobante se confirma y no genera asiento. */}
+        <Campo rotulo="Cuenta contable">
+          <div className="[&_input]:h-8 [&_input]:text-[12px]">
+            <SelectorCuenta
+              id={`cuenta-${fila.id}`}
+              valor={c.cuentaContableId}
+              onElegir={(v) => onCampo("cuentaContableId", v)}
+              disabled={guardada}
+              tipoSugerido={tipo === "compra" ? "egreso" : "ingreso"}
+            />
+          </div>
+          {!c.cuentaContableId && (
+            <p className="mt-1 text-[11px] text-warning-text">
+              Sin cuenta no va a generar asiento al confirmarla.
+            </p>
+          )}
+        </Campo>
+
         <div className="grid gap-3 sm:grid-cols-4">
           <Campo rotulo="Neto gravado" dudoso={dudosos.has("netoGravado")}>
             <MiniInput
@@ -697,6 +830,200 @@ function TarjetaBorrador({
           </span>
         </div>
       </div>
+    </div>
+  )
+}
+
+/* ── A quién pertenece la factura ─────────────────────────────────────────── */
+
+/**
+ * La ficha del comprobante, con sus tres estados posibles.
+ *
+ *   enganchada  ·  se da de alta  ·  no se sabe
+ *
+ * Está arriba de todo y ocupa lugar por una razón: es el único campo de la
+ * pantalla cuyo error no se arregla editando la factura después. Una imputación
+ * equivocada se corrige; una factura colgada del proveedor que no es ensucia dos
+ * cuentas corrientes y no se nota hasta que alguien reclama un pago.
+ *
+ * El alta viene tildada por defecto. La alternativa —obligar a ir al maestro,
+ * cargar la ficha y volver— es la que hace que todo termine imputado a dos o
+ * tres proveedores "varios" con tal de no interrumpir la carga.
+ */
+function BloqueEntidad({
+  tipo,
+  fila,
+  onFila,
+  onCampo,
+}: {
+  tipo: TipoComprobante
+  fila: Fila
+  onFila: (cambio: Partial<Fila>) => void
+  onCampo: (k: keyof Campos, v: string) => void
+}) {
+  const esCompra = tipo === "compra"
+  const rotulo = esCompra ? "Proveedor" : "Cliente"
+  const bloqueado = fila.estado === "guardada" || fila.estado === "guardando"
+
+  const elegirFicha = (c: {
+    id: string
+    razonSocial: string
+    condicionPagoDias: number | null
+    cuentaContableId: string | null
+  }) => {
+    onFila({ entidadId: c.id, entidadNombre: c.razonSocial, alta: null, buscando: false })
+
+    // Lo que la ficha ya sabe entra en la factura, igual que en la carga
+    // manual: el plazo propone el vencimiento y la cuenta guardada manda sobre
+    // el default del tipo. Ninguno pisa algo que ya se haya corregido a mano.
+    if (c.cuentaContableId) onCampo("cuentaContableId", c.cuentaContableId)
+    if (c.condicionPagoDias !== null && fila.campos.fecha && !fila.campos.fechaVencimiento) {
+      onCampo("fechaVencimiento", sumarDias(fila.campos.fecha, c.condicionPagoDias))
+    }
+  }
+
+  if (fila.buscando && !bloqueado) {
+    return (
+      <div className="border-b border-line-soft bg-surface-subtle px-4 py-3">
+        <SelectorEntidad
+          id={`entidad-${fila.id}`}
+          tipo={esCompra ? "proveedor" : "cliente"}
+          valor={fila.entidadId ?? ""}
+          nombre={fila.entidadNombre}
+          etiqueta={`${rotulo} del sistema`}
+          permitirAlta
+          onElegir={elegirFicha}
+        />
+        <button
+          type="button"
+          onClick={() => onFila({ buscando: false })}
+          className="mt-2 text-[11.5px] font-medium text-brand-600 hover:underline"
+        >
+          Cancelar
+        </button>
+      </div>
+    )
+  }
+
+  /* Enganchada con una ficha que ya existe. */
+  if (fila.entidadId) {
+    return (
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line-soft px-4 py-2.5">
+        <Building2 className="h-3.5 w-3.5 shrink-0 text-ink-faint" />
+        <span className="text-[11px] uppercase tracking-[0.06em] text-ink-subtle">{rotulo}</span>
+        <span className="truncate text-[13px] font-medium text-ink">{fila.entidadNombre}</span>
+        {fila.borrador.entidad?.cuit && (
+          <span className="num text-[11.5px] text-ink-muted">
+            {formatearCuit(fila.borrador.entidad.cuit)}
+          </span>
+        )}
+        {!bloqueado && (
+          <button
+            type="button"
+            onClick={() => onFila({ buscando: true })}
+            className="ml-auto text-[11.5px] font-medium text-brand-600 hover:underline"
+          >
+            Cambiar
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  /* Sin ficha, pero con datos para darla de alta. */
+  if (fila.alta) {
+    const alta = fila.alta
+    const delExterior = alta.origen === "exterior"
+    // `errorDeCuit` no se queja del campo vacío —el CUIT es opcional en el
+    // maestro—, pero acá vacío sí es un problema: sin él no hay alta.
+    const problemaCuit = delExterior
+      ? null
+      : !alta.cuit
+        ? "Sin CUIT no se puede dar de alta: es lo que identifica al proveedor."
+        : errorDeCuit(alta.cuit)
+    const cuitOk = !delExterior && !problemaCuit
+
+    return (
+      <div
+        className={cn(
+          "border-b border-line-soft px-4 py-3",
+          problemaCuit ? "bg-warning-soft/40" : "bg-brand-50/60"
+        )}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <UserPlus
+            className={cn(
+              "h-3.5 w-3.5 shrink-0",
+              problemaCuit ? "text-warning-text" : "text-brand-600"
+            )}
+          />
+          <span className="text-[12px] font-semibold text-ink">
+            {rotulo} nuevo: se da de alta al guardar
+          </span>
+          {!bloqueado && (
+            <button
+              type="button"
+              onClick={() => onFila({ buscando: true })}
+              className="ml-auto text-[11.5px] font-medium text-brand-600 hover:underline"
+            >
+              Elegir uno existente
+            </button>
+          )}
+        </div>
+
+        {/* El CUIT va primero y ocupa más lugar que el nombre a propósito: es
+            el dato que decide de quién es la factura. La razón social es cómo
+            se llama, que es otra cosa y se corrige cuando haga falta. */}
+        <div className="mt-2 grid gap-3 sm:grid-cols-5">
+          <Campo rotulo="CUIT" className="sm:col-span-2">
+            <div className="relative">
+              <MiniInput
+                value={alta.cuit ?? ""}
+                onChange={(v) => onFila({ alta: { ...alta, cuit: v || null } })}
+                disabled={bloqueado || delExterior}
+                placeholder={delExterior ? "No aplica" : "30-50054729-0"}
+              />
+              {cuitOk && (
+                <Check className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-success" />
+              )}
+            </div>
+            {problemaCuit && (
+              <p className="mt-1 text-[11px] leading-snug text-warning-text">{problemaCuit}</p>
+            )}
+            {delExterior && (
+              <p className="mt-1 text-[11px] text-ink-muted">
+                Del exterior: el CUIT no aplica.
+              </p>
+            )}
+          </Campo>
+
+          <Campo rotulo="Razón social" className="sm:col-span-3">
+            <MiniInput
+              value={alta.razonSocial}
+              onChange={(v) => onFila({ alta: { ...alta, razonSocial: v } })}
+              disabled={bloqueado}
+            />
+          </Campo>
+        </div>
+      </div>
+    )
+  }
+
+  /* Ni ficha ni datos: no hay forma de guardar sin elegirlo a mano. */
+  return (
+    <div className="border-b border-line-soft bg-warning-soft/40 px-4 py-3">
+      <p className="mb-2 text-[12px] font-medium text-warning-text">
+        No se pudo identificar el {rotulo.toLowerCase()}. Elegilo para poder guardar.
+      </p>
+      <SelectorEntidad
+        id={`entidad-${fila.id}`}
+        tipo={esCompra ? "proveedor" : "cliente"}
+        valor=""
+        nombre=""
+        etiqueta={null}
+        permitirAlta
+        onElegir={elegirFicha}
+      />
     </div>
   )
 }

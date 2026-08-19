@@ -125,13 +125,32 @@ export type SumasYSaldos = {
   porRubro: { tipo: TipoCuenta; saldo: number; cuentas: number }[]
 }
 
+/**
+ * Un documento que está en los saldos pero no en el mayor.
+ *
+ * Trae más de lo que la vista `documentos_sin_asiento` sabe, y a propósito: con
+ * la referencia y el importe alcanza para listarlo, pero no para **arreglarlo**.
+ * Para elegir contra qué cuenta se imputa hay que ver de quién es la factura y
+ * qué dice su detalle — si no, la pantalla obliga a abrir el documento en otra
+ * solapa para poder decidir, y eso es exactamente la fricción que hace que la
+ * lista de pendientes no se vacíe nunca.
+ */
 export type DocumentoSinAsiento = {
-  origen: string
+  origen: "comprobante" | "movimiento"
   id: string
   fecha: string
   referencia: string
   importeArs: number
   motivo: string
+  /** `compra` o `venta` en un comprobante; `null` en un movimiento. */
+  tipo: "compra" | "venta" | null
+  /** El proveedor o cliente, o la cuenta financiera si es un movimiento. */
+  contraparte: string | null
+  /** El concepto, que es lo que permite elegir la cuenta sin abrir nada. */
+  detalle: string | null
+  /** Ya imputado quiere decir que el motivo es otro y que cambiar la cuenta no
+   *  lo va a arreglar. La pantalla lo distingue. */
+  cuentaContableId: string | null
 }
 
 /* ── Lectura ──────────────────────────────────────────────────────────────── */

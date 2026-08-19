@@ -3,7 +3,15 @@ import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { createSupabaseServer } from "@/lib/supabase-server"
 import { escaparParaOr, POR_PAGINA_MAX } from "@/lib/admin/entidades-server"
-import type { TipoComprobante } from "@/lib/admin/comprobantes"
+import { esFormaJuridica, esOrigen } from "@/lib/admin/entidades"
+import { normalizarCuit } from "@/lib/admin/cuit"
+import {
+  TABLA_DE_TIPO,
+  completarCuit,
+  obtenerOCrearEntidad,
+  recordarCuentaEnFicha,
+} from "@/lib/admin/entidad-de-comprobante"
+import type { Comprobante, TipoComprobante } from "@/lib/admin/comprobantes"
 import {
   SELECT_COMPROBANTE,
   aComprobante,
@@ -12,6 +20,7 @@ import {
   validarComprobante,
 } from "@/lib/admin/comprobantes-server"
 import { cotizacionHasta } from "@/lib/admin/cotizaciones-server"
+import { impactoDeComprobantes } from "@/lib/admin/impacto-server"
 
 /**
  * Los handlers de facturas de venta y de compra, parametrizados por tipo.
@@ -124,6 +133,26 @@ export async function crearComprobante(tipo: TipoComprobante, req: Request) {
   const body = await leerBody(req)
   if ("error" in body) return body.error
 
+  /**
+   * El alta de la ficha va acá, en el mismo pedido que la factura.
+   *
+   * Podría hacerla el navegador con dos llamadas —crear el proveedor, después
+   * la factura— y sería más simple de leer. Pero entre las dos llamadas se
+   * puede cerrar la pestaña, y ahí queda un proveedor dado de alta sin ninguna
+   * factura, que es basura silenciosa en el maestro. Peor: seis archivos del
+   * mismo proveedor nuevo se guardan en secuencia y cada uno vería el maestro
+   * como estaba antes de empezar.
+   *
+   * Del lado del servidor eso no pasa: cada guardado resuelve la ficha contra
+   * la base tal como está en ese instante, y el índice único del CUIT hace de
+   * árbitro final.
+   */
+  const resuelta = await resolverEntidad(tipo, body.raw)
+  if ("error" in resuelta) {
+    return NextResponse.json({ error: resuelta.error }, { status: resuelta.status })
+  }
+  if (resuelta.id) body.raw.entidadId = resuelta.id
+
   const validado = validarComprobante(body.raw, tipo)
   if ("error" in validado) {
     return NextResponse.json({ error: validado.error }, { status: validado.status })
@@ -142,7 +171,99 @@ export async function crearComprobante(tipo: TipoComprobante, req: Request) {
 
   if (error) return errorDeComprobante(error, "crear")
 
-  return NextResponse.json({ comprobante: aComprobante(data) }, { status: 201 })
+  const comprobante = aComprobante(data)
+
+  // La cuenta elegida queda anotada en la ficha, si no tenía. Es lo que hace que
+  // elegirla sea trabajo de una sola vez por proveedor y no de cada factura.
+  await aprenderCuenta(tipo, comprobante)
+
+  /**
+   * El resumen se calcula sólo si el alta ya quedó confirmada.
+   *
+   * Es lo que separa la carga manual de la masiva sin tener dos endpoints: una
+   * factura tipeada y confirmada de una impacta en todo y merece el resumen; los
+   * seis PDF entran como borrador, y ahí consultar el impacto de cada uno serían
+   * doce consultas para informar seis veces que todavía no pasó nada. La pantalla
+   * de carga arma ese resumen sola con lo que ya sabe.
+   */
+  const impacto =
+    comprobante.estado === "confirmado"
+      ? await impactoDeComprobantes(
+          tipo,
+          [comprobante.id],
+          resuelta.creada && resuelta.razonSocial ? [resuelta.razonSocial] : []
+        )
+      : null
+
+  return NextResponse.json(
+    {
+      comprobante,
+      // Para que la pantalla pueda decir "2 proveedores nuevos" en vez de dejar
+      // que el maestro crezca sin que nadie se entere.
+      entidadCreada: resuelta.creada ? resuelta.razonSocial : null,
+      impacto,
+    },
+    { status: 201 }
+  )
+}
+
+/** La cuenta imputada, guardada en la ficha de la contraparte para la próxima
+ *  vez. No hace nada si la ficha ya tenía una: la excepción es la factura, no el
+ *  proveedor. */
+async function aprenderCuenta(tipo: TipoComprobante, c: Comprobante): Promise<void> {
+  const entidadId = tipo === "compra" ? c.proveedorId : c.clienteId
+  if (!entidadId || !c.cuentaContableId) return
+  await recordarCuentaEnFicha(TABLA_DE_TIPO[tipo], entidadId, c.cuentaContableId)
+}
+
+/**
+ * La ficha del comprobante: la que se eligió, o la que hay que dar de alta.
+ *
+ * Sin `entidadNueva` no hace nada y el alta manual sigue funcionando igual que
+ * siempre — es la carga inteligente la que manda los datos leídos del papel.
+ */
+async function resolverEntidad(
+  tipo: TipoComprobante,
+  raw: Record<string, unknown>
+): Promise<
+  | { id: string | null; creada: boolean; razonSocial: string | null }
+  | { error: string; status: number }
+> {
+  const yaElegida = typeof raw.entidadId === "string" ? raw.entidadId : ""
+  const nueva = raw.entidadNueva
+
+  if (!nueva || typeof nueva !== "object" || Array.isArray(nueva)) {
+    return { id: null, creada: false, razonSocial: null }
+  }
+
+  const d = nueva as Record<string, unknown>
+
+  /**
+   * Con la ficha ya elegida, lo leído del papel todavía sirve para una cosa:
+   * completarle el CUIT si no lo tenía.
+   *
+   * Es el caso de la ficha vieja cargada a mano sin CUIT, que la importación
+   * encontró por nombre. Sin esto se engancha bien esta vez y sigue huérfana
+   * para la próxima —el nombre tendría que volver a coincidir al carácter—.
+   * Con esto, la primera factura que llega le da su identidad y de ahí en más
+   * se encuentra por CUIT, que es el camino que no falla.
+   */
+  if (yaElegida) {
+    const cuit = typeof d.cuit === "string" ? normalizarCuit(d.cuit) : null
+    if (cuit) await completarCuit(TABLA_DE_TIPO[tipo], yaElegida, cuit)
+    return { id: null, creada: false, razonSocial: null }
+  }
+  const resultado = await obtenerOCrearEntidad(TABLA_DE_TIPO[tipo], {
+    razonSocial: typeof d.razonSocial === "string" ? d.razonSocial : "",
+    cuit: typeof d.cuit === "string" ? d.cuit : null,
+    origen: esOrigen(d.origen) ? d.origen : "nacional",
+    formaJuridica: esFormaJuridica(d.formaJuridica) ? d.formaJuridica : null,
+    direccion: typeof d.direccion === "string" ? d.direccion : null,
+  })
+
+  if ("error" in resultado) return resultado
+
+  return { id: resultado.id, creada: resultado.creada, razonSocial: resultado.razonSocial }
 }
 
 /* ── Confirmar, volver a borrador, anular ─────────────────────────────────── */
@@ -222,7 +343,13 @@ export async function cambiarEstadoComprobante(
   if (!data) return NextResponse.json({ error: "Comprobante no encontrado" }, { status: 404 })
 
   const [comprobante] = await conSaldos([aComprobante(data as unknown as Record<string, unknown>)])
-  return NextResponse.json({ comprobante, aviso })
+
+  // Solo al confirmar: es la única transición que mueve algo afuera. Volver a
+  // borrador o anular borra el asiento, y para eso el aviso de siempre alcanza.
+  const impacto =
+    estado === "confirmado" ? await impactoDeComprobantes(tipo, [id]) : null
+
+  return NextResponse.json({ comprobante, aviso, impacto })
 }
 
 /**
@@ -276,6 +403,10 @@ export async function confirmarLote(tipo: TipoComprobante, req: Request) {
   return NextResponse.json({
     confirmados: confirmados.length,
     fallidos,
+    // El resumen se arma con lo que quedó en la base, no con `confirmados`:
+    // confirmar y generar el asiento son dos cosas distintas y el trigger puede
+    // haber hecho una sin la otra.
+    impacto: await impactoDeComprobantes(tipo, confirmados),
   })
 }
 

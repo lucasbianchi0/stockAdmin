@@ -1,4 +1,5 @@
-import { CLASES_VENTA } from "@/lib/admin/comprobantes"
+import { CODIGOS_CLASE } from "@/lib/admin/comprobantes"
+import type { FormaJuridica, Origen } from "@/lib/admin/entidades"
 
 /**
  * Carga inteligente de comprobantes: extracción de una factura de AFIP.
@@ -21,7 +22,22 @@ import { CLASES_VENTA } from "@/lib/admin/comprobantes"
  *  `"type": ["number","null"]`, pero sí `anyOf`. */
 const opcional = (tipo: string) => ({ anyOf: [{ type: tipo }, { type: "null" }] })
 
-const CODIGOS = CLASES_VENTA.map((c) => c.codigo)
+/** Los de los dos circuitos, no solo los de venta: una factura C de un
+ *  monotributista existe únicamente del lado de compras, y con el enum limitado
+ *  a las clases de venta el modelo no tenía forma de devolverla. */
+const CODIGOS = CODIGOS_CLASE
+
+/** Las mismas cuatro que acepta `forma_juridica` en clientes y proveedores. El
+ *  enum coincide a propósito: lo leído entra en la ficha sin traducción. */
+const CONDICION_IVA = {
+  anyOf: [
+    {
+      type: "string",
+      enum: ["responsable_inscripto", "monotributo", "consumidor_final", "exento"],
+    },
+    { type: "null" },
+  ],
+} as const
 
 /**
  * El esquema que la API garantiza. No es una sugerencia: con
@@ -45,6 +61,14 @@ export const SCHEMA_EXTRACCION = {
     emisorRazonSocial: opcional("string"),
     receptorCuit: opcional("string"),
     receptorRazonSocial: opcional("string"),
+
+    // El resto de la cabecera. No hace falta para asentar la factura, pero es
+    // exactamente lo que lleva la ficha del proveedor que se da de alta con
+    // ella: sin esto la ficha nueva nace con la razón social y nada más.
+    emisorDomicilio: opcional("string"),
+    receptorDomicilio: opcional("string"),
+    emisorCondicionIva: CONDICION_IVA,
+    receptorCondicionIva: CONDICION_IVA,
 
     moneda: { anyOf: [{ type: "string", enum: ["ARS", "USD"] }, { type: "null" }] },
     tc: opcional("number"),
@@ -80,6 +104,10 @@ export const SCHEMA_EXTRACCION = {
     "emisorRazonSocial",
     "receptorCuit",
     "receptorRazonSocial",
+    "emisorDomicilio",
+    "receptorDomicilio",
+    "emisorCondicionIva",
+    "receptorCondicionIva",
     "moneda",
     "tc",
     "netoGravado",
@@ -109,6 +137,10 @@ export type Extraccion = {
   emisorRazonSocial: string | null
   receptorCuit: string | null
   receptorRazonSocial: string | null
+  emisorDomicilio: string | null
+  receptorDomicilio: string | null
+  emisorCondicionIva: FormaJuridica | null
+  receptorCondicionIva: FormaJuridica | null
   moneda: "ARS" | "USD" | null
   tc: number | null
   netoGravado: number | null
@@ -127,19 +159,59 @@ export type Extraccion = {
   observacionLectura: string | null
 }
 
+/** La ficha del maestro a la que se va a colgar el comprobante, ya resuelta. */
+export type EntidadDelBorrador = {
+  id: string
+  razonSocial: string
+  cuit: string | null
+  /** Contra qué cuenta se imputan sus facturas por defecto. */
+  cuentaContableId: string | null
+  /** Los días de plazo pactados, que proponen el vencimiento. */
+  condicionPagoDias: number | null
+  activo: boolean
+  /** Cómo se encontró. `cuit` es certeza; `razon_social` es un match por
+   *  nombre y la pantalla lo dice, porque ahí sí puede haberse equivocado. */
+  por: "cuit" | "razon_social"
+}
+
+/**
+ * La ficha que se va a dar de alta cuando el maestro no tiene ninguna.
+ *
+ * Es una propuesta, no un hecho: viaja al navegador, se muestra editable y el
+ * alta ocurre recién cuando se guarda el comprobante. Lo que la vuelve segura es
+ * que se resuelve por CUIT del lado del servidor en el mismo pedido —dos
+ * archivos del mismo proveedor nuevo terminan en una sola ficha, no en dos.
+ */
+export type AltaSugerida = {
+  razonSocial: string
+  cuit: string | null
+  origen: Origen
+  formaJuridica: FormaJuridica | null
+  direccion: string | null
+}
+
 /**
  * Un archivo procesado: la extracción cruda más todo lo que el modelo no puede
- * saber (si el cliente existe, si la factura ya está cargada, si los importes
- * cierran). Es lo que consume la pantalla de preview.
+ * saber (si el proveedor existe, contra qué cuenta se imputa, si la factura ya
+ * está cargada, si los importes cierran). Es lo que consume la pantalla de
+ * preview.
  */
 export type Borrador = {
   archivo: string
   error?: string
   extraccion?: Extraccion
-  /** El cliente del maestro que matchea por CUIT, si lo hay. */
-  cliente?: { id: string; razonSocial: string; cuit: string | null } | null
-  /** El CUIT que se buscó, para poder ofrecer «crear cliente» con él ya puesto. */
-  cuitCliente?: string | null
+  /** La ficha del maestro que matchea, si la hay. */
+  entidad?: EntidadDelBorrador | null
+  /** Con qué datos darla de alta cuando no matcheó ninguna. */
+  alta?: AltaSugerida | null
+  /** El CUIT de la contraparte, aunque no haya ficha ni alta posible. */
+  cuitEntidad?: string | null
+  /** La imputación propuesta: la de la ficha, y si no la del tipo. Es lo que
+   *  hace que la factura llegue al mayor sin un paso extra. */
+  cuentaContableId?: string | null
+  /** El vencimiento propuesto cuando el papel no lo trae: fecha + los días de
+   *  plazo de la ficha. */
+  fechaVencimiento?: string | null
   /** Lo que la persona tiene que mirar antes de guardar. */
   avisos: string[]
 }
@@ -157,12 +229,15 @@ const CODIGOS_AFIP = `
 |-------------|--------------------------|-------|
 | 01          | Factura A                | FCA   |
 | 06          | Factura B                | FCB   |
+| 11          | Factura C (monotributo)  | FCC   |
 | 19          | Factura E (exportación)  | FCEA  |
 | 03          | Nota de crédito A        | NCA   |
 | 08          | Nota de crédito B        | NCB   |
+| 13          | Nota de crédito C        | NCC   |
 | 21          | Nota de crédito E        | NCEA  |
 | 02          | Nota de débito A         | NDA   |
 | 07          | Nota de débito B         | NDB   |
+| 12          | Nota de débito C         | NDC   |
 | 20          | Nota de débito E         | NDEA  |
 `.trim()
 
@@ -180,7 +255,7 @@ REGLAS, en orden de importancia:
 
 4. **Las fechas en formato YYYY-MM-DD.** El formato argentino es día/mes/año: "01/08/2026" es 2026-08-01, no 2026-01-08. Si el año viene con dos dígitos, asumí 20XX.
 
-5. **Los dos CUIT por separado.** "emisor" es quien emitió la factura, "receptor" es a quién se la emitió. No decidas cuál es el cliente — eso lo resuelve el sistema. Los CUIT van con 11 dígitos y sin guiones.
+5. **Las dos partes por separado.** "emisor" es quien emitió la factura, "receptor" es a quién se la emitió. No decidas cuál es el cliente — eso lo resuelve el sistema. Los CUIT van con 11 dígitos y sin guiones. De cada uno traé también la razón social tal cual está impresa, el domicilio en una línea, y la condición frente al IVA usando exactamente uno de estos valores: "responsable_inscripto", "monotributo" (incluye "Responsable Monotributo"), "consumidor_final", "exento". Si la condición no figura, null — salvo que la clase la implique: una factura A solo se emite entre responsables inscriptos, y una C la emite un monotributista o un exento.
 
 6. **Moneda**: "ARS" si está en pesos, "USD" si está en dólares. Si el documento muestra un tipo de cambio, poné el valor en "tc" (pesos por dólar).
 

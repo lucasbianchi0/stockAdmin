@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
+import { AvisoSinAsiento } from "@/components/admin/aviso-sin-asiento"
 import { LecturaGastoDialog } from "@/components/admin/lectura-gasto-dialog"
 import {
   MovimientoDialog,
@@ -101,6 +102,12 @@ export function CuentasClient() {
 
   return (
     <>
+      {/* Los movimientos cargados a mano acá son la otra fuente de documentos
+          que quedan fuera del mayor: el asiento de un recibo lo arma el recibo,
+          pero una comisión o una transferencia tipeada necesita que alguien le
+          diga contra qué cuenta va. */}
+      <AvisoSinAsiento filtro={{ origen: "movimiento" }} />
+
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <div className="mr-auto flex flex-wrap items-baseline gap-x-6 gap-y-1">
           <div>

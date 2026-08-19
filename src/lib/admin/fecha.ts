@@ -39,3 +39,22 @@ export function formatearFechaLarga(iso: string | null): string {
   if (!a || !m || !d) return iso
   return `${d} de ${MESES[m - 1]} de ${a}`
 }
+
+/**
+ * `2026-08-01` + 30 → `2026-08-31`. Es la fecha de vencimiento que propone la
+ * condición de pago de la ficha.
+ *
+ * Va por el constructor local de tres argumentos y no por `new Date(iso)` por lo
+ * mismo que dice la cabecera: el parseo de un ISO pelado es UTC y en Argentina
+ * devuelve el día anterior. Acá el corrimiento sería peor que en pantalla —
+ * quedaría guardado en la base y el semáforo de vencidas mentiría un día.
+ */
+export function sumarDias(iso: string, dias: number): string {
+  const [a, m, d] = iso.split("-").map(Number)
+  if (!a || !m || !d) return iso
+  const f = new Date(a, m - 1, d)
+  f.setDate(f.getDate() + dias)
+  const mes = String(f.getMonth() + 1).padStart(2, "0")
+  const dia = String(f.getDate()).padStart(2, "0")
+  return `${f.getFullYear()}-${mes}-${dia}`
+}

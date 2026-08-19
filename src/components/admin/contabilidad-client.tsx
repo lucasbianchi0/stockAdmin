@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { AlertTriangle, BookOpen, Check, Download, Layers, Scale } from "lucide-react"
 
 import { SelectorCuenta } from "@/components/admin/selector-cuenta"
+import { CorregirImputacionDialog } from "@/components/admin/corregir-imputacion-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -583,18 +584,24 @@ function Saldos() {
 function Pendientes({ onContar }: { onContar: (n: number) => void }) {
   const [docs, setDocs] = useState<DocumentoSinAsiento[]>([])
   const [cargando, setCargando] = useState(true)
+  const [corrigiendo, setCorrigiendo] = useState(false)
+
+  const cargar = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/contabilidad/pendientes")
+      const d = await res.json()
+      setDocs(d.documentos ?? [])
+      onContar(d.cantidad ?? 0)
+    } catch {
+      setDocs([])
+    } finally {
+      setCargando(false)
+    }
+  }, [onContar])
 
   useEffect(() => {
-    setCargando(true)
-    fetch("/api/admin/contabilidad/pendientes")
-      .then((r) => r.json())
-      .then((d) => {
-        setDocs(d.documentos ?? [])
-        onContar(d.cantidad ?? 0)
-      })
-      .catch(() => setDocs([]))
-      .finally(() => setCargando(false))
-  }, [onContar])
+    void cargar()
+  }, [cargar])
 
   if (cargando) return <LoadingState label="Buscando documentos sin asentar…" />
 
@@ -610,10 +617,15 @@ function Pendientes({ onContar }: { onContar: (n: number) => void }) {
 
   return (
     <div className="space-y-3">
-      <p className="rounded-lg border border-warning-line bg-warning-soft px-3 py-2.5 text-[12px] text-warning-text">
-        Estos documentos están en los saldos pero no en el mayor, así que el balance no los
-        incluye. Casi siempre alcanza con imputarles la cuenta contable que les falta.
-      </p>
+      <div className="flex flex-col gap-3 rounded-lg border border-warning-line bg-warning-soft px-3 py-2.5 sm:flex-row sm:items-center">
+        <p className="flex-1 text-[12px] text-warning-text">
+          Estos documentos están en los saldos pero no en el mayor, así que el balance no los
+          incluye. Casi siempre alcanza con imputarles la cuenta contable que les falta.
+        </p>
+        <Button size="sm" onClick={() => setCorrigiendo(true)} className="shrink-0">
+          Corregir {docs.length}
+        </Button>
+      </div>
 
       <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-e1">
         <Table>
@@ -621,6 +633,7 @@ function Pendientes({ onContar }: { onContar: (n: number) => void }) {
             <TableRow>
               <TableHead>Fecha</TableHead>
               <TableHead>Documento</TableHead>
+              <TableHead>De quién</TableHead>
               <TableHead>Motivo</TableHead>
               <TableHead className="text-right">Importe</TableHead>
             </TableRow>
@@ -632,6 +645,9 @@ function Pendientes({ onContar }: { onContar: (n: number) => void }) {
                   {formatearFecha(d.fecha)}
                 </TableCell>
                 <TableCell className="text-[12.5px] text-ink">{d.referencia}</TableCell>
+                <TableCell className="text-[12px] text-ink-secondary">
+                  {d.contraparte ?? "—"}
+                </TableCell>
                 <TableCell className="text-[11.5px] text-ink-muted">{d.motivo}</TableCell>
                 <TableCell className="num text-right font-mono text-[12px]">
                   {formatearImporte(d.importeArs)}
@@ -641,6 +657,13 @@ function Pendientes({ onContar }: { onContar: (n: number) => void }) {
           </TableBody>
         </Table>
       </div>
+
+      <CorregirImputacionDialog
+        abierto={corrigiendo}
+        documentos={docs}
+        onCerrar={() => setCorrigiendo(false)}
+        onCorregido={cargar}
+      />
     </div>
   )
 }

@@ -1,0 +1,31 @@
+-- Revierte 20260817_01: se saca la cuenta de imputacion por defecto por tipo.
+--
+-- POR QUE SE AGREGO Y POR QUE SE SACA
+--
+-- Se agrego para que ninguna factura quedara sin asiento: sin
+-- `cuenta_contable_id`, `asiento_de_comprobante` corta y el comprobante entra a
+-- los saldos pero no al mayor. El razonamiento era que un asiento aproximado es
+-- mejor que ningun asiento.
+--
+-- Contra los datos reales el razonamiento no se sostuvo. Las cuatro facturas de
+-- compra cargadas a mano estaban repartidas mitad y mitad entre 508 (Compras
+-- Prod. de Reventa) y 514 (Fletes): cualquier default global habria acertado la
+-- mitad de las veces. Y los dos errores no son simetricos.
+--
+--   · Sin asiento  → el comprobante aparece en `documentos_sin_asiento`, la
+--                    pantalla muestra el cartel, alguien lo imputa. Ruidoso.
+--   · Mal asentado → el balance cuadra igual, Compras de Reventa queda inflada
+--                    con fletes, y no se entera nadie. Silencioso.
+--
+-- En contabilidad, entre un error ruidoso y uno silencioso se elige el ruidoso.
+--
+-- QUE LO REEMPLAZA
+--
+-- La cuenta de la ficha del proveedor, que ya existia y es un predictor real
+-- —un proveedor de fletes factura fletes—, mas dos cosas nuevas del lado de la
+-- aplicacion: al imputar un comprobante la cuenta elegida queda guardada en la
+-- ficha si no tenia ninguna, y los modulos muestran un cartel con boton de
+-- corregir para lo que quedo afuera del mayor. Elegir la cuenta pasa a ser
+-- trabajo de una sola vez por proveedor en lugar de una adivinanza por factura.
+
+delete from config_contable where clave in ('compras_default', 'ventas_default');

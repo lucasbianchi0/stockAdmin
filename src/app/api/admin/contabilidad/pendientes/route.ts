@@ -1,45 +1,36 @@
-import { NextResponse } from "next/server"
-
 import { exigirModulo } from "@/lib/guard-api"
-import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
-import type { DocumentoSinAsiento } from "@/lib/admin/asientos"
+import {
+  listarPendientesContables,
+  type FiltroPendientes,
+} from "@/lib/admin/pendientes-contables-server"
 
 /**
  * Los documentos que el motor no pudo asentar.
  *
  * Es la lista de trabajo de la contabilidad. Cada fila acá es un documento que
  * está en los saldos pero **no en el mayor**, y por lo tanto un balance que no
- * cierra. Casi siempre la causa es la misma y se arregla en diez segundos: la
- * factura quedó sin cuenta contable imputada.
+ * cierra. Casi siempre la causa es la misma y se arregla en diez segundos: el
+ * documento quedó sin cuenta contable imputada.
  *
  * Que esta lista exista es la contracara de haber decidido que un error del
  * motor no bloquee la carga de un documento. Si no se bloquea, tiene que verse.
+ *
+ * Los filtros son para los carteles de cada módulo: la pantalla de facturas de
+ * compra pregunta sólo por lo suyo, y así el aviso que muestra habla de lo que
+ * el usuario está mirando en vez de un total que mezcla circuitos.
  */
-
-export const GET = ruta("pendientes contables GET", async () => {
+export const GET = ruta("pendientes contables GET", async (req: Request) => {
   const sinPermiso = await exigirModulo("administracion")
   if (sinPermiso) return sinPermiso
 
-  const { data, error } = await supabase
-    .from("documentos_sin_asiento")
-    .select("origen, id, fecha, referencia, importe_ars, motivo")
-    .order("fecha", { ascending: false })
-    .limit(500)
+  const params = new URL(req.url).searchParams
+  const origen = params.get("origen")
+  const tipo = params.get("tipo")
 
-  if (error) {
-    console.error("[pendientes contables]", error)
-    return NextResponse.json({ error: "No se pudieron cargar los pendientes" }, { status: 500 })
-  }
+  const filtro: FiltroPendientes = {}
+  if (origen === "comprobante" || origen === "movimiento") filtro.origen = origen
+  if (tipo === "compra" || tipo === "venta") filtro.tipo = tipo
 
-  const documentos: DocumentoSinAsiento[] = (data ?? []).map((d) => ({
-    origen: d.origen as string,
-    id: d.id as string,
-    fecha: d.fecha as string,
-    referencia: d.referencia as string,
-    importeArs: Number(d.importe_ars ?? 0),
-    motivo: d.motivo as string,
-  }))
-
-  return NextResponse.json({ documentos, cantidad: documentos.length })
+  return listarPendientesContables(filtro)
 })
