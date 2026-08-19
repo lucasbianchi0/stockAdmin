@@ -3,6 +3,7 @@ import {
   Palette,
   BarChart3,
   Target,
+  FileText,
   ListChecks,
   MessageSquareQuote,
   PenLine,
@@ -69,6 +70,15 @@ const CARDS: Card[] = [
       "Lo que el equipo escribe todos los días —presupuestos, seguimientos, cobranzas— escrito una sola vez y bien. Cualquiera crea y corrige.",
     href: "/marketing/mensajes",
     icon: MessageSquareQuote,
+    estado: "listo",
+  },
+  {
+    kicker: "Material",
+    titulo: "Brochures",
+    descripcion:
+      "Las propuestas y el institucional en PDF, en su versión vigente. Lo que se le manda al cliente, sin ir a buscarlo a un mail de hace ocho meses.",
+    href: "/marketing/brochures",
+    icon: FileText,
     estado: "listo",
   },
   {

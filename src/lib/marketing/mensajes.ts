@@ -7,6 +7,19 @@
  * puntas validan igual porque validan con la misma función.
  */
 
+import {
+  LIMITE_ETIQUETA,
+  MAX_ETIQUETAS,
+  fechaCorta,
+  normalizarEtiquetas,
+} from "@/lib/marketing/formato"
+
+// La fecha y las etiquetas se comparten con brochures — ver `formato.ts`. Se
+// siguen exportando desde acá para que la pantalla de mensajes importe de un
+// solo lado.
+export { normalizarEtiquetas }
+export const fechaDeMensaje = fechaCorta
+
 /* ── Circunstancia ────────────────────────────────────────────────────────── */
 
 /**
@@ -109,8 +122,8 @@ export const LIMITES = {
   asunto: 160,
   cuerpo: 4000,
   cuandoUsar: 400,
-  etiqueta: 24,
-  etiquetas: 6,
+  etiqueta: LIMITE_ETIQUETA,
+  etiquetas: MAX_ETIQUETAS,
 } as const
 
 /* ── Variables ────────────────────────────────────────────────────────────── */
@@ -195,27 +208,6 @@ export function resumenDe(cuerpo: string, max = 120): string {
   return plano.length > max ? `${plano.slice(0, max - 1).trimEnd()}…` : plano
 }
 
-/**
- * `2026-08-14T…` → `14 ago 2026`.
- *
- * Con zona y locale fijos porque este texto se pinta en el servidor y otra vez
- * en el cliente: si cada uno usara su zona, React tiraría un mismatch de
- * hidratación en cualquier registro creado después de las nueve de la noche.
- */
-const FORMATO_FECHA = new Intl.DateTimeFormat("es-AR", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  timeZone: "America/Argentina/Buenos_Aires",
-})
-
-export function fechaDeMensaje(iso: string | null): string {
-  if (!iso) return "—"
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return "—"
-  return FORMATO_FECHA.format(d).replace(/\./g, "")
-}
-
 /* ── Normalización ────────────────────────────────────────────────────────── */
 
 export type BorradorMensaje = {
@@ -236,26 +228,6 @@ export const BORRADOR_VACIO: BorradorMensaje = {
   cuerpo: "",
   cuandoUsar: "",
   etiquetas: [],
-}
-
-/**
- * Etiquetas en minúscula, sin repetir y sin las vacías.
- *
- * Minúscula porque "Cobranza" y "cobranza" como dos filtros distintos es
- * exactamente el problema que las etiquetas venían a resolver.
- */
-export function normalizarEtiquetas(raw: unknown): string[] {
-  const lista = Array.isArray(raw) ? raw : []
-  const vistas = new Set<string>()
-
-  for (const e of lista) {
-    if (typeof e !== "string") continue
-    const limpia = e.trim().toLowerCase().slice(0, LIMITES.etiqueta)
-    if (limpia) vistas.add(limpia)
-    if (vistas.size >= LIMITES.etiquetas) break
-  }
-
-  return [...vistas]
 }
 
 /** Qué le falta al borrador para poder guardarse. Vacío = está listo. */

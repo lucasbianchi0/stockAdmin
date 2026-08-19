@@ -55,6 +55,7 @@ const GRUPOS: Grupo[] = [
       { name: "Informes de campañas", href: "/marketing/informes", available: true },
       { name: "Brand Kit", href: "/marketing/brand", available: true },
       { name: "Plantillas de mensajes", href: "/marketing/mensajes", available: true },
+      { name: "Brochures", href: "/marketing/brochures", available: true },
       { name: "Landings y SEO", href: "/marketing/landings", available: true },
       { name: "Calendario de contenido", href: "/contenido/calendario", available: true },
       { name: "Content Studio", href: "/contenido", available: true, exact: true },
@@ -64,13 +65,18 @@ const GRUPOS: Grupo[] = [
     id: "administracion",
     titulo: "Administración",
     icon: SlidersHorizontal,
+    /* Las dos primeras son las dos puertas de entrada del módulo, y por eso
+       están arriba: todo lo demás —el proveedor, la deuda, el asiento, lo que
+       hay que pagar— entra al sistema cargando una factura. Los maestros van
+       después porque hoy casi no hace falta abrirlos: la carga da de alta la
+       ficha que no existe. */
     items: [
-      { name: "Clientes", href: "/admin/clientes", available: true },
-      { name: "Facturas de venta", href: "/admin/ventas", available: true },
-      { name: "Cobros", href: "/admin/cobros", available: true },
-      { name: "Proveedores", href: "/admin/proveedores", available: true },
       { name: "Facturas de compra", href: "/admin/compras", available: true },
+      { name: "Facturas de venta", href: "/admin/ventas", available: true },
+      { name: "Proveedores", href: "/admin/proveedores", available: true },
+      { name: "Clientes", href: "/admin/clientes", available: true },
       { name: "Pagos a proveedores", href: "/admin/pagos", available: true },
+      { name: "Cobros", href: "/admin/cobros", available: true },
       { name: "Caja y bancos", href: "/admin/cuentas", available: true },
       { name: "Contabilidad", href: "/admin/contabilidad", available: true },
       { name: "Reportes", href: "/admin/reportes", available: true },
