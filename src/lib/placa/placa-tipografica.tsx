@@ -199,26 +199,6 @@ export function tramosDeLineas(lineas: string[], destacado?: string): Tramo[][] 
   })
 }
 
-function Eyebrow({ texto, left, top }: { texto: string; left: number; top: number }) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        left,
-        top,
-        display: "flex",
-        fontFamily: FAMILIA,
-        fontSize: EYEBROW.cuerpo,
-        fontWeight: EYEBROW.peso,
-        letterSpacing: EYEBROW.tracking * EYEBROW.cuerpo,
-        color: AZUL_SOBRE_OSCURO,
-      }}
-    >
-      {texto.toUpperCase()}
-    </div>
-  )
-}
-
 function Titular({
   lineas,
   destacado,
@@ -277,25 +257,6 @@ function Titular({
           </div>
         )
       })}
-    </div>
-  )
-}
-
-/** La flecha del CTA, dibujada. Un glifo faltante imprimiría un cuadrado. */
-function Flecha({ cuerpo }: { cuerpo: number }) {
-  const w = Math.round(cuerpo * 1.5)
-  const h = Math.round(cuerpo * 0.9)
-  return (
-    <div style={{ display: "flex", width: w, height: h }}>
-      <svg width={w} height={h} viewBox="0 0 60 36" fill="none">
-        <path
-          d="M 4 18 L 52 18 M 38 6 L 52 18 L 38 30"
-          stroke={TITULAR}
-          strokeWidth="3.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
     </div>
   )
 }
