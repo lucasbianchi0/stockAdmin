@@ -1007,7 +1007,21 @@ export const PROMPTS: PromptDisciplina[] = [
       "A quién le está hablando el texto",
     ],
     color: "#06B6D4",
-    bloques: ["identidad", "servicios", "audiencia", "tono", "boilerplate", "prueba", "reglas"],
+    // "posicionamiento" entró el 17/8. Estaba afuera, y es el único bloque que
+    // lleva la tabla genérico → afilado ("Soluciones integrales de tecnología"
+    // → "Un solo responsable de toda tu infraestructura, del cableado a la
+    // nube"). Sin ella, la disciplina que escribe TODOS los posteos era la única
+    // que nunca veía escrito qué hay que dejar de decir.
+    bloques: [
+      "identidad",
+      "posicionamiento",
+      "servicios",
+      "audiencia",
+      "tono",
+      "boilerplate",
+      "prueba",
+      "reglas",
+    ],
   },
   {
     id: "web",

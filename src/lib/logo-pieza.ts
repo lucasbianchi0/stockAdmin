@@ -257,30 +257,46 @@ export async function conLogo(imagen: Buffer, medida: Medida): Promise<Buffer> {
       .resize({ width: medida.ancho, height: medida.alto, fit: "cover", position: "centre" })
       .toBuffer()
 
-    const base = sharp(arte)
-    const { width, height } = await base.metadata()
-    if (!width || !height) return imagen
-
-    const anchoLogo = Math.round(width * ANCHO_RELATIVO)
-    const altoLogo = Math.round(anchoLogo / RATIO_LOGO)
-    const margen = Math.round(width * MARGEN_RELATIVO)
-
-    // El SVG se rasteriza al ancho pedido en vez de escalar un PNG ya rendereado:
-    // sobre 1080 el logo mide 237 px y cualquier bitmap más chico llegaría blando.
-    const svg = await readFile(join(process.cwd(), ARCHIVO_LOGO))
-    const logo = await sharp(svg, { density: 300 })
-      .resize({ width: anchoLogo, height: altoLogo, fit: "contain" })
-      .png()
-      .toBuffer()
-
-    return await base
-      .composite([{ input: logo, left: margen, top: height - margen - altoLogo }])
-      // 92 y no 100: la diferencia no se ve en un feed y son ~700 KB menos por
-      // pieza viajando en base64 hasta el bucket.
-      .jpeg({ quality: 92 })
-      .toBuffer()
+    return await soloLogo(arte)
   } catch (err) {
     console.error("[logo-pieza]", err)
     return imagen
   }
+}
+
+/**
+ * El paso 3 solo: pegar el logotipo sobre un arte que YA está en medida.
+ *
+ * Existe aparte porque las placas renderizadas por código (`lib/placa`) salen del
+ * renderizador con la medida exacta y sin ninguna posibilidad de venir
+ * enmarcadas: pasarlas por `conLogo` las haría atravesar una detección de marco
+ * que solo puede equivocarse. Un titular blanco sobre fondo plano es justamente
+ * la forma que `offsetEscalon` lee como escalón, así que el riesgo no es teórico.
+ *
+ * `conLogo` la usa para su último paso, de modo que las dos vías componen el logo
+ * con las mismas constantes y no hay dos posiciones posibles para la marca.
+ */
+export async function soloLogo(arte: Buffer): Promise<Buffer> {
+  const base = sharp(arte)
+  const { width, height } = await base.metadata()
+  if (!width || !height) return arte
+
+  const anchoLogo = Math.round(width * ANCHO_RELATIVO)
+  const altoLogo = Math.round(anchoLogo / RATIO_LOGO)
+  const margen = Math.round(width * MARGEN_RELATIVO)
+
+  // El SVG se rasteriza al ancho pedido en vez de escalar un PNG ya rendereado:
+  // sobre 1080 el logo mide 237 px y cualquier bitmap más chico llegaría blando.
+  const svg = await readFile(join(process.cwd(), ARCHIVO_LOGO))
+  const logo = await sharp(svg, { density: 300 })
+    .resize({ width: anchoLogo, height: altoLogo, fit: "contain" })
+    .png()
+    .toBuffer()
+
+  return await base
+    .composite([{ input: logo, left: margen, top: height - margen - altoLogo }])
+    // 92 y no 100: la diferencia no se ve en un feed y son ~700 KB menos por
+    // pieza viajando en base64 hasta el bucket.
+    .jpeg({ quality: 92 })
+    .toBuffer()
 }

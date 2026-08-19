@@ -29,6 +29,15 @@ import {
   type PlanResumen,
 } from "@/lib/calendario-context"
 import { aPlanBase, columnasResumen } from "@/lib/calendario-server"
+import {
+  DOCTRINA_HEADLINE,
+  FORMA_POR_OBJETIVO,
+  HEADLINE_MAX_CARACTERES,
+  HEADLINE_MAX_PALABRAS,
+  PATRONES_HEADLINE,
+  TEST_RECHAZO,
+  esPatron,
+} from "@/lib/copy-headline"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -262,8 +271,11 @@ async function generarPlan({
     ? `\nCONTEXTO QUE DA EL USUARIO — tiene prioridad sobre cualquier idea genérica. Si menciona una fecha, un lanzamiento o un evento, el plan tiene que girar alrededor de eso y ubicar las publicaciones donde corresponda:\n"""\n${contexto}\n"""\n`
     : "\nEl usuario no dio contexto específico: armá un plan general de presencia de marca.\n"
 
+  // Cada objetivo trae ahora también qué FORMA toma su titular. Antes el objetivo
+  // solo cambiaba una línea del prompt del caption, así que las once piezas
+  // sonaban igual aunque persiguieran cosas distintas.
   const seccionObjetivos = OBJETIVOS.map(
-    (o) => `  - "${o}" (${OBJETIVO_LABEL[o]}): ${OBJETIVO_DESC[o]}`
+    (o) => `  - "${o}" (${OBJETIVO_LABEL[o]}): ${OBJETIVO_DESC[o]}\n    Titular: ${FORMA_POR_OBJETIVO[o]}`
   ).join("\n")
 
   // La audiencia del plan orienta el reparto, pero cada pieza declara a quién le
@@ -305,6 +317,14 @@ Reglas del calendario:
 - Cada pieza declara su "objetivo" (uno de: ${OBJETIVOS.map((o) => `"${o}"`).join(", ")}) y su "audiencia" (uno de: "decisores", "negocio", "corporativo").
 - TODAS las piezas son de formato "imagen". No propongas carruseles, reels, videos, stories ni artículos: no hay quien los produzca y el plan se traba en la primera pieza que nadie puede hacer.
 
+${DOCTRINA_HEADLINE}
+
+VARIÁ LOS PATRONES a lo largo del plan: como máximo DOS piezas pueden repetir el mismo "patron". Once titulares con la misma fórmula se leen como once veces el mismo posteo, por más que el tema cambie.
+
+${TEST_RECHAZO}
+
+ANTES DEL TITULAR, LA TESIS. Cada pieza defiende una afirmación concreta, en una frase que alguien podría discutir. "La importancia de la ciberseguridad" NO es una tesis: nadie la discute y no se puede desarrollar. "El firewall perimetral no ve al atacante que ya entró con credenciales válidas" sí lo es. El titular es la versión impresa de la tesis, y el caption la desarrolla después.
+
 Devolvé SOLO un JSON válido, sin markdown ni texto fuera del objeto:
 {
   "titulo": "Nombre del plan, máx 6 palabras",
@@ -318,8 +338,11 @@ Devolvé SOLO un JSON válido, sin markdown ni texto fuera del objeto:
       "opciones": [
         {
           "id": "a",
-          "titulo": "Título de la publicación, máx 8 palabras",
-          "hook": "Primera línea que frena el scroll, máx 15 palabras",
+          "tesis": "La afirmación que defiende la pieza, en 1 frase discutible",
+          "headline": "EL TEXTO IMPRESO EN LA PIEZA. Máx ${HEADLINE_MAX_PALABRAS} palabras. Ver las reglas del titular más arriba",
+          "patron": ${PATRONES_HEADLINE.map((p) => `"${p.id}"`).join(" | ")},
+          "titulo": "Nombre interno de la pieza para la grilla del calendario, máx 8 palabras. NO es el titular impreso",
+          "hook": "Primera línea del caption, la que frena el scroll en el feed, máx 15 palabras",
           "objetivo": "awareness | educacion | conversion",
           "audiencia": "decisores | negocio | corporativo",
           "angulo": "De qué trata el posteo: qué se cuenta, con qué estructura y para qué sirve. 2 frases concretas, nada de 'contenido sobre tecnología'",
@@ -520,6 +543,35 @@ function slotsCompletos(text: string): unknown[] {
 const LETRAS = ["a", "b", "c", "d"]
 
 /**
+ * El titular, dentro del presupuesto de la placa.
+ *
+ * Corta por palabra entera y no por carácter: "…acceso a tu re" es peor que un
+ * titular corto. Si aun así no entra, el que llega es el que el modelo escribió
+ * de más — se registra, porque significa que el prompt no se cumplió y eso no se
+ * ve en ningún lado.
+ */
+function recortarHeadline(raw: unknown): string {
+  if (typeof raw !== "string") return ""
+  const limpio = raw.trim().replace(/\s+/g, " ")
+  if (limpio.length <= HEADLINE_MAX_CARACTERES) return limpio
+
+  const palabras = limpio.split(" ")
+  let corto = ""
+  for (const p of palabras) {
+    const tentativa = corto ? `${corto} ${p}` : p
+    if (tentativa.length > HEADLINE_MAX_CARACTERES) break
+    corto = tentativa
+  }
+
+  console.warn(
+    `[calendario] titular de ${limpio.length} caracteres recortado a ${corto.length}: "${limpio}"`
+  )
+  // Si ni la primera palabra entra, se devuelve el original: mejor una placa
+  // fuera de sistema que una pieza sin titular.
+  return corto || limpio
+}
+
+/**
  * `audienciaDefault` es a quién le habla la pieza si el modelo no lo declara: el
  * perfil del plan, o "decisores" cuando el plan apunta a todos (es el prioritario
  * en un B2B). Nunca "todos": eso es un objetivo del plan, no de una pieza suelta.
@@ -536,12 +588,25 @@ function normalizarOpciones(raw: unknown, audienciaDefault: Audiencia): Opcion[]
     const audienciaOp =
       esAudiencia(op.audiencia) && op.audiencia !== "todos" ? op.audiencia : audienciaDefault
 
+    // El titular no se completa con el título si falta: son dos textos distintos
+    // —uno se imprime enorme dentro de la imagen y el otro es el nombre de la
+    // fila en la grilla— y rellenar uno con el otro es justo lo que devolvía
+    // palabras sueltas impresas. Vacío se resuelve después, en el derivador.
+    //
+    // El tope es de caracteres y no de palabras porque lo que se agota es el
+    // ANCHO de la columna. Cortado a 200, un titular de sesenta y cuatro salía
+    // entero y la placa lo imprimía con la letra a dos tercios del resto del feed.
+    const headline = recortarHeadline(op.headline)
+
     return [
       {
         // El id lo ponemos nosotros: es la clave con la que después se marca la
         // elegida, y si el modelo repite "a" se vuelve ambigua.
         id: LETRAS[i] ?? String(i),
         titulo,
+        headline,
+        patron: esPatron(op.patron) ? op.patron : "",
+        tesis: typeof op.tesis === "string" ? op.tesis.slice(0, 400) : "",
         hook: typeof op.hook === "string" ? op.hook.slice(0, 300) : "",
         objetivo: esObjetivo(op.objetivo) ? op.objetivo : "awareness",
         audiencia: audienciaOp,

@@ -278,9 +278,14 @@ export function PlanearDialog({
               )}
             </Button>
           </div>
-          {generando && (
+          {generando ? (
             <p className="mt-2.5 text-center text-[11px] text-ink-muted">
               Puede tardar hasta un minuto: son {totalPosts} publicaciones, con la idea recomendada de cada una.
+            </p>
+          ) : (
+            <p className="mt-2.5 text-center text-[11px] text-ink-muted">
+              Las {totalPosts} piezas salen con el texto listo para publicar. Las imágenes las generás
+              después, las que quieras.
             </p>
           )}
         </div>

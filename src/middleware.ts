@@ -31,8 +31,22 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
+
+  /*
+   * La muestra de placas, solo en desarrollo.
+   *
+   * Se saltea acá y no sumándola a `PUBLICAS` a propósito: esa lista es la
+   * frontera de seguridad de toda la app y ensancharla para una herramienta de
+   * diseño es la clase de cambio que después nadie recuerda haber hecho. Acá
+   * queda atado a NODE_ENV, y la propia ruta vuelve a chequearlo y devuelve 404
+   * en producción — dos candados para algo que no debería existir allá.
+   */
+  if (process.env.NODE_ENV !== "production" && pathname === "/api/contenido/placa/muestra") {
+    return response
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
   const esApi = pathname.startsWith("/api/")
 
   // ── 1. Sesión ────────────────────────────────────────────────────────────

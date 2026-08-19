@@ -135,13 +135,15 @@ async function referenciaDeMarca() {
 const COPIA_LA_MARCA = `The attached image is Accedra's own Instagram feed board: finished posts from the visual system you are working in. This is the brand you work for — not a foreign reference.
 
 COPY from it, exactly:
-- The overall level of darkness. These pieces are almost entirely black; match that, and never lighten anything to make it "readable".
+- The dark, cold, restrained MOOD, and the fact that the text column is deep black.
+  But read that mood correctly: the darkness belongs to the BACKGROUND and to the column the type sits on, NOT to the photograph. The photograph itself is a real, properly lit scene — you can see the equipment, the cables, the surfaces, the depth. A murky brown-black smear where the image should be is the single worst outcome for this piece and is worse than a photograph that came out slightly too bright.
 - The photographic and graphic treatment: photographs drowned in shadow, cold and blue; graphics as thin luminous line-work on black, never solid or illustrative.
-- The typography, and look closely at its WEIGHT: the headlines in the reference are thin — regular or light, not bold. Match that thinness exactly; a bolder headline is the single most common way to get this system wrong.
+- The typeface itself: the same neo-grotesque, the same tight tracking, the same sentence case, the same white on black.
 - How much of each piece is empty flat black, and how small the text block is inside it.
 - The small uppercase blue eyebrow label, the icon style and the spacing of any list or pill.
 
 IGNORE from it:
+- The WEIGHT of the headlines. The reference board is from an earlier stage of the system, when headlines were set thin. They are not any more: the brief below sets the headline in BOLD, and the brief wins over the reference on this one point. Copy the face, not its lightness.
 - The board layout itself, the grid of several posts, and the Instagram format badges in the corners. You are producing ONE single square piece, full bleed, with no badge.
 - Every headline and photograph in it — those come from the brief below.
 - The Accedra logo in the bottom-left of every piece. That logo is composited afterwards from the official file; you must NOT draw it, and you must leave that corner clear as the brief describes.

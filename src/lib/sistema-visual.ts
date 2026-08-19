@@ -61,12 +61,19 @@ export function claveSistema(planId: string): string {
  * `template_slug`, que es del otro sistema.
  */
 export function secuenciaFeed(slots: Slot[]): Map<string, string> {
-  // Los templates del feed entran directo: ya tienen `id` y `densidad`, que es lo
-  // único que el repartidor mira. Con semilla fija, cada pieza cae siempre en el
-  // mismo template mientras el plan tenga los mismos slots.
+  // `fotoColor` sale de la familia y no de un campo por template: la familia
+  // `foto-real` ES la de color natural —gente, piel, luz de ventana— y las otras
+  // dos son negro con azul. Sin este mapeo el repartidor recibía los quince con
+  // `fotoColor` en undefined, o sea todos iguales, y su regla de alternar claro
+  // y oscuro en la grilla no podía distinguir nada: penalizaba igual a cualquier
+  // par de vecinas y era, en los hechos, código muerto.
   return secuenciaRecomendada(
     slots.map((s) => ({ id: s.id, fecha: s.fecha, canal: s.canal })),
-    TEMPLATES_FEED,
+    TEMPLATES_FEED.map((t) => ({
+      id: t.id,
+      densidad: t.densidad,
+      fotoColor: t.familia === "foto-real",
+    })),
     { semilla: 0 }
   )
 }
@@ -88,4 +95,27 @@ export async function pedirPromptFeed(
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? "No se pudo armar el prompt")
   return { prompt: data.prompt as string, variables: data.variables ?? {} }
+}
+
+/**
+ * Una pieza por el sistema nuevo: fondo generado + texto compuesto por código.
+ *
+ * Manda las variables que `pedirPromptFeed` ya devolvió en vez de dejar que el
+ * servidor las derive otra vez: esa traducción cuesta una llamada a un modelo y
+ * dos derivaciones de la misma pieza pueden no coincidir.
+ */
+export async function pedirPlaca(
+  slotId: string,
+  templateFeedId: string,
+  variables: Record<string, unknown>,
+  size: "square" | "portrait"
+): Promise<string> {
+  const res = await fetch("/api/contenido/placa", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slotId, templateFeedId, variables, size }),
+  })
+  const data = await res.json()
+  if (!res.ok || !data.image) throw new Error(data.error ?? "No se pudo componer la pieza")
+  return data.image as string
 }

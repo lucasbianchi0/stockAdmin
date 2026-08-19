@@ -12,6 +12,13 @@ import {
   type VariablesFeed,
 } from "@/lib/feed-variables"
 import { promptDeFeed, templateFeedPorId, type CampoFeed } from "@/lib/templates-feed"
+import {
+  DESTACADO_GUIA,
+  DOCTRINA_HEADLINE,
+  HEADLINE_MAX_PALABRAS,
+  TEST_RECHAZO,
+  cortarHeadline,
+} from "@/lib/copy-headline"
 
 /**
  * El prompt del camino 2, armado en el servidor.
@@ -31,14 +38,23 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export const maxDuration = 60
 
-/** Qué se le pide al modelo por cada campo que el template necesita. */
-const INSTRUCCION: Record<CampoFeed, string> = {
-  headline: `"headline": ["línea 1", "línea 2", "línea 3"] — el titular impreso en la pieza, cortado en 2 o 3 líneas de 2 a 4 palabras cada una, 9 palabras como máximo en total. Español argentino, sin punto final. Es una tesis o una afirmación, nunca un anuncio ni una pregunta retórica vacía.
-"destacado": "1 a 3 palabras que aparezcan EXACTAMENTE en el headline, tal cual están escritas ahí, y que merezcan ir en azul"`,
+/**
+ * Qué se le pide al modelo por cada campo que el template necesita.
+ *
+ * `headline` es el caso especial y por eso no está acá: desde el 17/8 el titular
+ * llega escrito desde el plan, así que lo que se pide no es redactarlo sino
+ * cortarlo en líneas. Lo arma `instruccionHeadline`, que tiene los dos caminos.
+ */
+const INSTRUCCION: Record<Exclude<CampoFeed, "headline"> | "bajada", string> = {
+  bajada: `"bajada": una o dos frases que DESARROLLAN el titular, hasta 170 caracteres. Se imprimen debajo, en cuerpo chico.
+No repite el titular con otras palabras: agrega el porqué, la consecuencia o el dato que lo sostiene. Si el titular dice "Tu firewall no ve al que ya está adentro", la bajada explica por qué pasa eso, no lo vuelve a decir.
+Español argentino con voseo, sin emojis, sin hashtags, sin comillas adentro. Frases cortas.`,
   category: `"category": "el rubro, 1 o 2 palabras en mayúsculas (ej: NETWORKING, SEGURIDAD IT, CLOUD, CASO DE ÉXITO, INFORME)"`,
   servicios: `"servicios": ["...", "..."] — 3 o 4 etiquetas de 1 a 3 palabras, tomadas de los ítems del catálogo de la línea de servicio que corresponda a esta pieza`,
   features: `"features": ["...", "..."] — 2 o 3 capacidades concretas de 1 a 3 palabras, del catálogo`,
-  metrica: `"metrica": "la cifra, tal cual figura publicada y en su forma más simple: un número con su símbolo y nada más (ej: 99,99%, +1.260, +400, 17). Nunca una notación que haya que interpretar — sin flechas, sin '→', sin '<' ni '>', sin rangos tipo '5 a 1'. Si la cifra publicada tiene esa forma, quedate con el número final solo."
+  metrica: `"metrica": la cifra que se va a imprimir GIGANTE, ocupando media pieza. Solo dígitos, con un "+" adelante o un "%" atrás si corresponde: 99,99% · +1.260 · +400 · 17 · 24/7.
+NINGÚN otro carácter, nunca: ni "<", ni ">", ni "→", ni "≤", ni "~", ni "menos de", ni rangos tipo "5 a 1" o "5→<1". Un símbolo dibujado a ese tamaño arruina la pieza, y por eso una cifra que no cumpla esta forma se descarta entera del lado del servidor: mandarla igual no la imprime, solo deja el bloque vacío.
+Si la cifra del catálogo viene como un salto ("5→<1 caídas por mes"), NO la recortes para que entre: ese dato se cuenta en el titular con palabras, no acá. Devolvé la métrica vacía y elegí otra cifra del catálogo, o ninguna.
 "metricaLabel": "qué mide esa cifra, 2 a 4 palabras, en castellano llano"
 Si ninguna cifra del catálogo aplica a esta pieza, devolvé las dos vacías. NO inventes un número.`,
   cta: `"cta": "un llamado a la acción de 3 a 5 palabras, sin signos de exclamación"`,
@@ -50,6 +66,40 @@ Si la pieza no anuncia un evento con datos concretos, devolvé los tres vacíos.
 "partnerNivel": "la certificación o el nivel, hasta 4 palabras"
 Si la pieza no es sobre un partner concreto, devolvé los dos vacíos.`,
   clientes: `"clientes": ["...", "..."] — 4 a 6 nombres, únicamente del listado de clientes públicos`,
+}
+
+/**
+ * Lo que se pide para el titular, según venga escrito o no.
+ *
+ * El camino de arriba es el normal: el titular ya se escribió en el plan, con
+ * todo el contexto de marca y el arco de los quince días delante, y acá solo se
+ * decide dónde parte la frase. Reescribirlo sería volver a comprimir, que es
+ * justamente lo que producía "Nunca confiar. Siempre verificar. Mínimo
+ * privilegio".
+ *
+ * El de abajo es para los planes anteriores al cambio, que no tienen `headline`
+ * guardado. Ahí sí hay que redactar, y se redacta con la doctrina completa —no
+ * resumiendo el caption, que es de donde venía el problema—.
+ */
+function instruccionHeadline(headline: string): string {
+  if (headline) {
+    return `"headline": el titular YA ESTÁ ESCRITO y es este:
+"""
+${headline}
+"""
+NO lo reescribas, no lo acortes, no lo mejores y no le cambies una palabra. Tu único trabajo con él es CORTARLO en 2 o 3 líneas para que entre en la placa, devolviéndolo como ["línea 1", "línea 2", ...]. La suma de las líneas tiene que dar el titular completo, letra por letra, incluyendo tildes y puntuación.
+Cortá donde la frase respira: entre las dos oraciones si son dos, o antes del verbo. Nunca partas una palabra ni dejes una línea de una sola palabra corta.
+
+${DESTACADO_GUIA}`
+  }
+
+  return `"headline": ["línea 1", "línea 2", "línea 3"] — el titular impreso en la pieza, cortado en 2 o 3 líneas, hasta ${HEADLINE_MAX_PALABRAS} palabras en total.
+
+${DOCTRINA_HEADLINE}
+
+${TEST_RECHAZO}
+
+${DESTACADO_GUIA}`
 }
 
 export async function POST(req: Request) {
@@ -105,11 +155,12 @@ export async function POST(req: Request) {
     variables = VARIABLES_VACIAS
   }
 
-  // Sin titular la pieza no se puede imprimir. Antes de fallar se usa el título
-  // de la opción cortado a mano: es peor que lo que devuelve el modelo, pero
-  // once piezas del lote no se pierden porque una llamada de texto falló.
+  // Sin titular la pieza no se puede imprimir. Antes de fallar se corta a mano el
+  // titular escrito en el plan, y recién si no hay, el título interno: es peor
+  // que lo que devuelve el modelo, pero once piezas del lote no se pierden porque
+  // una llamada de texto falló.
   if (!variablesUsables(variables)) {
-    variables = { ...variables, headline: cortarEnLineas(opcion.titulo) }
+    variables = { ...variables, headline: cortarHeadline(opcion.headline || opcion.titulo) }
   }
 
   if (!variablesUsables(variables)) {
@@ -142,7 +193,20 @@ async function derivarVariables({
   fecha: string
   contextoPlan: string
 }): Promise<VariablesFeed> {
-  const pedido = campos.map((c) => INSTRUCCION[c]).join("\n")
+  const headlineEscrito = typeof opcion.headline === "string" ? opcion.headline.trim() : ""
+
+  /*
+   * La bajada se pide SIEMPRE, la liste el template o no.
+   *
+   * Es el bloque que llena la columna cuando la pieza no tiene servicios ni
+   * cifra — el caso de seis de los quince tipos. Atarla al `pide` del template
+   * sería dejar justo a esos seis sin ella, que son los que la necesitan.
+   * Si al final hay ítems, la placa la ignora: comparten banda.
+   */
+  const pedido = [
+    ...campos.map((c) => (c === "headline" ? instruccionHeadline(headlineEscrito) : INSTRUCCION[c])),
+    INSTRUCCION.bajada,
+  ].join("\n")
 
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
@@ -152,10 +216,14 @@ async function derivarVariables({
         role: "user",
         content: `${VOCABULARIO_ACCEDRA}
 
-Sos el director de arte de Accedra. La publicación ya está escrita; tu trabajo es traducirla a las variables de un template visual. No estás escribiendo contenido nuevo.
+Sos el director de arte de Accedra. La publicación ya está escrita; tu trabajo es traducirla a las variables de un template visual.${
+          headlineEscrito
+            ? " No estás escribiendo contenido nuevo: el titular ya viene decidido y se respeta tal cual."
+            : " Esta publicación es de un plan viejo y no trae titular escrito, así que el titular sí lo redactás vos, con las reglas de abajo."
+        }
 
 LA PUBLICACIÓN
-- Título: "${opcion.titulo}"
+- Título interno: "${opcion.titulo}"${opcion.tesis ? `\n- Tesis que defiende: "${opcion.tesis}"` : ""}
 - Hook: "${opcion.hook}"
 - Ángulo: "${opcion.angulo}"${opcion.imagen ? `\n- Qué se ve: "${opcion.imagen}"` : ""}
 - Se publica el ${fechaLarga(fecha)}${
@@ -183,23 +251,4 @@ Reglas que no se negocian:
   if (desde === -1 || hasta <= desde) throw new Error("Sin JSON en la respuesta")
 
   return normalizarVariables(JSON.parse(text.slice(desde, hasta + 1)))
-}
-
-/**
- * El titular cortado a ojo, para el camino de emergencia.
- *
- * Reparte las palabras en tres líneas parejas. No es una decisión tipográfica,
- * es evitar que un título de nueve palabras entre como una sola línea que el
- * generador va a escribir en cuerpo 12.
- */
-function cortarEnLineas(titulo: string): string[] {
-  const palabras = titulo.trim().split(/\s+/).filter(Boolean).slice(0, 9)
-  if (palabras.length === 0) return []
-
-  const lineas = palabras.length <= 3 ? 1 : palabras.length <= 6 ? 2 : 3
-  const porLinea = Math.ceil(palabras.length / lineas)
-
-  return Array.from({ length: lineas }, (_, i) =>
-    palabras.slice(i * porLinea, (i + 1) * porLinea).join(" ")
-  ).filter(Boolean)
 }

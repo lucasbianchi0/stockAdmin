@@ -170,6 +170,24 @@ No third-party logos anywhere either, unless explicitly requested above.`
  * quedan ilegibles. Ahora todo va en blanco y la jerarquía la hace el tamaño,
  * que es lo mismo que ya hace el titular.
  *
+ * El peso del titular se dio vuelta el 17/8. Estaba en regular/light porque la
+ * placa de referencia salió así y el sistema se escribió para defenderla; leído
+ * en el feed, sobre fondo casi negro y en la miniatura de un teléfono, un
+ * titular fino se lee tímido antes que calmo. Ahora va en bold: la misma
+ * grotesca, con tracking apretado —la regla del Brand Kit para pesos altos, que
+ * en el default se desarman— y el contraste lo hace el resto de la pieza, que
+ * se queda en regular. Si algún día vuelve a salir fino, el sospechoso no es
+ * este párrafo sino el bloque COPIA_LA_MARCA de `api/contenido/image`: ahí se
+ * le pide copiar la referencia, y la referencia todavía es de la etapa fina.
+ *
+ * Las zonas se llamaban "Zone A/B/C/D" y el 17/8 una pieza salió con las cuatro
+ * letras impresas al costado, como el rótulo de un plano. La instrucción de
+ * texto literal ya prohibía escribir cualquier cosa que no viniera en el brief,
+ * pero una letra suelta no se lee como texto de la pieza: se lee como parte del
+ * diagrama que le estamos describiendo. Ahora las bandas se nombran solo por su
+ * porcentaje —no hay nada que copiar— y se dice explícito que son medidas para
+ * componer y no marcas para dibujar.
+ *
  * El párrafo de espacio negativo decía "wide margins on all four sides" y
  * "large uninterrupted areas of pure flat black". Leído literal eso ES un marco,
  * y contradecía al FULL BLEED de cinco líneas más abajo. Una pieza que salió así
@@ -179,25 +197,30 @@ No third-party logos anywhere either, unless explicitly requested above.`
  * nombran como distancia DEL TEXTO a los bordes y el negro plano como "el
  * fondo", que es lo que se quería decir desde el principio.
  */
-const SISTEMA_GUIA = `TYPE SYSTEM — the headline is set in a NEO-GROTESQUE with a tall x-height and a double-storey lowercase 'a' (Inter, Helvetica Now Display, SF Pro), at REGULAR or LIGHT weight: thin, even strokes, open counters, sentence case, generous line spacing. NOT geometric, NOT Futura-like, NOT Montserrat, NOT condensed, NOT a slab. It is NOT bold, NOT semibold, NOT black and never faux-bolded. Size carries the hierarchy, weight does not: the headline is large and thin, and it reads calm rather than loud. Only a standalone figure (a percentage, a year count) may be set heavier. Secondary lines and labels are the same face, smaller.
+const SISTEMA_GUIA = `TYPE SYSTEM — the headline is set in a NEO-GROTESQUE with a tall x-height and a double-storey lowercase 'a' (Inter Display, Helvetica Now Display, SF Pro Display), at BOLD or SEMIBOLD weight: thick, solid, even strokes, tight letter spacing (about -0.02em), tight line spacing between the headline lines, sentence case. NOT geometric, NOT Futura-like, NOT Montserrat, NOT condensed, NOT a slab, NOT a display or novelty face, NOT rounded. It reads corporate and confident — a serious enterprise brand, not a fashion label and not a startup.
+The weight is REAL, drawn into the typeface: a heavy grotesque cut. Never a thin face artificially thickened, never outlined, never with a stroke added around the letters, never a faux-bold smear. The letterforms stay clean and the counters stay open at that weight.
+The headline is BOTH large AND heavy: size and weight carry the hierarchy together, and it is the loudest element of the piece by a wide margin.
+EVERYTHING ELSE STAYS LIGHT: the eyebrow label, the secondary block, the list items, the pill text and the captions are the SAME family at REGULAR weight and clearly smaller, so the headline is the only heavy thing in the square. That contrast IS the system — a piece where every string is bold has no hierarchy and reads as a flyer. A standalone figure (a percentage, a year count) may match the headline's weight.
 
-VERTICAL LAYOUT — the square has four zones and EVERY zone has a job. A large empty region is a failed composition, not restraint:
-  · Zone A, top 6-13%: the eyebrow label, on the left margin.
-  · Zone B, 13-48%: the headline. Large, thin, left-aligned.
-  · Zone C, 46-76%: the secondary block — ONLY IF the brief below gives one. Most pieces have none, and that is normal.
-      — If the brief gives a list of items (services, features, capabilities), it is a VERTICAL STACK, one item per line, left-aligned to the same margin as the headline, spanning the zone: the items are spaced generously apart so the stack reaches down to about 76%, filling the left column. Never a single horizontal row squeezed under the headline — that leaves the whole left side dead and is the most common failure of this layout. Set them clearly larger than a caption, comfortably readable at a glance on a phone, each with a thin outline icon to its left, the icon sized to the text.
-      — If the brief gives NO secondary block, Zone C belongs to the image and to silence. Do NOT invent list items, bullets, pills, icons, captions or a call to action to fill it: an invented bullet is a worse defect than an empty zone. In that case the headline may be set larger and breathe further down, and the photograph carries the rest.
-  · Zone D, the bottom 20%: a clear band carrying ONLY the photograph or the background.
+VERTICAL LAYOUT — the square is divided top to bottom into four bands and EVERY band has a job. These are measurements for you to compose against, never anything drawn: no band is labelled, numbered, lettered, outlined, tinted or marked in any way inside the artwork. A large empty region is a failed composition, not restraint:
+  · From 6% to 13% of the height: the eyebrow label, on the left margin.
+  · From 13% to 45%: the headline. Large, heavy, left-aligned. Its LAST line ends at 45% at the latest — if the headline runs to three lines it is set smaller so that it still does, rather than pushing past it.
+  · From 51% to 76%: the secondary block — ONLY IF the brief below gives one. Most pieces have none, and that is normal.
+      — The gap between 45% and 51% is EMPTY, always. Nothing is written, drawn or stacked in it. It exists because the headline and the block below it collide otherwise, and a list item touching the last line of the headline is the ugliest defect this layout produces: the first item of the block starts at 51% and not one pixel higher, no matter how short the headline came out.
+      — If the brief gives a list of items (services, features, capabilities), it is a VERTICAL STACK, one item per line, left-aligned to the same margin as the headline, spanning that band: the items are spaced generously apart so the stack reaches down to about 76%, filling the left column. Never a single horizontal row squeezed under the headline — that leaves the whole left side dead and is the most common failure of this layout. Set them clearly larger than a caption, comfortably readable at a glance on a phone, each with a thin outline icon to its left, the icon sized to the text.
+      — If the brief gives NO secondary block, that band belongs to the image and to silence. Do NOT invent list items, bullets, pills, icons, captions or a call to action to fill it: an invented bullet is a worse defect than an empty band. In that case the headline may be set larger and breathe further down, and the photograph carries the rest.
+  · The bottom 20%: a clear band carrying ONLY the photograph or the background.
 
 THE BOTTOM BAND IS SACRED: everything written — eyebrow, headline, every label and every pill — lives entirely ABOVE 76% of the height. Below that line there is no text, no icon and no graphic, not even partially. The left portion of that band is where the real logo gets composited afterwards, and anything there collides with it.
 
 NO DEAD ZONE: no continuous region larger than about a quarter of the square may read as flat empty background. If a large void appears in the lower half, the composition failed — the fix is that the PHOTOGRAPH reaches into it with legible detail, or that the headline is set larger and lower. Never fill a void by inventing content: on a piece with no secondary block, calm background carrying a legible image is right, and made-up bullets are wrong.
 
 SCRIM, NOT ERASURE: where a photograph carries the piece, the black gradient falls ONLY behind the text, just enough to keep the type crisp. It protects the text; it does not erase the image. Where no text sits, the photograph keeps its brightness and its detail — a visible, atmospheric image reads far more premium than a black rectangle. And it is ONE photograph, selectively darkened: never a two-panel layout, never a vertical dividing line, never a seam.
+THE PHOTOGRAPH IS LIT — non-negotiable, and the most common way this system fails. The half of the square that carries the image is a real scene with real light in it: the equipment, the surfaces, the cables, the depth and the texture are all clearly visible, as if shot with a proper exposure and then graded down. It is dark in MOOD — cold, restrained, night-lit — never dark in EXPOSURE. If someone squinting at the piece on a phone cannot tell what is in the photograph, the piece failed. A flat murky near-black smear on that side is a defect, not atmosphere; when in doubt, expose the image UP.
 PALETTE, strictly: background flat #0B0D12 to #111827, surfaces and cards #1E293B, accent #3B82F6 used sparingly. No other color outside the photograph.
 TEXT COLOR: every word in the piece is WHITE #FFFFFF — the headline, the service labels, the list items, the pill text, the captions, the CTA. Grey text is a defect: it disappears against the black. The only exceptions are the small uppercase eyebrow label and the highlighted span of the headline, which are the accent blue.
 KEEP IT PLAIN: say things the simplest way they can be said. No decorative icons where a word does the job, no arrows or symbols standing in for words, no notation the reader has to decode, no ornament. If an element does not carry meaning on its own, it does not go in the piece.
-NEGATIVE SPACE: the headline is BIG — its block runs to about 80% of the width and fills Zone B without crowding it. A small timid headline is the most common way to get this system wrong. The text keeps a wide clear distance from all four edges — that is padding INSIDE the artwork, never a border around it: the background itself still runs edge to edge, behind and past the text.
+NEGATIVE SPACE: the headline is BIG — its block runs to about 80% of the width and fills its band without crowding it. A small timid headline is the most common way to get this system wrong. The text keeps a wide clear distance from all four edges — that is padding INSIDE the artwork, never a border around it: the background itself still runs edge to edge, behind and past the text.
 
 MARGIN: one single left margin, about 7% of the width, shared by the eyebrow, the headline and the secondary block — they all start on the same vertical line.
 GRAPHICS: flat, thin, luminous line-work on black — outlines, dotted particle fields, fine curves. Never a rendered 3D object, never volumetric glow, never a chrome or glass surface, never small illegible characters or fake code inside a graphic.

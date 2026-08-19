@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -42,7 +42,7 @@ import {
 import { FeedPrevia } from "@/components/contenido/feed-previa"
 import { MarcaCanal } from "@/components/admin/platform-icons"
 import { templateFeedPorId } from "@/lib/templates-feed"
-import { pedirPromptFeed, proporcionDe, secuenciaFeed } from "@/lib/sistema-visual"
+import { pedirPlaca, pedirPromptFeed, proporcionDe, secuenciaFeed } from "@/lib/sistema-visual"
 
 /** El color del chip de objetivo, reusando los tonos del sistema. */
 function tonoObjetivo(o: Objetivo): "brand" | "warning" | "success" {
@@ -74,6 +74,10 @@ export function PlanClient({ planId }: { planId: string }) {
   const [previaFeed, setPreviaFeed] = useState(false)
   /** Imágenes recién generadas, antes de que vuelva la versión persistida. */
   const [recienGeneradas, setRecienGeneradas] = useState<Record<string, string>>({})
+  /** El avance de la redacción automática del copy. Null cuando no está corriendo. */
+  const [redaccion, setRedaccion] = useState<{ hechos: number; total: number } | null>(null)
+  /** La pieza a la que se le está haciendo la imagen desde su propia fila. */
+  const [imagenSuelta, setImagenSuelta] = useState<string | null>(null)
 
   useEffect(() => {
     let vigente = true
@@ -130,6 +134,81 @@ export function PlanClient({ planId }: { planId: string }) {
     },
     [aplicarSlot]
   )
+
+  /**
+   * Escribe el copy de las piezas que todavía no lo tienen.
+   *
+   * Corre sola al abrir el plan, no con un botón: un plan tiene que quedar listo
+   * para publicar salvo por las imágenes, y pedirle al usuario que después
+   * apriete "generar" once veces era dejarle la mitad del trabajo hecho.
+   *
+   * NO se puede hacer dentro del POST que crea el plan, que sería el lugar
+   * obvio: esa ruta ya tarda dos o tres minutos generando las once ideas y vive
+   * contra el `maxDuration = 60` del plan hobby de Vercel. Sumarle once captions
+   * garantiza el timeout. Acá, en cambio, cada caption es su propio request de
+   * 60 segundos: si uno falla se pierde ese, no el plan.
+   *
+   * De a tres. En serie son varios minutos mirando un spinner; las once juntas
+   * entran en rate limit del modelo y falla la mitad.
+   */
+  const redactarPendientes = useCallback(
+    async (slots: Slot[]) => {
+      const faltan = slots.filter((s) => s.elegida && !s.contenido)
+      if (faltan.length === 0) return
+
+      setRedaccion({ hechos: 0, total: faltan.length })
+      const cola = [...faltan]
+      let hechos = 0
+      let fallaron = 0
+
+      const trabajador = async () => {
+        for (;;) {
+          const s = cola.shift()
+          if (!s) return
+          try {
+            const res = await fetch("/api/contenido/calendario/slot", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ slotId: s.id, ajuste: "" }),
+            })
+            const data = await res.json()
+            if (!res.ok) fallaron++
+            else aplicarSlot(data.slot)
+          } catch {
+            fallaron++
+          }
+          hechos++
+          setRedaccion({ hechos, total: faltan.length })
+        }
+      }
+
+      await Promise.all(
+        Array.from({ length: Math.min(3, faltan.length) }, () => trabajador())
+      )
+
+      setRedaccion(null)
+      if (fallaron === 0) toast.success("El plan está listo para publicar. Faltan las imágenes.")
+      else toast.warning(`${fallaron} pieza(s) quedaron sin texto. Se reintenta al recargar.`)
+    },
+    [aplicarSlot]
+  )
+
+  /**
+   * Dispara la redacción una sola vez por plan.
+   *
+   * El guard por id y no por booleano porque `plan` cambia con cada slot que
+   * vuelve: sin él, cada caption que llega relanzaría la tanda entera.
+   *
+   * Los planes terminados y archivados quedan afuera a propósito: abrir uno de
+   * hace tres meses para mirarlo no tiene por qué disparar once generaciones.
+   */
+  const redactadoRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!plan || redactadoRef.current === plan.id) return
+    if (plan.estado !== "activo" && plan.estado !== "borrador") return
+    redactadoRef.current = plan.id
+    void redactarPendientes(plan.slots)
+  }, [plan, redactarPendientes])
 
   const regenerarIdea = useCallback(
     async (slotId: string, campos: CamposRegenerar) => {
@@ -237,10 +316,17 @@ export function PlanClient({ planId }: { planId: string }) {
     [plan, tab]
   )
 
-  /** Lo que falta generar EN LA PESTAÑA ACTIVA (elegida y sin contenido). */
-  const pendientes = useMemo(
-    () => slotsDelTab.filter((s) => s.elegida && !s.contenido),
-    [slotsDelTab]
+  /**
+   * Lo que falta EN LA PESTAÑA ACTIVA: las piezas sin imagen.
+   *
+   * Antes esto era "sin contenido", porque el texto también salía de este botón.
+   * Ahora el texto se escribe solo al abrir el plan, así que lo único que queda
+   * por decidir es a cuáles se les hace la imagen — que es la parte cara y la
+   * que el usuario quiere elegir pieza por pieza.
+   */
+  const sinImagen = useMemo(
+    () => slotsDelTab.filter((s) => s.elegida && !s.imagenPath && !recienGeneradas[s.id]),
+    [slotsDelTab, recienGeneradas]
   )
 
   const avance = useMemo(() => {
@@ -264,59 +350,115 @@ export function PlanClient({ planId }: { planId: string }) {
     [feedPorSlot]
   )
 
-  /** El prompt de imagen de una pieza, por el camino 2. */
-  const promptDeSlot = useCallback(
-    async (slot: Slot): Promise<string> => {
+  /**
+   * La imagen de una pieza: fondo generado y texto compuesto por código.
+   *
+   * Devuelve null cuando la pieza no tiene template asignado. El lote lo trata
+   * como "sin imagen" y sigue, que es lo mismo que hacía antes con un prompt
+   * vacío: una pieza sin imagen se resuelve desde el detalle, y frenar las diez
+   * restantes por una sería peor.
+   */
+  const imagenDeSlot = useCallback(
+    async (slot: Slot): Promise<string | null> => {
       const templateFeedId = feedPorSlot.get(slot.id)
-      if (!templateFeedId) return ""
-      const { prompt } = await pedirPromptFeed(slot.id, templateFeedId)
-      return prompt
+      if (!templateFeedId) return null
+
+      const { variables } = await pedirPromptFeed(slot.id, templateFeedId)
+      const medida = proporcionDe(slot.canal)
+      return await pedirPlaca(
+        slot.id,
+        templateFeedId,
+        variables,
+        medida === "portrait" ? "portrait" : "square"
+      )
     },
     [feedPorSlot]
   )
 
-  /** Genera todo lo elegido, de a una: texto y después imagen. En serie. */
-  const generarTodas = useCallback(async () => {
-    if (pendientes.length === 0) return
-    setLote({ hechos: 0, total: pendientes.length, paso: "texto", slotId: null })
+  /**
+   * La imagen de UNA pieza, desde su fila en la lista.
+   *
+   * Es el gesto que el usuario pidió: con el texto ya escrito, lo único que
+   * queda por decidir es a cuáles se les hace la imagen, y esa decisión se toma
+   * mirando la grilla — no entrando al detalle de cada una.
+   */
+  const generarImagenDe = useCallback(
+    async (s: Slot) => {
+      setImagenSuelta(s.id)
+      try {
+        let listo = s
+
+        // Red por si la redacción automática falló justo en esta.
+        if (!s.contenido) {
+          const res = await fetch("/api/contenido/calendario/slot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ slotId: s.id, ajuste: "" }),
+          })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error)
+          aplicarSlot(data.slot)
+          listo = data.slot
+        }
+
+        const imagen = await imagenDeSlot(listo)
+        if (imagen) await guardarImagen(s.id, imagen)
+        else toast.error("Esta pieza no tiene template de feed asignado")
+      } catch {
+        toast.error("No se pudo generar la imagen")
+      } finally {
+        setImagenSuelta(null)
+      }
+    },
+    [aplicarSlot, guardarImagen, imagenDeSlot]
+  )
+
+  /**
+   * Genera las imágenes que faltan en la pestaña, de a una y en serie.
+   *
+   * En serie y no en paralelo como la redacción: cada imagen es una generación
+   * pesada, y lanzarlas juntas es la forma más rápida de comerse el rate limit
+   * del generador y perder las once.
+   *
+   * Sigue sabiendo escribir el texto si una pieza llegó sin él: la redacción
+   * automática puede haber fallado en una, y frenar la imagen por eso sería
+   * mandar al usuario a resolver a mano algo que el botón puede resolver solo.
+   */
+  const generarImagenes = useCallback(async () => {
+    if (sinImagen.length === 0) return
+    setLote({ hechos: 0, total: sinImagen.length, paso: "texto", slotId: null })
     let fallaron = 0
 
-    for (const [i, s] of pendientes.entries()) {
+    for (const [i, s] of sinImagen.entries()) {
       try {
-        setLote({ hechos: i, total: pendientes.length, paso: "texto", slotId: s.id })
-        const res = await fetch("/api/contenido/calendario/slot", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slotId: s.id, ajuste: "" }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          fallaron++
-        } else {
-          aplicarSlot(data.slot)
+        let slotListo = s
 
-          setLote({ hechos: i, total: pendientes.length, paso: "imagen", slotId: s.id })
-          const prompt = await promptDeSlot(data.slot)
-          if (prompt) {
-            const img = await fetch("/api/contenido/image", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ prompt, size: proporcionDe(s.canal), sistema: "feed" }),
-            })
-            const datosImg = await img.json()
-            if (img.ok && datosImg.image) await guardarImagen(s.id, datosImg.image)
-          }
+        if (!s.contenido) {
+          setLote({ hechos: i, total: sinImagen.length, paso: "texto", slotId: s.id })
+          const res = await fetch("/api/contenido/calendario/slot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ slotId: s.id, ajuste: "" }),
+          })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error)
+          aplicarSlot(data.slot)
+          slotListo = data.slot
         }
+
+        setLote({ hechos: i, total: sinImagen.length, paso: "imagen", slotId: s.id })
+        const imagen = await imagenDeSlot(slotListo)
+        if (imagen) await guardarImagen(s.id, imagen)
       } catch {
         fallaron++
       }
-      setLote({ hechos: i + 1, total: pendientes.length, paso: "texto", slotId: null })
+      setLote({ hechos: i + 1, total: sinImagen.length, paso: "imagen", slotId: null })
     }
 
     setLote(null)
-    if (fallaron === 0) toast.success("Todo el contenido está generado")
-    else toast.warning(`Quedaron ${fallaron} sin generar. Probá de nuevo desde el detalle.`)
-  }, [pendientes, aplicarSlot, guardarImagen, promptDeSlot])
+    if (fallaron === 0) toast.success("Las imágenes están generadas")
+    else toast.warning(`Quedaron ${fallaron} sin imagen. Probá de nuevo desde el detalle.`)
+  }, [sinImagen, aplicarSlot, guardarImagen, imagenDeSlot])
 
   const slot = plan?.slots.find((s) => s.id === slotAbierto) ?? null
 
@@ -345,6 +487,28 @@ export function PlanClient({ planId }: { planId: string }) {
         <Resumen plan={plan} avance={avance} onRenombrar={renombrar} onEstado={cambiarEstado} />
 
         {plan.analisis && <Analisis texto={plan.analisis} />}
+
+        {/* Mientras se escriben los captions. No bloquea: las piezas ya redactadas
+            se pueden abrir y trabajar mientras el resto sigue saliendo. */}
+        {redaccion && (
+          <div className="flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50/60 px-4 py-3">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-brand-600" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] font-semibold text-ink">
+                Escribiendo los textos… {redaccion.hechos}/{redaccion.total}
+              </p>
+              <p className="text-[11px] text-ink-muted">
+                Cada pieza queda lista para publicar. Las imágenes las generás vos, las que quieras.
+              </p>
+            </div>
+            <div className="hidden h-1.5 w-32 overflow-hidden rounded-full bg-brand-200 sm:block">
+              <div
+                className="h-full rounded-full bg-brand-600 transition-all duration-500"
+                style={{ width: `${Math.round((redaccion.hechos / redaccion.total) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 rounded-xl border border-line bg-surface p-1 shadow-e1">
@@ -380,11 +544,17 @@ export function PlanClient({ planId }: { planId: string }) {
               <Eye />
               Ver el feed
             </Button>
-            <Button size="sm" onClick={generarTodas} disabled={pendientes.length === 0 || Boolean(lote)}>
+            <Button
+              size="sm"
+              onClick={generarImagenes}
+              disabled={sinImagen.length === 0 || Boolean(lote) || Boolean(redaccion)}
+            >
               {lote ? <Loader2 className="animate-spin" /> : <Sparkles />}
               {lote
                 ? `${lote.paso === "imagen" ? "Imagen" : "Texto"} ${lote.hechos + 1}/${lote.total}…`
-                : `Generar las ${pendientes.length} elegidas`}
+                : sinImagen.length === 0
+                  ? "Todas tienen imagen"
+                  : `Generar las ${sinImagen.length} imágenes`}
             </Button>
           </div>
         </div>
@@ -395,8 +565,12 @@ export function PlanClient({ planId }: { planId: string }) {
               key={s.id}
               slot={s}
               imagen={imagenDe(s)}
-              enCurso={lote?.slotId === s.id ? lote.paso : null}
+              enCurso={
+                lote?.slotId === s.id ? lote.paso : imagenSuelta === s.id ? "imagen" : null
+              }
+              ocupado={Boolean(lote) || Boolean(redaccion) || Boolean(imagenSuelta)}
               onAbrir={setSlotAbierto}
+              onImagen={generarImagenDe}
             />
           ))}
         </div>
@@ -622,15 +796,21 @@ function DiaPlan({
   slot,
   imagen,
   enCurso,
+  ocupado,
   onAbrir,
+  onImagen,
 }: {
   slot: Slot
   imagen: string | null
   enCurso: "texto" | "imagen" | null
+  /** Hay otra generación corriendo: no se encolan dos a la vez. */
+  ocupado: boolean
   onAbrir: (id: string) => void
+  onImagen: (slot: Slot) => void
 }) {
   const { diaSemana, numero, mes, finDeSemana } = etiquetaDia(slot.fecha)
   const listo = Boolean(slot.contenido)
+  const tieneImagen = Boolean(imagen)
   const idea = slot.opciones.find((o) => o.id === slot.elegida) ?? slot.opciones[0] ?? null
 
   return (
@@ -655,19 +835,25 @@ function DiaPlan({
         {slot.beat && (
           <span className="min-w-0 flex-1 truncate text-[11.5px] text-ink-muted">{slot.beat}</span>
         )}
+        {/* El estado que importa ahora es la imagen: el texto se escribe solo, así
+            que "sin texto" pasó de ser el paso normal a ser una falla. */}
         {enCurso ? (
           <Badge tone="brand" size="sm">
             <Loader2 className="h-3 w-3 animate-spin" />
             Generando {enCurso === "imagen" ? "la imagen" : "el texto"}
           </Badge>
-        ) : listo ? (
+        ) : !listo ? (
+          <Badge tone="warning" size="sm">
+            Sin texto
+          </Badge>
+        ) : tieneImagen ? (
           <Badge tone="success" size="sm">
             <Check className="h-3 w-3" strokeWidth={3} />
-            Contenido listo
+            Lista para publicar
           </Badge>
         ) : (
           <Badge tone="neutral" size="sm">
-            Lista para generar
+            Texto listo · falta la imagen
           </Badge>
         )}
         <Button size="xs" variant="ghost" onClick={() => onAbrir(slot.id)}>
@@ -677,7 +863,15 @@ function DiaPlan({
       </div>
 
       {listo ? (
-        <PiezaLista slot={slot} idea={idea} imagen={imagen} enCurso={enCurso} onAbrir={() => onAbrir(slot.id)} />
+        <PiezaLista
+          slot={slot}
+          idea={idea}
+          imagen={imagen}
+          enCurso={enCurso}
+          ocupado={ocupado}
+          onAbrir={() => onAbrir(slot.id)}
+          onImagen={() => onImagen(slot)}
+        />
       ) : (
         <button
           type="button"
@@ -737,20 +931,27 @@ function PiezaLista({
   idea,
   imagen,
   enCurso,
+  ocupado,
   onAbrir,
+  onImagen,
 }: {
   slot: Slot
   idea: Opcion | null
   imagen: string | null
   enCurso: "texto" | "imagen" | null
+  ocupado: boolean
   onAbrir: () => void
+  onImagen: () => void
 }) {
   return (
     <div className="flex gap-3 p-3">
+      {/* Sin imagen la miniatura ES el botón de generar: el hueco que dice "falta
+          la imagen" es donde la mano va sola. Con imagen, abre el panel a verla. */}
       <button
         type="button"
-        onClick={onAbrir}
-        className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-line bg-surface-muted transition-opacity hover:opacity-85"
+        onClick={imagen ? onAbrir : onImagen}
+        disabled={!imagen && (ocupado || Boolean(enCurso))}
+        className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-line bg-surface-muted transition-opacity hover:opacity-85 disabled:opacity-60"
       >
         {imagen ? (
           // eslint-disable-next-line @next/next/no-img-element -- data: URL de runtime o firma temporal
@@ -774,10 +975,25 @@ function PiezaLista({
         <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-ink-muted">
           {slot.contenido?.caption}
         </p>
-        <Button size="xs" variant="outline" className="mt-2" onClick={onAbrir}>
-          <PenLine />
-          {imagen ? "Ver y editar" : "Generar la imagen"}
-        </Button>
+        {/* Decía "Generar la imagen" y abría el panel lateral. Generar es generar:
+            el botón hace lo que dice y la imagen arranca en el momento. */}
+        {imagen ? (
+          <Button size="xs" variant="outline" className="mt-2" onClick={onAbrir}>
+            <PenLine />
+            Ver y editar
+          </Button>
+        ) : (
+          <div className="mt-2 flex items-center gap-2">
+            <Button size="xs" onClick={onImagen} disabled={ocupado || Boolean(enCurso)}>
+              {enCurso === "imagen" ? <Loader2 className="animate-spin" /> : <Sparkles />}
+              {enCurso === "imagen" ? "Generando…" : "Generar imagen"}
+            </Button>
+            <Button size="xs" variant="ghost" onClick={onAbrir} disabled={Boolean(enCurso)}>
+              <PenLine />
+              Editar antes
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )

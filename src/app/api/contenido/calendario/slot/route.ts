@@ -203,7 +203,13 @@ CANAL: ${CANAL_LABEL[canal]}
 ${CANAL_BRIEF[canal]}
 
 LA PIEZA:
-- Título: "${opcion.titulo}"
+- Título interno: "${opcion.titulo}"${
+                    opcion.tesis ? `\n- TESIS que defiende — es lo que el caption tiene que desarrollar: "${opcion.tesis}"` : ""
+                  }${
+                    opcion.headline
+                      ? `\n- TITULAR YA IMPRESO EN LA IMAGEN: "${opcion.headline}"\n  Este texto ya está decidido y va a estar VISIBLE en la pieza. El caption lo desarrolla y lo sostiene: no lo repite palabra por palabra en la primera línea —queda redundante al lado de la imagen— pero tampoco lo contradice ni cambia de tema.`
+                      : ""
+                  }
 - Hook: "${opcion.hook}"
 - Ángulo: "${opcion.angulo}"${opcion.imagen ? `\n- Pieza visual comprometida: "${opcion.imagen}"` : ""}
 - Formato: ${opcion.formato}
@@ -217,11 +223,20 @@ ${ajuste ? `\nAJUSTE PEDIDO POR EL USUARIO — tiene prioridad: "${ajuste}"` : "
 Usá EXACTAMENTE estos separadores, sin texto antes ni después de cada sección:
 
 ###CAPTION###
-[El texto completo listo para copiar y pegar. Arrancá con el hook. Saltos de línea para que sea escaneable. Español argentino, tono profesional pero humano, sin jerga vacía ni humo motivacional. ${
+[Antes de escribir, resolvé estas cuatro cosas contra el contexto de marca de arriba. No las escribas en la respuesta: usalas.
+
+1. QUIÉN LEE. Elegí UNA de las buyer personas del kit, la que corresponde a la audiencia de esta pieza. Una sola: un texto que le habla a dos no le habla a ninguna.
+2. QUÉ LE DUELE. Tomá uno de los ítems del "Duele" de esa persona y abrí con eso, en segunda persona y con voseo. No "la seguridad es un desafío para las empresas": "tu red quedó chica frente al crecimiento".
+3. QUÉ LO PRUEBA. En el medio va UN dato concreto del catálogo: una tecnología con nombre y modelo (Catalyst 9200, SD-WAN, Umbrella), una cifra publicada o un caso con su cliente. Uno solo, y tiene que estar en el kit. Si no está, no va — inventar un número es peor que no dar ninguno.
+4. CÓMO CIERRA. Con un ítem del "Convence" de esa misma persona.
+
+Ahora escribí el texto completo, listo para copiar y pegar. Arrancá con el hook. Saltos de línea para que sea escaneable. Español argentino con voseo, sin jerga vacía ni humo motivacional. Sin emojis y sin signos de exclamación: lo dice el tono de la marca. ${
           canal === "linkedin"
-            ? "150 a 250 palabras. Sin emojis decorativos: como mucho uno funcional. Que tenga una idea técnica concreta y verificable, no generalidades."
-            : "60 a 120 palabras. Escaneable, con algún emoji usado con moderación. La primera línea tiene que frenar el scroll."
-        }]
+            ? "150 a 250 palabras. Que tenga una idea técnica concreta y verificable, no generalidades."
+            : "60 a 120 palabras. Escaneable. La primera línea tiene que frenar el scroll."
+        }
+
+Test antes de entregar: si el caption se puede copiar y pegar en la web de cualquier integrador de IT del país sin cambiarle una palabra, está mal. Reescribilo.]
 
 ###CAPTION_CORTO###
 [Versión de 2 o 3 líneas para story o para reutilizar como copy de anuncio.]

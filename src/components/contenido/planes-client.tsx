@@ -72,7 +72,7 @@ export function PlanesClient() {
           toast.error(data.error ?? "No se pudo generar el plan")
           return
         }
-        toast.success("Calendario listo")
+        toast.success("Calendario listo. Escribiendo los textos…")
         // Directo al detalle: el plan recién generado es lo que se quiere ver,
         // y volver a la lista para tener que buscarlo sería un paso de más.
         router.push(`/contenido/calendario/${data.planId}`)

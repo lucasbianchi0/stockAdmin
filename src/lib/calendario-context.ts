@@ -39,8 +39,12 @@ export const CANAL_CORTO: Record<Canal, string> = {
 export const CANAL_BRIEF: Record<Canal, string> = {
   linkedin:
     "LinkedIn — el canal prioritario, es un negocio B2B. Audiencia: decisores de IT, gerentes y dueños de empresas medianas y grandes. Texto más largo y argumentado (150–250 palabras), sin emojis decorativos, con una idea técnica concreta. Nada de humo motivacional.",
+  // Sin emojis. Antes esta línea pedía "algún emoji con moderación" mientras el
+  // bloque TONO del Brand Kit —que viaja en el mismo prompt— decía "Sin signos
+  // de exclamación. Sin emojis". Dos órdenes opuestas en la misma llamada: el
+  // modelo promediaba y el texto salía tibio. Manda el kit.
   meta:
-    "Instagram y Facebook con la MISMA pieza. Audiencia: más amplia y menos técnica, incluye equipo, candidatos y clientes actuales. Texto corto y escaneable (60–120 palabras), primera línea que frene el scroll, algún emoji con moderación. Lo visual pesa más que el texto.",
+    "Instagram y Facebook con la MISMA pieza. Audiencia: más amplia y menos técnica, incluye equipo, candidatos y clientes actuales. Texto corto y escaneable (60–120 palabras), primera línea que frene el scroll. Lo visual pesa más que el texto.",
 }
 
 /**
@@ -142,6 +146,28 @@ export type Opcion = {
   id: string
   titulo: string
   hook: string
+  /**
+   * El texto que va IMPRESO en la pieza, escrito acá y no derivado después.
+   *
+   * Es el cambio de fondo del 17/8. Antes el titular se sacaba comprimiendo el
+   * caption ya escrito a nueve palabras, y comprimir abstrae: de un caption
+   * sobre Zero Trust salía "Nunca confiar. Siempre verificar. Mínimo
+   * privilegio", que es la definición del manual y la puede firmar cualquiera.
+   * Ahora lo escribe el estratega, con el kit delante y el arco del plan a la
+   * vista, y el caption lo desarrolla.
+   *
+   * Vacío en los planes anteriores: todo lo que lo lea tiene que tolerarlo y
+   * caer al camino viejo (ver `prompt-feed`).
+   */
+  headline: string
+  /** Con qué patrón de copy se escribió el titular. Ver `copy-headline.ts`. */
+  patron: string
+  /**
+   * La afirmación que la pieza defiende, en una frase que alguien podría
+   * discutir. Es lo que el caption desarrolla. Sin esto el caption no tiene qué
+   * decir y sale relleno: "la importancia de la ciberseguridad" no es una tesis.
+   */
+  tesis: string
   /** El objetivo de marketing de la pieza: para qué sirve dentro del embudo. */
   objetivo: Objetivo
   /** A quién le habla esta pieza puntual. Puede variar dentro de un mismo plan:

@@ -21,6 +21,15 @@ import {
   type Opcion,
 } from "@/lib/calendario-context"
 import { aSlotsCliente } from "@/lib/calendario-server"
+import {
+  DOCTRINA_HEADLINE,
+  FORMA_POR_OBJETIVO,
+  HEADLINE_MAX_CARACTERES,
+  HEADLINE_MAX_PALABRAS,
+  PATRONES_HEADLINE,
+  TEST_RECHAZO,
+  esPatron,
+} from "@/lib/copy-headline"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -54,6 +63,8 @@ export async function POST(req: Request) {
   if (!slotId) return NextResponse.json({ error: "Falta el slot" }, { status: 400 })
 
   const tituloHint = typeof raw.titulo === "string" ? raw.titulo.trim().slice(0, 200) : ""
+  const headlineHint =
+    typeof raw.headline === "string" ? raw.headline.trim().slice(0, HEADLINE_MAX_CARACTERES) : ""
   const anguloHint = typeof raw.angulo === "string" ? raw.angulo.trim().slice(0, 400) : ""
   const instruccion = typeof raw.instruccion === "string" ? raw.instruccion.trim().slice(0, 400) : ""
   const objetivoFijo: Objetivo | null = esObjetivo(raw.objetivo) ? raw.objetivo : null
@@ -97,6 +108,9 @@ export async function POST(req: Request) {
       objetivo,
       audiencia,
       tituloHint,
+      // Solo cuenta como fijado si el usuario lo cambió: si mandó el mismo que ya
+      // tenía, no está pidiendo conservarlo, está pidiendo una idea nueva.
+      headlineHint: headlineHint && headlineHint !== actual?.headline ? headlineHint : "",
       anguloHint,
       instruccion,
       anterior: actual,
@@ -105,6 +119,13 @@ export async function POST(req: Request) {
     const nueva: Opcion = {
       id: "a",
       titulo: idea.titulo || tituloHint || (actual?.titulo ?? "Idea"),
+      // El titular nuevo, o el que tenía. Nunca el título interno: son textos
+      // distintos y rellenar uno con el otro es lo que imprimía palabras sueltas.
+      // El que escribió el usuario gana sin discusión: si lo tipeó a mano, no hay
+      // nada que el modelo pueda aportarle.
+      headline: headlineHint || idea.headline || (actual?.headline ?? ""),
+      patron: idea.patron || (actual?.patron ?? ""),
+      tesis: idea.tesis || (actual?.tesis ?? ""),
       hook: idea.hook,
       objetivo,
       audiencia,
@@ -142,6 +163,9 @@ export async function POST(req: Request) {
 
 type IdeaCruda = {
   titulo: string
+  headline: string
+  patron: string
+  tesis: string
   hook: string
   angulo: string
   imagen: string
@@ -157,6 +181,7 @@ async function regenerarIdea({
   objetivo,
   audiencia,
   tituloHint,
+  headlineHint,
   anguloHint,
   instruccion,
   anterior,
@@ -169,6 +194,7 @@ async function regenerarIdea({
   objetivo: Objetivo
   audiencia: Audiencia
   tituloHint: string
+  headlineHint: string
   anguloHint: string
   instruccion: string
   anterior: Opcion | null
@@ -199,15 +225,27 @@ ${contextoPlan ? `- Contexto del plan: "${contextoPlan}"` : ""}
 
 Contexto de objetivos disponibles (para calibrar el tono):
 ${objetivosRef}
-${anterior ? `\nLA IDEA ACTUAL (la que el usuario quiere cambiar):\n- Título: "${anterior.titulo}"\n- Ángulo: "${anterior.angulo}"` : ""}
+
+${DOCTRINA_HEADLINE}
+
+La forma que le toca al titular por el objetivo de esta pieza: ${FORMA_POR_OBJETIVO[objetivo]}
+
+${TEST_RECHAZO}
+
+ANTES DEL TITULAR, LA TESIS: la afirmación concreta que la pieza defiende, en una frase que alguien podría discutir. "La importancia de la ciberseguridad" no es una tesis; "el firewall perimetral no ve al atacante que ya entró con credenciales válidas" sí.
+${anterior ? `\nLA IDEA ACTUAL (la que el usuario quiere cambiar):\n- Título: "${anterior.titulo}"${anterior.headline ? `\n- Titular: "${anterior.headline}"` : ""}\n- Ángulo: "${anterior.angulo}"\nLa idea nueva tiene que ser DISTINTA de esta, no una reescritura con otras palabras.` : ""}
+${headlineHint ? `\nEL USUARIO ESCRIBIÓ EL TITULAR A MANO: "${headlineHint}". Devolvelo TAL CUAL en "headline", sin cambiarle una palabra ni la puntuación — no lo mejores, no lo acortes. Todo lo demás (tesis, ángulo, imagen, hook) se arma alrededor de ese titular.` : ""}
 ${tituloHint ? `\nEL USUARIO FIJÓ UN TÍTULO BASE: "${tituloHint}". Respetalo como punto de partida; podés mejorar la redacción, no el sentido.` : ""}
 ${anguloHint ? `\nEL USUARIO FIJÓ UN ÁNGULO BASE: "${anguloHint}". La idea nueva tiene que desarrollar ESE ángulo.` : ""}
 ${instruccion ? `\nINSTRUCCIÓN DEL USUARIO — tiene prioridad sobre todo lo demás: "${instruccion}"` : ""}
 
 Devolvé SOLO este JSON, sin markdown ni texto alrededor:
 {
-  "titulo": "Título de la publicación, máx 8 palabras",
-  "hook": "Primera línea que frena el scroll, máx 15 palabras",
+  "tesis": "La afirmación que defiende la pieza, en 1 frase discutible",
+  "headline": "EL TEXTO IMPRESO EN LA PIEZA. Máx ${HEADLINE_MAX_PALABRAS} palabras, con las reglas del titular de más arriba",
+  "patron": ${PATRONES_HEADLINE.map((p) => `"${p.id}"`).join(" | ")},
+  "titulo": "Nombre interno para la grilla del calendario, máx 8 palabras. NO es el titular impreso",
+  "hook": "Primera línea del caption, la que frena el scroll, máx 15 palabras",
   "angulo": "De qué trata: qué se cuenta, con qué estructura y para qué sirve. 2 frases concretas",
   "imagen": "Qué se va a VER en la pieza: encuadre, sujeto, si es foto o placa. 2 frases",
   "porQue": "Por qué esta idea cumple el objetivo y le habla a esa audiencia. 1 frase"
@@ -226,6 +264,10 @@ Devolvé SOLO este JSON, sin markdown ni texto alrededor:
 
   return {
     titulo: str(parsed.titulo, 200),
+    // Por caracteres, no por palabras: lo que se agota es el ancho de la columna.
+    headline: str(parsed.headline, HEADLINE_MAX_CARACTERES),
+    patron: esPatron(parsed.patron) ? parsed.patron : "",
+    tesis: str(parsed.tesis, 400),
     hook: str(parsed.hook, 300),
     angulo: str(parsed.angulo, 400),
     imagen: str(parsed.imagen, 400),

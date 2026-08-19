@@ -52,6 +52,8 @@ import {
 /** Los campos con los que se regenera una idea. */
 export type CamposRegenerar = {
   titulo: string
+  /** El titular impreso. Si el usuario lo escribió, manda sobre lo que proponga el modelo. */
+  headline: string
   angulo: string
   objetivo: Objetivo
   audiencia: Audiencia
@@ -70,9 +72,15 @@ function tonoObjetivo(o: Objetivo): "brand" | "warning" | "success" {
  * Panel lateral de una pieza del feed.
  *
  * Muestra la única idea que propuso el estratega —con su objetivo y a quién le
- * habla bien a la vista— y deja dos caminos: regenerarla con campos editables si
- * no convence, o generar el contenido y la imagen. Ya no hay tres opciones que
+ * habla bien a la vista— y el texto ya escrito. Ya no hay tres opciones que
  * elegir: el plan nace con la recomendada puesta.
+ *
+ * El paso "generar contenido" desapareció. Antes había que apretar un botón para
+ * que se escribiera el caption, y recién después se habilitaba la imagen: dos
+ * clicks obligatorios por pieza, once veces, para llegar a lo único que hay que
+ * decidir de verdad, que es a cuáles se les hace la imagen. Ahora la pieza se
+ * abre con todo listo y lo que queda son tres acciones opcionales: ajustar el
+ * texto, regenerar la idea entera, o generar la imagen.
  */
 export function PiezaPanel({
   slot,
@@ -112,6 +120,8 @@ export function PiezaPanel({
     slotId: string
     caption: string
     prompt: string
+    /** Las mismas variables que ya derivó el servidor: las usa el sistema nuevo. */
+    variables: Record<string, unknown>
   } | null>(null)
   const [armandoFeed, setArmandoFeed] = useState(false)
 
@@ -125,7 +135,7 @@ export function PiezaPanel({
     let vigente = true
     setArmandoFeed(true)
     pedirPromptFeed(slotId, feedTemplateId)
-      .then(({ prompt }) => vigente && setPromptFeed({ slotId, caption, prompt }))
+      .then(({ prompt, variables }) => vigente && setPromptFeed({ slotId, caption, prompt, variables }))
       .catch((e: Error) => vigente && toast.error(e.message))
       .finally(() => vigente && setArmandoFeed(false))
 
@@ -195,8 +205,10 @@ export function PiezaPanel({
           <div className="space-y-5">
             {idea && <IdeaResumen idea={idea} />}
 
-            {/* Regenerar la idea con campos editables */}
-            {idea && (reabrir || !slot.contenido) && (
+            {/* Regenerar la idea con campos editables. Solo a pedido: el texto ya
+                está escrito, así que cambiar la idea es la excepción y no el
+                primer paso. */}
+            {idea && reabrir && (
               <RegenerarIdea
                 idea={idea}
                 regenerando={regenerando}
@@ -205,11 +217,14 @@ export function PiezaPanel({
               />
             )}
 
-            {/* Generar / regenerar el contenido */}
-            {idea && (
+            {/* El texto ya viene escrito con el plan: acá solo se lo AJUSTA. El
+                botón "Generar contenido" que estaba antes era un paso obligatorio
+                entre abrir la pieza y poder hacerle la imagen, y no tenía por qué
+                existir: la pieza ya nace lista. */}
+            {idea && slot.contenido && (
               <section className="rounded-xl border border-line bg-surface-subtle p-4">
                 <label htmlFor="ajuste" className="text-[12px] font-semibold text-ink">
-                  {slot.contenido ? "Volver a generar el texto con un ajuste" : "Algún ajuste antes de generar"}
+                  Reescribir el texto con un ajuste
                   <span className="ml-1 font-normal text-ink-muted">(opcional)</span>
                 </label>
                 <div className="mt-2 flex gap-2">
@@ -218,24 +233,23 @@ export function PiezaPanel({
                     value={ajuste}
                     onChange={(e) => setAjuste(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" && !ocupado) onGenerar(slot.id, ajuste)
+                      if (e.key === "Enter" && !ocupado && ajuste.trim()) onGenerar(slot.id, ajuste)
                     }}
                     placeholder="Ej: mencioná el caso de Andreani…"
                     disabled={ocupado}
                     className="flex-1"
                   />
-                  <Button onClick={() => onGenerar(slot.id, ajuste)} disabled={ocupado} className="shrink-0">
-                    {generando ? (
-                      <Loader2 className="animate-spin" />
-                    ) : slot.contenido ? (
-                      <RotateCcw />
-                    ) : (
-                      <Sparkles />
-                    )}
-                    {slot.contenido ? "Regenerar texto" : "Generar contenido"}
+                  <Button
+                    variant="outline"
+                    onClick={() => onGenerar(slot.id, ajuste)}
+                    disabled={ocupado}
+                    className="shrink-0"
+                  >
+                    {generando ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+                    Reescribir
                   </Button>
                 </div>
-                {slot.contenido && !reabrir && (
+                {!reabrir && (
                   <button
                     type="button"
                     onClick={() => setReabrir(true)}
@@ -249,11 +263,30 @@ export function PiezaPanel({
               </section>
             )}
 
+            {/* Sin texto y sin nada corriendo: la redacción automática falló para
+                esta pieza. Es un error a reintentar, no un paso del flujo — por eso
+                se ve como un aviso y no como el botón principal. */}
+            {idea && !slot.contenido && !generando && (
+              <section className="rounded-xl border border-warning-line bg-warning-soft p-4">
+                <p className="text-[12.5px] font-semibold text-warning-text">
+                  Esta pieza quedó sin texto
+                </p>
+                <p className="mt-1 text-[11.5px] leading-relaxed text-ink-secondary">
+                  El texto se escribe solo al abrir el plan; en esta falló. Reintentá acá.
+                </p>
+                <Button onClick={() => onGenerar(slot.id, "")} disabled={ocupado} className="mt-3">
+                  <Sparkles />
+                  Escribir el texto
+                </Button>
+              </section>
+            )}
+
             {/* Contenido */}
             {generando && !slot.contenido && <EsqueletoContenido />}
 
             {slot.contenido && (
               <ContenidoGenerado
+                slotId={slot.id}
                 contenido={slot.contenido}
                 canal={CANAL_LABEL[slot.canal]}
                 canalId={slot.canal}
@@ -261,6 +294,8 @@ export function PiezaPanel({
                 armandoPrompt={armandoFeed}
                 nombreTemplateFeed={templateFeedPorId(feedTemplateId)?.nombre ?? null}
                 promptImagen={promptFeed?.slotId === slot.id ? promptFeed.prompt : ""}
+                variablesFeed={promptFeed?.slotId === slot.id ? promptFeed.variables : null}
+                templateFeedId={feedTemplateId}
                 onImagen={(dataUrl) => onImagen(slot.id, dataUrl)}
                 sistema={sistema}
               />
@@ -310,6 +345,26 @@ function IdeaResumen({ idea }: { idea: Opcion }) {
         </p>
       )}
 
+      {/* El titular va primero y grande porque en la pieza va primero y grande:
+          es lo único que se lee scrolleando. Verlo acá es lo que permite
+          corregirlo ANTES de gastar una generación de imagen en él. */}
+      {idea.headline && (
+        <div className="mt-3 rounded-lg bg-navy-950 px-3.5 py-3">
+          <p className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-white/40">
+            Titular impreso en la pieza
+          </p>
+          <p className="mt-1.5 text-[15px] font-bold leading-[1.2] tracking-[-0.02em] text-white">
+            {idea.headline}
+          </p>
+        </div>
+      )}
+
+      {idea.tesis && (
+        <p className="mt-2.5 text-[11.5px] leading-relaxed text-ink-secondary">
+          <span className="font-semibold text-ink">Defiende:</span> {idea.tesis}
+        </p>
+      )}
+
       {idea.hook && (
         <p className="mt-2.5 text-[12px] italic leading-relaxed text-ink-secondary">“{idea.hook}”</p>
       )}
@@ -352,6 +407,7 @@ function RegenerarIdea({
   onRegenerar: (campos: CamposRegenerar) => void
 }) {
   const [titulo, setTitulo] = useState(idea.titulo)
+  const [headline, setHeadline] = useState(idea.headline ?? "")
   const [angulo, setAngulo] = useState(idea.angulo)
   const [objetivo, setObjetivo] = useState<Objetivo>(
     idea.objetivo === "educacion" || idea.objetivo === "conversion" ? idea.objetivo : "awareness"
@@ -367,6 +423,7 @@ function RegenerarIdea({
     if (idRef.current !== idea) {
       idRef.current = idea
       setTitulo(idea.titulo)
+      setHeadline(idea.headline ?? "")
       setAngulo(idea.angulo)
       setObjetivo(
         idea.objetivo === "educacion" || idea.objetivo === "conversion" ? idea.objetivo : "awareness"
@@ -384,7 +441,18 @@ function RegenerarIdea({
       </p>
 
       <div className="space-y-3">
-        <Campo label="Título">
+        <Campo label="Titular impreso en la pieza">
+          <Input
+            value={headline}
+            onChange={(e) => setHeadline(e.target.value)}
+            disabled={regenerando}
+            placeholder="Ej: El papel es opcional. La validez legal, no."
+          />
+          <p className="mt-1 text-[10.5px] leading-tight text-ink-muted">
+            Si lo escribís vos, se respeta tal cual y la imagen se genera con ese texto.
+          </p>
+        </Campo>
+        <Campo label="Título interno (para la grilla)">
           <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} disabled={regenerando} />
         </Campo>
         <Campo label="Ángulo">
@@ -429,7 +497,7 @@ function RegenerarIdea({
 
         <div className="flex items-center gap-2">
           <Button
-            onClick={() => onRegenerar({ titulo, angulo, objetivo, audiencia, instruccion })}
+            onClick={() => onRegenerar({ titulo, headline, angulo, objetivo, audiencia, instruccion })}
             disabled={regenerando}
           >
             {regenerando ? <Loader2 className="animate-spin" /> : <Wand2 />}
@@ -486,8 +554,11 @@ function ContenidoGenerado({
   contenido,
   canal,
   canalId,
+  slotId,
   imagen,
   promptImagen,
+  variablesFeed,
+  templateFeedId,
   onImagen,
   armandoPrompt,
   nombreTemplateFeed,
@@ -496,11 +567,15 @@ function ContenidoGenerado({
   contenido: Contenido
   canal: string
   canalId: Canal
+  /** La escena de la imagen se lee en el servidor a partir de este slot. */
+  slotId: string
   imagen: string | null
   /** El camino 2 pasa por el servidor a traducir la pieza a variables: tarda. */
   armandoPrompt: boolean
   nombreTemplateFeed: string | null
   promptImagen: string
+  variablesFeed: Record<string, unknown> | null
+  templateFeedId: string | null
   onImagen: (dataUrl: string) => void
   sistema: SistemaVisual
 }) {
@@ -529,7 +604,9 @@ function ContenidoGenerado({
       {contenido.hashtags && <Bloque icono={Hash} titulo="Hashtags" texto={contenido.hashtags} />}
       {promptImagen ? (
         <ImagenGenerada
-          prompt={promptImagen}
+          slotId={slotId}
+          variablesFeed={variablesFeed}
+          templateFeedId={templateFeedId}
           imagen={imagen}
           onImagen={onImagen}
           proporcionFija={proporcionDe(canalId)}
