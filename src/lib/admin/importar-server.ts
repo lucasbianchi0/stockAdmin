@@ -11,9 +11,11 @@ import {
   ARCHIVOS_MAX,
   PROMPT_EXTRACCION,
   SCHEMA_EXTRACCION,
+  normalizarExtraccion,
   type AltaSugerida,
   type Borrador,
   type Extraccion,
+  type ExtraccionCruda,
 } from "@/lib/admin/extraccion"
 
 
@@ -71,11 +73,17 @@ async function procesarArchivo(tipo: TipoComprobante, archivo: File): Promise<Bo
   // esquema— es la misma para una factura, una constancia de AFIP o el ticket de
   // un gasto, y vive en `lectura-server`. Acá queda solo lo que es propio de un
   // comprobante: cruzarlo contra el maestro y contra lo ya cargado.
-  const lectura = await leerDocumento<Extraccion>(archivo, PROMPT_EXTRACCION, SCHEMA_EXTRACCION)
+  const lectura = await leerDocumento<ExtraccionCruda>(
+    archivo,
+    PROMPT_EXTRACCION,
+    SCHEMA_EXTRACCION
+  )
 
   if ("error" in lectura) return { archivo: nombre, avisos: [], error: lectura.error }
 
-  return await enriquecer(tipo, nombre, lectura.datos)
+  // El `""` con el que el modelo dice "no lo leí" muere acá: `enriquecer` y todo
+  // lo que sigue trabajan con nulos.
+  return await enriquecer(tipo, nombre, normalizarExtraccion(lectura.datos))
 }
 
 /* ── Cruce contra la base y avisos ────────────────────────────────────────── */

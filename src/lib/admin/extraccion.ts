@@ -13,30 +13,44 @@ import type { FormaJuridica, Origen } from "@/lib/admin/entidades"
  * De ahí las tres cosas que el modelo tiene que devolver además de los datos:
  * `confianza`, `camposDudosos` y nulos honestos. Un campo que no se leyó vuelve
  * `null` — nunca inventado, nunca en cero, porque un cero se ve igual que un
- * importe real y nadie lo revisa.
+ * importe real y nadie lo revisa. (En los campos de texto ese "no se leyó" viaja
+ * como `""` y `normalizarExtraccion` lo pasa a `null` apenas llega; el porqué
+ * está en el comentario del esquema, acá abajo.)
  */
 
 /* ── Schema de salida ─────────────────────────────────────────────────────── */
 
-/** Un tipo que además admite null. Los structured outputs no aceptan
- *  `"type": ["number","null"]`, pero sí `anyOf`. */
-const opcional = (tipo: string) => ({ anyOf: [{ type: tipo }, { type: "null" }] })
+/**
+ * Cómo viaja "este dato no lo pude leer".
+ *
+ * Los importes vuelven `null`: un número no tiene valor vacío que no se
+ * confunda con un importe real. Todo lo demás —texto y enums— vuelve `""`, y
+ * `normalizarExtraccion` lo convierte en `null` apenas llega la respuesta, así
+ * que de la frontera para adentro el sistema sigue viendo nulos honestos.
+ *
+ * El rodeo es obligado. La API compila el esquema a una gramática y pone dos
+ * techos sobre esa compilación: 16 campos con unión (`anyOf`, que es como se
+ * escribe "o null") y 24 opcionales. Los 27 campos anulables que había acá
+ * daban 400 antes de mirar el documento —la carga inteligente de comprobantes
+ * estaba caída entera, con cualquier archivo, no solo con los difíciles—. Con
+ * los 12 importes anulables y el resto con `""` quedan 12 uniones y ningún
+ * opcional, o sea la mitad del techo. Antes de agregar un campo anulable nuevo,
+ * contá: si es un número suma unión, si es texto no suma nada.
+ */
+const numero = { anyOf: [{ type: "number" }, { type: "null" }] } as const
+const entero = { anyOf: [{ type: "integer" }, { type: "null" }] } as const
+const texto = { type: "string" } as const
 
 /** Los de los dos circuitos, no solo los de venta: una factura C de un
  *  monotributista existe únicamente del lado de compras, y con el enum limitado
  *  a las clases de venta el modelo no tenía forma de devolverla. */
-const CODIGOS = CODIGOS_CLASE
+const CODIGOS = [...CODIGOS_CLASE, ""]
 
 /** Las mismas cuatro que acepta `forma_juridica` en clientes y proveedores. El
  *  enum coincide a propósito: lo leído entra en la ficha sin traducción. */
 const CONDICION_IVA = {
-  anyOf: [
-    {
-      type: "string",
-      enum: ["responsable_inscripto", "monotributo", "consumidor_final", "exento"],
-    },
-    { type: "null" },
-  ],
+  type: "string",
+  enum: ["responsable_inscripto", "monotributo", "consumidor_final", "exento", ""],
 } as const
 
 /**
@@ -48,43 +62,43 @@ export const SCHEMA_EXTRACCION = {
   type: "object",
   additionalProperties: false,
   properties: {
-    clase: { anyOf: [{ type: "string", enum: CODIGOS }, { type: "null" }] },
-    puntoVenta: opcional("integer"),
-    numero: opcional("integer"),
-    fecha: opcional("string"),
-    fechaVencimiento: opcional("string"),
+    clase: { type: "string", enum: CODIGOS },
+    puntoVenta: entero,
+    numero: entero,
+    fecha: texto,
+    fechaVencimiento: texto,
 
     // Los dos CUIT, sin decidir cuál es el cliente: eso se resuelve del lado del
     // servidor cruzando contra el maestro. El modelo no sabe cuál de las dos
     // empresas somos nosotros.
-    emisorCuit: opcional("string"),
-    emisorRazonSocial: opcional("string"),
-    receptorCuit: opcional("string"),
-    receptorRazonSocial: opcional("string"),
+    emisorCuit: texto,
+    emisorRazonSocial: texto,
+    receptorCuit: texto,
+    receptorRazonSocial: texto,
 
     // El resto de la cabecera. No hace falta para asentar la factura, pero es
     // exactamente lo que lleva la ficha del proveedor que se da de alta con
     // ella: sin esto la ficha nueva nace con la razón social y nada más.
-    emisorDomicilio: opcional("string"),
-    receptorDomicilio: opcional("string"),
+    emisorDomicilio: texto,
+    receptorDomicilio: texto,
     emisorCondicionIva: CONDICION_IVA,
     receptorCondicionIva: CONDICION_IVA,
 
-    moneda: { anyOf: [{ type: "string", enum: ["ARS", "USD"] }, { type: "null" }] },
-    tc: opcional("number"),
+    moneda: { type: "string", enum: ["ARS", "USD", ""] },
+    tc: numero,
 
-    netoGravado: opcional("number"),
-    alicuotaIva: opcional("number"),
-    iva: opcional("number"),
-    noGravado: opcional("number"),
-    exento: opcional("number"),
-    percepcionIva: opcional("number"),
-    percepcionIibb: opcional("number"),
-    otrosImpuestos: opcional("number"),
-    total: opcional("number"),
+    netoGravado: numero,
+    alicuotaIva: numero,
+    iva: numero,
+    noGravado: numero,
+    exento: numero,
+    percepcionIva: numero,
+    percepcionIibb: numero,
+    otrosImpuestos: numero,
+    total: numero,
 
-    detalle: opcional("string"),
-    condicionPago: opcional("string"),
+    detalle: texto,
+    condicionPago: texto,
 
     confianza: { type: "string", enum: ["alta", "media", "baja"] },
     /** Los nombres de los campos que el modelo leyó con dudas. La UI los marca
@@ -92,7 +106,7 @@ export const SCHEMA_EXTRACCION = {
     camposDudosos: { type: "array", items: { type: "string" } },
     /** Qué documento cree que es, en una frase. Sirve cuando alguien adjunta
      *  algo que no es una factura. */
-    observacionLectura: opcional("string"),
+    observacionLectura: texto,
   },
   required: [
     "clase",
@@ -157,6 +171,54 @@ export type Extraccion = {
   confianza: "alta" | "media" | "baja"
   camposDudosos: string[]
   observacionLectura: string | null
+}
+
+/**
+ * Lo que devuelve el modelo, antes de traducir los `""`.
+ *
+ * Se deriva de `Extraccion` a propósito: un campo nuevo aparece acá solo, sin
+ * que haya que acordarse de agregarlo en dos listas que después se desfasan.
+ * Los anulables que son números quedan igual —esos sí vuelven `null`— y el
+ * resto de los anulables pasa a `string`, que es como viajan.
+ */
+export type ExtraccionCruda = {
+  [K in keyof Extraccion]: null extends Extraccion[K]
+    ? NonNullable<Extraccion[K]> extends number
+      ? Extraccion[K]
+      : string
+    : Extraccion[K]
+}
+
+/** `""` es "no lo pude leer". El trim además saca los espacios de un campo que
+ *  el modelo devolvió con un blanco adentro y nada más. */
+const sinVacio = (v: string): string | null => v.trim() || null
+
+/**
+ * Traduce la respuesta cruda a la forma que usa el resto del sistema.
+ *
+ * Es la única frontera donde existe el `""`: de acá para adentro un campo que no
+ * se leyó es `null` y nada más, que es lo que después decide si se muestra en
+ * ámbar, si bloquea el guardado o si sale un aviso.
+ */
+export function normalizarExtraccion(c: ExtraccionCruda): Extraccion {
+  return {
+    ...c,
+    clase: sinVacio(c.clase),
+    fecha: sinVacio(c.fecha),
+    fechaVencimiento: sinVacio(c.fechaVencimiento),
+    emisorCuit: sinVacio(c.emisorCuit),
+    emisorRazonSocial: sinVacio(c.emisorRazonSocial),
+    receptorCuit: sinVacio(c.receptorCuit),
+    receptorRazonSocial: sinVacio(c.receptorRazonSocial),
+    emisorDomicilio: sinVacio(c.emisorDomicilio),
+    receptorDomicilio: sinVacio(c.receptorDomicilio),
+    emisorCondicionIva: sinVacio(c.emisorCondicionIva) as FormaJuridica | null,
+    receptorCondicionIva: sinVacio(c.receptorCondicionIva) as FormaJuridica | null,
+    moneda: sinVacio(c.moneda) as "ARS" | "USD" | null,
+    detalle: sinVacio(c.detalle),
+    condicionPago: sinVacio(c.condicionPago),
+    observacionLectura: sinVacio(c.observacionLectura),
+  }
 }
 
 /** La ficha del maestro a la que se va a colgar el comprobante, ya resuelta. */
@@ -247,7 +309,7 @@ ${CODIGOS_AFIP}
 
 REGLAS, en orden de importancia:
 
-1. **No inventes nada.** Si un dato no está en el documento o no se lee, devolvé null. Nunca pongas 0 en un importe que no leíste: un cero se ve igual que un importe real y nadie lo revisa. Nunca deduzcas un número "porque debería ser".
+1. **No inventes nada.** Si un dato no está en el documento o no se lee: en los importes y los números devolvé null, y en todo lo que es texto o una opción de una lista devolvé "" (la cadena vacía). Las dos cosas significan lo mismo —"esto no lo pude leer"— y el sistema las trata igual. Nunca pongas 0 en un importe que no leíste: un cero se ve igual que un importe real y nadie lo revisa. Nunca elijas una opción de la lista "porque es la más probable". Nunca deduzcas un número "porque debería ser".
 
 2. **Los importes van como número, sin símbolos ni separadores de miles.** En Argentina el punto separa miles y la coma los decimales: "1.234.567,89" es 1234567.89. Si el documento está en dólares, los importes van en dólares (no los conviertas).
 
@@ -255,9 +317,9 @@ REGLAS, en orden de importancia:
 
 4. **Las fechas en formato YYYY-MM-DD.** El formato argentino es día/mes/año: "01/08/2026" es 2026-08-01, no 2026-01-08. Si el año viene con dos dígitos, asumí 20XX.
 
-5. **Las dos partes por separado.** "emisor" es quien emitió la factura, "receptor" es a quién se la emitió. No decidas cuál es el cliente — eso lo resuelve el sistema. Los CUIT van con 11 dígitos y sin guiones. De cada uno traé también la razón social tal cual está impresa, el domicilio en una línea, y la condición frente al IVA usando exactamente uno de estos valores: "responsable_inscripto", "monotributo" (incluye "Responsable Monotributo"), "consumidor_final", "exento". Si la condición no figura, null — salvo que la clase la implique: una factura A solo se emite entre responsables inscriptos, y una C la emite un monotributista o un exento.
+5. **Las dos partes por separado.** "emisor" es quien emitió la factura, "receptor" es a quién se la emitió. No decidas cuál es el cliente — eso lo resuelve el sistema. Los CUIT van con 11 dígitos y sin guiones. De cada uno traé también la razón social tal cual está impresa, el domicilio en una línea, y la condición frente al IVA usando exactamente uno de estos valores: "responsable_inscripto", "monotributo" (incluye "Responsable Monotributo"), "consumidor_final", "exento". Si la condición no figura, "" — salvo que la clase la implique: una factura A solo se emite entre responsables inscriptos, y una C la emite un monotributista o un exento.
 
-6. **Moneda**: "ARS" si está en pesos, "USD" si está en dólares. Si el documento muestra un tipo de cambio, poné el valor en "tc" (pesos por dólar).
+6. **Moneda**: "ARS" si está en pesos, "USD" si está en dólares, "" si no se puede saber. Si el documento muestra un tipo de cambio, poné el valor en "tc" (pesos por dólar).
 
 7. **detalle**: una línea con el concepto principal de la factura, como para reconocerla en un listado. No copies el detalle entero si son muchos ítems: resumilo.
 
@@ -265,7 +327,7 @@ REGLAS, en orden de importancia:
 
 9. **camposDudosos**: la lista de nombres de campos que leíste con dudas, usando exactamente los nombres del esquema ("total", "numero", "fecha"...). Es lo que hace que la persona mire primero donde hay que mirar. Si no dudaste de nada, devolvé una lista vacía.
 
-10. **observacionLectura**: si el documento no es una factura, está cortado, o hay algo que quien lo revise debería saber, escribilo acá en una frase. Si está todo bien, null.
+10. **observacionLectura**: si el documento no es una factura, está cortado, o hay algo que quien lo revise debería saber, escribilo acá en una frase. Si está todo bien, "".
 
 Devolvé únicamente el objeto con los datos extraídos.`
 
