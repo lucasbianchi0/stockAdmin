@@ -37,6 +37,7 @@ import {
   type Borrador,
 } from "@/lib/admin/extraccion"
 import { sumarDias } from "@/lib/admin/fecha"
+import { FILAS_MAX, esCsv } from "@/lib/admin/importar-csv"
 import { IMPACTO_VACIO, type Impacto } from "@/lib/admin/impacto"
 import { formatearImporte, parsearImporte, type Moneda } from "@/lib/admin/moneda"
 import { cn } from "@/lib/utils"
@@ -186,22 +187,18 @@ export function ImportarFacturasDialog({
   const [arrastrando, setArrastrando] = useState(false)
   const inputArchivo = useRef<HTMLInputElement>(null)
 
-  const subir = useCallback(async (archivos: FileList | File[]) => {
-    const lista = Array.from(archivos).slice(0, ARCHIVOS_MAX)
-    if (lista.length === 0) return
-
-    setLeyendo(true)
-    try {
-      const body = new FormData()
-      lista.forEach((a) => body.append("archivos", a))
-
-      const res = await fetch(`/api/admin/${recurso}/importar`, { method: "POST", body })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "No se pudieron leer los archivos")
-
-      const nuevas: Fila[] = (data.borradores as Borrador[]).map((b, i) => {
-        const fila: Fila = {
-        id: `${Date.now()}-${i}`,
+  /**
+   * Las dos puertas terminan acá, y a partir de acá son la misma cosa.
+   *
+   * Un PDF o una foto los lee el modelo; un CSV lo parte el importador de
+   * planillas sin gastar un token. Los dos devuelven `Borrador[]` con la misma
+   * forma, así que de esta función para abajo —la revisión, la edición, el alta
+   * de la ficha, el guardado— no hay ninguna rama que distinga de dónde vino.
+   */
+  const aFilas = (borradores: Borrador[], desde: number): Fila[] =>
+    borradores.map((b, i) => {
+      const fila: Fila = {
+        id: `${desde}-${i}`,
         borrador: b,
         campos: aCampos(b),
         incluida: false,
@@ -210,17 +207,56 @@ export function ImportarFacturasDialog({
         alta: b.entidad ? null : (b.alta ?? null),
         buscando: false,
         estado: "pendiente",
-        }
-        // Nace tildada sólo si se pudo leer y se sabe con certeza de quién es.
-        // Un CUIT que no se leyó deja la fila desmarcada hasta que alguien lo
-        // complete: guardar sin identidad es lo que duplica el maestro.
-        return { ...fila, incluida: !b.error && identidadResuelta(fila) }
-      })
+      }
+      // Nace tildada sólo si se pudo leer y se sabe con certeza de quién es.
+      // Un CUIT que no se leyó deja la fila desmarcada hasta que alguien lo
+      // complete: guardar sin identidad es lo que duplica el maestro.
+      return { ...fila, incluida: !b.error && identidadResuelta(fila) }
+    })
 
+  const subir = useCallback(async (archivos: FileList | File[]) => {
+    const todos = Array.from(archivos)
+    if (todos.length === 0) return
+
+    /* Una planilla trae adentro sus propias filas, así que no compite por el
+       cupo de archivos: el tope de 8 es por cuántos documentos lee el modelo de
+       una tanda, y el de la planilla es su cantidad de filas. */
+    const planillas = todos.filter((a) => esCsv(a.name))
+    const documentos = todos.filter((a) => !esCsv(a.name)).slice(0, ARCHIVOS_MAX)
+
+    setLeyendo(true)
+    try {
+      const lotes: Borrador[][] = []
+
+      if (documentos.length > 0) {
+        const body = new FormData()
+        documentos.forEach((a) => body.append("archivos", a))
+
+        const res = await fetch(`/api/admin/${recurso}/importar`, { method: "POST", body })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "No se pudieron leer los archivos")
+        lotes.push(data.borradores as Borrador[])
+      }
+
+      // De a una: cada planilla tiene su propio mapeo de columnas y su propio
+      // error si le falta alguna, y mezclarlas escondería cuál falló.
+      for (const planilla of planillas) {
+        const body = new FormData()
+        body.append("archivo", planilla)
+
+        const res = await fetch(`/api/admin/${recurso}/importar-csv`, { method: "POST", body })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? `No se pudo leer ${planilla.name}`)
+
+        lotes.push(data.borradores as Borrador[])
+        if (data.aviso) toast.warning(data.aviso)
+      }
+
+      const nuevas = lotes.flatMap((lote, i) => aFilas(lote, Date.now() + i))
       setFilas((prev) => [...prev, ...nuevas])
 
       const conError = nuevas.filter((f) => f.borrador.error).length
-      if (conError > 0) toast.warning(`${conError} archivo(s) no se pudieron leer`)
+      if (conError > 0) toast.warning(`${conError} comprobante(s) no se pudieron leer`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudieron leer los archivos")
     } finally {
@@ -430,7 +466,7 @@ export function ImportarFacturasDialog({
               ref={inputArchivo}
               type="file"
               multiple
-              accept="application/pdf,image/jpeg,image/png,image/webp"
+              accept="application/pdf,image/jpeg,image/png,image/webp,.csv,text/csv"
               className="hidden"
               onChange={(e) => {
                 if (e.target.files) subir(e.target.files)
@@ -450,13 +486,16 @@ export function ImportarFacturasDialog({
               <div className="flex flex-col items-center gap-2.5">
                 <Upload className="h-6 w-6 text-ink-faint" strokeWidth={1.7} />
                 <p className="text-[13px] text-ink-secondary">
-                  Arrastrá los PDF o fotos acá, o
+                  Arrastrá los PDF, las fotos o un CSV acá, o
                 </p>
                 <Button variant="outline" size="sm" onClick={() => inputArchivo.current?.click()}>
                   Elegir archivos
                 </Button>
                 <p className="text-[11px] text-ink-faint">
                   PDF, JPG, PNG o WEBP · hasta {ARCHIVOS_MAX} por vez · máx {TAMANO_MAX_MB} MB c/u
+                </p>
+                <p className="text-[11px] text-ink-faint">
+                  O un CSV con una fila por comprobante — hasta {FILAS_MAX} filas
                 </p>
               </div>
             )}

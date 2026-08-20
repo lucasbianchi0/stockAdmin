@@ -8,6 +8,15 @@ import { sumarDias } from "@/lib/admin/fecha"
 import { leerDocumento } from "@/lib/admin/lectura-server"
 import { redondear } from "@/lib/admin/moneda"
 import {
+  FILAS_MAX,
+  TAMANO_CSV_MAX_MB,
+  columnasFaltantes,
+  esCsv,
+  filaAExtraccion,
+  mapearColumnas,
+  parsearCsv,
+} from "@/lib/admin/importar-csv"
+import {
   ARCHIVOS_MAX,
   PROMPT_EXTRACCION,
   SCHEMA_EXTRACCION,
@@ -302,4 +311,128 @@ async function enriquecer(
     fechaVencimiento,
     avisos,
   }
+}
+
+/* ── Importación desde planilla ───────────────────────────────────────────── */
+
+/**
+ * El otro camino de la carga masiva: un CSV con una fila por comprobante.
+ *
+ * Comparte con la carga inteligente todo lo que viene después de tener los
+ * datos —`enriquecer`, o sea el cruce contra el maestro, la imputación, el
+ * vencimiento, el chequeo de importes y el de duplicados— y se diferencia solo
+ * en de dónde salen: acá de columnas y no de un modelo leyendo un papel. Ver
+ * `importar-csv.ts` para el porqué de la división.
+ *
+ * Igual que la otra puerta, **no escribe en la base**: devuelve borradores que
+ * una persona revisa y guarda.
+ */
+export async function importarComprobantesCsv(tipo: TipoComprobante, req: Request) {
+  let form: FormData
+  try {
+    form = await req.formData()
+  } catch {
+    return NextResponse.json({ error: "No se pudo leer el formulario" }, { status: 400 })
+  }
+
+  const archivo = form.get("archivo")
+  if (!(archivo instanceof File)) {
+    return NextResponse.json({ error: "No adjuntaste ninguna planilla" }, { status: 400 })
+  }
+  if (!esCsv(archivo.name)) {
+    return NextResponse.json(
+      { error: "La planilla tiene que ser un CSV. Desde Excel: Guardar como → CSV." },
+      { status: 400 }
+    )
+  }
+  if (archivo.size > TAMANO_CSV_MAX_MB * 1024 * 1024) {
+    return NextResponse.json(
+      { error: `La planilla pesa más de ${TAMANO_CSV_MAX_MB} MB` },
+      { status: 400 }
+    )
+  }
+
+  const { cabeceras, filas } = parsearCsv(decodificar(await archivo.arrayBuffer()))
+
+  if (cabeceras.length === 0 || filas.length === 0) {
+    return NextResponse.json(
+      { error: "La planilla no tiene filas debajo del encabezado" },
+      { status: 422 }
+    )
+  }
+
+  const { mapa, ignoradas } = mapearColumnas(cabeceras)
+  const faltantes = columnasFaltantes(mapa, tipo)
+
+  /* Sin las columnas mínimas no se procesa nada. Devolver trescientos borradores
+     que no se pueden guardar es peor que no devolver ninguno: el error se
+     descubre fila por fila, ya con la pantalla llena. El mensaje dice qué falta
+     y qué encabezados hay, que es lo que hace falta para arreglar la planilla o
+     para darse cuenta de que se subió la de otro circuito. */
+  if (faltantes.length > 0) {
+    return NextResponse.json(
+      {
+        error: `No encontré ${faltantes.length === 1 ? "la columna" : "las columnas"} ${faltantes.join(", ")}. La planilla tiene: ${cabeceras.join(" · ")}`,
+      },
+      { status: 422 }
+    )
+  }
+
+  const recortadas = filas.slice(0, FILAS_MAX)
+
+  const borradores = await enTandas(recortadas, 8, (fila, i) =>
+    // La línea es la de la planilla abierta en Excel: el encabezado es la 1, así
+    // que la primera fila de datos es la 2. Es la referencia para volver al
+    // archivo y mirar la fila que dio un aviso.
+    enriquecer(tipo, `${archivo.name} · fila ${i + 2}`, filaAExtraccion(fila, mapa, tipo))
+  )
+
+  const aviso =
+    filas.length > FILAS_MAX
+      ? `La planilla tiene ${filas.length} filas y se procesaron las primeras ${FILAS_MAX}.`
+      : null
+
+  return NextResponse.json({ borradores, aviso, columnasIgnoradas: ignoradas })
+}
+
+/**
+ * El texto de la planilla, con la codificación que realmente tenga.
+ *
+ * Excel en Windows guarda los CSV en Windows-1252 salvo que se elija "CSV UTF-8"
+ * a mano, y decodificar eso como UTF-8 rompe cada eñe y cada acento. No es
+ * cosmético: la razón social entra así al maestro, y «Peña S.A.» guardado como
+ * «Pe?a S.A.» es una ficha que después no matchea con nada.
+ *
+ * Se intenta UTF-8 en modo estricto —que falla si los bytes no son válidos— y
+ * recién ahí se cae a Windows-1252. El orden importa: al revés, un UTF-8 legítimo
+ * se decodificaría igual pero con los acentos convertidos en pares de símbolos.
+ */
+function decodificar(bytes: ArrayBuffer): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes)
+  }
+}
+
+/**
+ * Igual que `Promise.all`, pero de a `tamano` por vez.
+ *
+ * Cada fila hace dos consultas —buscar la ficha y ver si el comprobante ya está
+ * cargado—, así que trescientas filas de un `Promise.all` son seiscientas
+ * consultas simultáneas contra Supabase. Entran, pero saturan el pool y las
+ * primeras empiezan a timeoutear. De a ocho tarda prácticamente lo mismo y no
+ * pone a nadie de rodillas.
+ */
+async function enTandas<T, R>(
+  items: T[],
+  tamano: number,
+  fn: (item: T, indice: number) => Promise<R>
+): Promise<R[]> {
+  const salida: R[] = []
+  for (let i = 0; i < items.length; i += tamano) {
+    const tanda = items.slice(i, i + tamano)
+    salida.push(...(await Promise.all(tanda.map((item, j) => fn(item, i + j)))))
+  }
+  return salida
 }
