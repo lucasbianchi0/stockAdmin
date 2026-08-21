@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { normalizarVariables } from "@/lib/feed-variables"
 import { placaDeVariables } from "@/lib/placa/de-variables"
+import { revisarPlaca } from "@/lib/placa/invariantes"
 import { renderizarPlaca } from "@/lib/placa/placa-tipografica"
 import { templateFeedPorId } from "@/lib/templates-feed"
 
@@ -22,6 +23,12 @@ import { templateFeedPorId } from "@/lib/templates-feed"
  *   /api/contenido/placa/muestra?v=bajada    · titular + descripción
  *   /api/contenido/placa/muestra?v=bullets   · titular + 4 ítems
  *   /api/contenido/placa/muestra?v=centrado  · titular centrado arriba, foto abajo
+ *   /api/contenido/placa/muestra?v=defecto   · la pieza rota que motivó las garantías
+ *
+ * Con `?t=feed-05-reunion` se cambia el template, que es lo que decide la familia
+ * y —desde que el rótulo dejó de ser opcional— el rubro con el que se rellena.
+ * La revisión de la placa viaja en la cabecera `X-Placa-Fallas`: vacía quiere
+ * decir que la pieza está en sistema.
  */
 
 const MUESTRAS = {
@@ -40,6 +47,18 @@ const MUESTRAS = {
   centrado: {
     headline: ["¿Qué hacen diferente", "las organizaciones que", "obtienen resultados con IA?"],
     destacado: "que obtienen resultados con IA?",
+  },
+  /*
+   * La pieza que motivó todo esto, reproducida tal como llegaba.
+   *
+   * Titular largo y de tres oraciones, sin rubro y sin destacado: los tres
+   * huecos que antes salían impresos —titular colgado en "Un", nada arriba,
+   * nada en azul— y que ahora tienen que llenarse solos.
+   */
+  defecto: {
+    headline: ["4.400 pantallas de firma. 400 sucursales. Un solo circuito."],
+    bajada:
+      "Banco Provincia digitalizó el circuito de firma en cada sucursal del país. Relevamiento, integración y soporte incluidos.",
   },
   bullets: {
     category: "REDES CORPORATIVAS",
@@ -66,7 +85,9 @@ export async function GET(req: Request) {
 
   // Cualquier template con foto sirve: lo único que se le pide es la familia, que
   // decide el ancho de la columna. La escena no se usa porque no hay fondo.
-  const template = templateFeedPorId("feed-01-infraestructura")!
+  const template =
+    templateFeedPorId(new URL(req.url).searchParams.get("t")) ??
+    templateFeedPorId("feed-01-infraestructura")!
   const variables = normalizarVariables(MUESTRAS[pedida as Variante])
   const placa = placaDeVariables(
     variables,
@@ -75,9 +96,17 @@ export async function GET(req: Request) {
     pedida === "centrado" ? "centrado" : undefined
   )
 
+  const fallas = revisarPlaca(placa)
   const jpeg = await renderizarPlaca(placa)
 
   return new NextResponse(new Uint8Array(jpeg), {
-    headers: { "Content-Type": "image/jpeg", "Cache-Control": "no-store" },
+    headers: {
+      "Content-Type": "image/jpeg",
+      "Cache-Control": "no-store",
+      "X-Placa-Fallas": fallas.map((f) => f.codigo).join(",") || "ninguna",
+      "X-Placa-Eyebrow": placa.eyebrow ?? "",
+      "X-Placa-Destacado": placa.destacado ?? "",
+      "X-Placa-Titular": placa.titular.join(" "),
+    },
   })
 }

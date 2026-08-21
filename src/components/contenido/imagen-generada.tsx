@@ -76,14 +76,18 @@ export function ImagenGenerada({
     if (!listo) return
     setGenerando(true)
     try {
-      onImagen(
-        await pedirPlaca(
-          slotId,
-          templateFeedId!,
-          variablesFeed!,
-          proporcion === "portrait" ? "portrait" : "square"
-        )
+      const { imagen, fallas } = await pedirPlaca(
+        slotId,
+        templateFeedId!,
+        variablesFeed!,
+        proporcion === "portrait" ? "portrait" : "square"
       )
+      onImagen(imagen)
+
+      // La pieza se generó igual, pero salió fuera de sistema. Se avisa acá y no
+      // en un log del servidor porque el que la va a publicar está mirando esta
+      // pantalla, y el arreglo —acortar el titular, elegir otro rubro— es suyo.
+      if (fallas.length > 0) toast.warning(fallas.join(" "))
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo generar la imagen")
     } finally {

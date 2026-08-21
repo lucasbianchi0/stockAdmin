@@ -18,6 +18,9 @@ import {
   HEADLINE_MAX_PALABRAS,
   TEST_RECHAZO,
   cortarHeadline,
+  limpiarTitular,
+  plano,
+  tramoAzul,
 } from "@/lib/copy-headline"
 
 /**
@@ -39,6 +42,36 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 export const maxDuration = 60
 
 /**
+ * El vocabulario de rótulos. Cerrado a propósito.
+ *
+ * "El rubro, 1 o 2 palabras en mayúsculas" devolvía uno distinto por pieza —
+ * SEGURIDAD IT en una, CIBERSEGURIDAD en la siguiente— y en la grilla de
+ * Instagram eso se lee como dos marcas. Una lista para elegir se cumple; una
+ * descripción de la forma, no.
+ *
+ * Son los mismos que llevan los templates como `rubro`: el que elige el modelo y
+ * el que pone el código cuando el modelo no contesta tienen que salir del mismo
+ * vocabulario, o el fallback se nota.
+ */
+const RUBROS = [
+  "INFRAESTRUCTURA",
+  "CONECTIVIDAD",
+  "SOPORTE TÉCNICO",
+  "DATA CENTER",
+  "CIBERSEGURIDAD",
+  "CLOUD",
+  "CLIENTES",
+  "EN CAMPO",
+  "COBERTURA",
+  "INSIGHT",
+  "CASO DE ÉXITO",
+  "EVENTO",
+  "PARTNERSHIP",
+  "EQUIPO ACCEDRA",
+  "INFORME",
+] as const
+
+/**
  * Qué se le pide al modelo por cada campo que el template necesita.
  *
  * `headline` es el caso especial y por eso no está acá: desde el 17/8 el titular
@@ -49,7 +82,10 @@ const INSTRUCCION: Record<Exclude<CampoFeed, "headline"> | "bajada", string> = {
   bajada: `"bajada": una o dos frases que DESARROLLAN el titular, hasta 170 caracteres. Se imprimen debajo, en cuerpo chico.
 No repite el titular con otras palabras: agrega el porqué, la consecuencia o el dato que lo sostiene. Si el titular dice "Tu firewall no ve al que ya está adentro", la bajada explica por qué pasa eso, no lo vuelve a decir.
 Español argentino con voseo, sin emojis, sin hashtags, sin comillas adentro. Frases cortas.`,
-  category: `"category": "el rubro, 1 o 2 palabras en mayúsculas (ej: NETWORKING, SEGURIDAD IT, CLOUD, CASO DE ÉXITO, INFORME)"`,
+  category: `"category": el rótulo chico que va arriba del titular, en mayúsculas. OBLIGATORIO — vacío no es una respuesta válida acá.
+Elegí el que describa esta pieza, de esta lista y sin inventar uno nuevo:
+${RUBROS.join(" · ")}
+Un rubro distinto por pieza no hace un feed variado: hace un feed que parece de varias marcas. Si dudás entre dos, elegí el de la línea de servicio del catálogo que la pieza vende.`,
   servicios: `"servicios": ["...", "..."] — 3 o 4 etiquetas de 1 a 3 palabras, tomadas de los ítems del catálogo de la línea de servicio que corresponda a esta pieza`,
   features: `"features": ["...", "..."] — 2 o 3 capacidades concretas de 1 a 3 palabras, del catálogo`,
   metrica: `"metrica": la cifra que se va a imprimir GIGANTE, ocupando media pieza. Solo dígitos, con un "+" adelante o un "%" atrás si corresponde: 99,99% · +1.260 · +400 · 17 · 24/7.
@@ -155,6 +191,28 @@ export async function POST(req: Request) {
     variables = VARIABLES_VACIAS
   }
 
+  /*
+   * EL TITULAR IMPRESO ES EL APROBADO. Letra por letra.
+   *
+   * Al derivador se le pide que corte el titular en líneas, no que lo edite, y
+   * casi siempre cumple. "Casi siempre" no alcanza para un texto que se
+   * publica: acá se compara lo que volvió contra lo que el plan aprobó —sin
+   * mirar tildes ni mayúsculas, que es lo único que el modelo puede cambiar sin
+   * mala intención— y si no es lo mismo se descarta el corte y se reparte a
+   * mano. El corte es una decisión de composición; el TEXTO no se negocia.
+   */
+  const aprobado = limpiarTitular(opcion.headline ?? "")
+  if (aprobado) {
+    const devuelto = limpiarTitular(variables.headline.join(" "))
+    if (plano(devuelto) !== plano(aprobado)) {
+      console.warn(
+        `[slot/prompt-feed] el derivador cambió el titular; se repone el del plan.\n` +
+          `  plan:      "${aprobado}"\n  derivador: "${devuelto}"`
+      )
+      variables = { ...variables, headline: cortarHeadline(aprobado) }
+    }
+  }
+
   // Sin titular la pieza no se puede imprimir. Antes de fallar se corta a mano el
   // titular escrito en el plan, y recién si no hay, el título interno: es peor
   // que lo que devuelve el modelo, pero once piezas del lote no se pierden porque
@@ -165,6 +223,22 @@ export async function POST(req: Request) {
 
   if (!variablesUsables(variables)) {
     return NextResponse.json({ error: "No se pudo armar el titular" }, { status: 500 })
+  }
+
+  /*
+   * Las dos garantías que la pieza no puede perder, resueltas antes de devolver
+   * las variables y no dentro del renderizador: así el prompt del template, la
+   * placa y la previsualización ven exactamente el mismo texto.
+   *
+   * · El rótulo: el rubro del template cuando el modelo no propuso ninguno.
+   * · El azul: recalculado sobre el titular DEFINITIVO. Si el titular se repuso
+   *   arriba, el destacado que había elegido el modelo puede haber quedado
+   *   apuntando a un texto que ya no existe.
+   */
+  variables = {
+    ...variables,
+    category: variables.category || template.rubro,
+    destacado: tramoAzul(variables.headline.join(" "), variables.destacado),
   }
 
   return NextResponse.json({
@@ -205,6 +279,12 @@ async function derivarVariables({
    */
   const pedido = [
     ...campos.map((c) => (c === "headline" ? instruccionHeadline(headlineEscrito) : INSTRUCCION[c])),
+    // El rubro y la bajada se piden SIEMPRE, los liste el template o no. Son los
+    // dos elementos que toda pieza lleva, y atarlos al `pide` de cada template
+    // es dejar que un olvido decida el feed: seis de los quince no pedían
+    // "category", y esas seis salían sin rótulo arriba del titular por
+    // construcción, no por casualidad.
+    INSTRUCCION.category,
     INSTRUCCION.bajada,
   ].join("\n")
 

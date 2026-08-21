@@ -14,13 +14,23 @@
 
 import { CASOS, CLAIMS, CLIENTES, PARTNERS, SERVICIOS } from "@/lib/brand-kit"
 import { sanitizeText } from "@/lib/contenido-context"
+import { tramoAzul } from "@/lib/copy-headline"
 
 export type VariablesFeed = {
   /** El titular, ya cortado en las líneas con las que se va a imprimir. */
   headline: string[]
-  /** Las palabras del titular que van en azul. Tienen que estar en el titular. */
+  /**
+   * El tramo del titular que va en azul. Siempre está y siempre es un tramo
+   * literal del titular: lo garantiza `tramoAzul`, que cae al remate calculado
+   * cuando el modelo no propuso nada ubicable.
+   */
   destacado: string
-  /** El rótulo chiquito de arriba. Vacío si el template no lo pide. */
+  /**
+   * El rótulo chiquito de arriba.
+   *
+   * Puede llegar vacío desde el modelo; nunca llega vacío a la placa. El rubro
+   * del template lo completa en `placaDeVariables`.
+   */
   category: string
   /**
    * La bajada: una o dos frases que desarrollan el titular.
@@ -98,6 +108,27 @@ function texto(v: unknown, max: number): string {
   return sanitizeText(v, max)
 }
 
+/**
+ * El titular dentro de un tope duro, soltando LÍNEAS enteras.
+ *
+ * El freno de último recurso del derivador. Corta por línea completa y no por
+ * carácter por el mismo motivo que el plan corta por oración: una línea de menos
+ * es un titular más corto, media línea es una frase rota.
+ */
+function repartir(lineas: string[], max: number): string[] {
+  const salida: string[] = []
+  let largo = 0
+
+  for (const linea of lineas) {
+    const suma = largo + (salida.length > 0 ? 1 : 0) + linea.length
+    if (salida.length > 0 && suma > max) break
+    salida.push(linea)
+    largo = suma
+  }
+
+  return salida
+}
+
 function lista(v: unknown, cantidad: number, max: number): string[] {
   if (!Array.isArray(v)) return []
   return v
@@ -152,23 +183,38 @@ export function normalizarVariables(raw: unknown): VariablesFeed {
         .split("\n")
         .filter(Boolean)
 
-  // 56 y no 40. El tope viejo alcanzaba cuando el titular eran nueve palabras
-  // cortadas de a tres; con catorce repartidas en dos líneas, una línea larga
-  // ronda los 45 caracteres y se truncaba en silencio: la placa salía con la
-  // frase cortada a la mitad y no había forma de saber por qué.
-  const headline = lista(crudo, MAX_LINEAS_HEADLINE, 56)
+  /*
+   * El corte en líneas que manda el modelo es una SUGERENCIA: `armarTitular` lo
+   * reparte de nuevo buscando el reparto que entra más grande. Por eso el tope
+   * por línea es holgado y no ajustado — el de 56 truncaba una línea larga a
+   * mitad de palabra y ese recorte sí llegaba impreso, porque el renderizador
+   * reparte pero nunca vuelve a agregar lo que ya se perdió.
+   *
+   * Lo que sí se limita es el titular ENTERO, y con margen sobre el presupuesto
+   * del copy: es un freno contra un modelo desbocado, no el lugar donde se
+   * hace cumplir el límite. Eso pasa en el plan, con reintento.
+   */
+  const headline = repartir(lista(crudo, MAX_LINEAS_HEADLINE, 200), 240)
 
-  // Mismo motivo: el destacado pasó de "1 a 3 palabras" al remate de la frase,
-  // que puede ser "Es el que ya tiene la llave". Truncado deja de coincidir con
-  // el titular y el color split se cae entero.
-  const destacado = texto(o.destacado, 56)
-  const enTitular = headline.join(" ").toLowerCase()
+  /*
+   * El destacado NO se recorta y NO se descarta.
+   *
+   * Se recortaba a 56 caracteres, y un destacado cortado a mitad de palabra
+   * dejaba de coincidir con el titular; entonces la comparación de abajo lo
+   * tiraba entero y la pieza salía sin una sola palabra en azul. Encima esa
+   * comparación era sensible a las tildes mientras la del renderizador no lo
+   * era, así que descartaba tramos que la placa sí sabía ubicar.
+   *
+   * `tramoAzul` es ahora el único juez, el mismo que usa la placa: ubica el
+   * tramo propuesto tolerando tildes perdidas y recortes, y si no hay nada
+   * ubicable devuelve el remate calculado del titular. Nunca vuelve vacío con
+   * un titular no vacío, que es justamente lo que había que garantizar.
+   */
+  const destacado = tramoAzul(headline.join(" "), sanitizeText(o.destacado, 200))
 
   return {
     headline,
-    // Un destacado que no está en el titular hace que el generador lo escriba
-    // aparte, como una segunda línea de texto suelta. Si no coincide, se cae.
-    destacado: destacado && enTitular.includes(destacado.toLowerCase()) ? destacado : "",
+    destacado,
     category: texto(o.category, 24),
     // 180: dos o tres líneas al cuerpo de la bajada. Más largo no entra en la
     // banda y el renderizador lo desbordaría sobre el logo.

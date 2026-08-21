@@ -109,7 +109,7 @@ export async function pedirPlaca(
   templateFeedId: string,
   variables: Record<string, unknown>,
   size: "square" | "portrait"
-): Promise<string> {
+): Promise<{ imagen: string; fallas: string[] }> {
   const res = await fetch("/api/contenido/placa", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -117,5 +117,14 @@ export async function pedirPlaca(
   })
   const data = await res.json()
   if (!res.ok || !data.image) throw new Error(data.error ?? "No se pudo componer la pieza")
-  return data.image as string
+
+  // Las fallas viajan con la imagen: la pieza salió, pero salió fuera de
+  // sistema y quien la va a publicar tiene que enterarse ahora y no en el feed.
+  const fallas = Array.isArray(data.fallas)
+    ? (data.fallas as { detalle?: unknown }[])
+        .map((f) => (typeof f?.detalle === "string" ? f.detalle : ""))
+        .filter(Boolean)
+    : []
+
+  return { imagen: data.image as string, fallas }
 }

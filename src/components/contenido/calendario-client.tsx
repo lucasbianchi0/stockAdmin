@@ -365,12 +365,19 @@ export function PlanClient({ planId }: { planId: string }) {
 
       const { variables } = await pedirPromptFeed(slot.id, templateFeedId)
       const medida = proporcionDe(slot.canal)
-      return await pedirPlaca(
+      const { imagen, fallas } = await pedirPlaca(
         slot.id,
         templateFeedId,
         variables,
         medida === "portrait" ? "portrait" : "square"
       )
+
+      // En el lote no se frena por una pieza fuera de sistema —serían once
+      // avisos encima de una generación larga— pero tampoco se tapa: queda en
+      // la consola con el slot que la produjo, para poder ir a esa y no a todas.
+      if (fallas.length > 0) console.warn(`[placa ${slot.id}]`, fallas.join(" "))
+
+      return imagen
     },
     [feedPorSlot]
   )

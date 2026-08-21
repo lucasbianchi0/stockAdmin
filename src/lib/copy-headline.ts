@@ -181,9 +181,13 @@ Si la respuesta es sí, está mal. Reescribilo con un dato, un nombre propio o u
  * único acento de la pieza, así que tiene que caer sobre el remate — la parte
  * que da vuelta el sentido de la frase.
  */
-export const DESTACADO_GUIA = `"destacado": el tramo del titular que va en azul. Es el REMATE: la parte que da vuelta el sentido, no un adjetivo suelto ni la palabra técnica.
+export const DESTACADO_GUIA = `"destacado": el tramo del titular que va en azul. NO ES OPCIONAL — toda pieza del feed lleva azul en el titular, y devolverlo vacío no es una respuesta válida.
+
+Es el REMATE: la parte que da vuelta el sentido, no un adjetivo suelto ni la palabra técnica.
 En "El problema no es el que entra. Es el que ya tiene la llave" el remate es "Es el que ya tiene la llave", no "llave".
-De 2 a 5 palabras, consecutivas, copiadas LETRA POR LETRA del titular tal como lo escribiste. Si no hay un remate claro, devolvelo vacío: el titular entero en blanco es mejor que un azul puesto en cualquier lado.`
+Si el titular tiene dos oraciones, el remate es la segunda.
+
+De 2 a 6 palabras, consecutivas, copiadas LETRA POR LETRA del titular tal como lo escribiste —con sus tildes y su puntuación— y NUNCA el titular entero: algo tiene que quedar en blanco para que el azul se lea como acento.`
 
 /**
  * El titular cortado en líneas, sin llamar a un modelo.
@@ -194,7 +198,9 @@ De 2 a 5 palabras, consecutivas, copiadas LETRA POR LETRA del titular tal como l
  * el generador de imágenes escribe en cuerpo 12 y queda ilegible.
  */
 export function cortarHeadline(texto: string): string[] {
-  const palabras = texto.trim().split(/\s+/).filter(Boolean).slice(0, HEADLINE_MAX_PALABRAS)
+  // Sin `slice`: el titular se reparte entero. Recortarlo acá era la tercera
+  // amputación silenciosa del pipeline — la que dejaba "…400 sucursales. Un".
+  const palabras = limpiarTitular(texto).split(" ").filter(Boolean)
   if (palabras.length === 0) return []
 
   // Hasta 4 palabras entran en una línea; de ahí en más, dos o tres, para que
@@ -210,4 +216,267 @@ export function cortarHeadline(texto: string): string[] {
 /** Cuenta las palabras de un titular. Se usa para avisar, no para cortar. */
 export function palabrasDe(texto: string): number {
   return texto.trim().split(/\s+/).filter(Boolean).length
+}
+
+/* ── Medir, cortar y ubicar ───────────────────────────────────────────────── */
+
+/**
+ * Sin tildes, en minúscula y SIN cambiar el largo.
+ *
+ * El largo es lo que importa: sobre esta forma se busca el destacado con
+ * `indexOf`, y la posición que devuelve tiene que servir para cortar el texto
+ * ORIGINAL. Por eso no se usa `normalize("NFD")`, que descompone "á" en dos
+ * caracteres y corre todos los índices, ni `toLowerCase()` a secas, que en un
+ * puñado de casos (la "İ" turca) devuelve dos caracteres donde había uno.
+ *
+ * Vive acá y no en la placa porque lo necesitan los dos lados —el derivador que
+ * valida el destacado y el renderizador que lo pinta— y tener dos
+ * normalizadores distintos es exactamente lo que hacía desaparecer el azul: el
+ * derivador comparaba con tildes, el renderizador sin ellas, y el más estricto
+ * descartaba tramos que el otro sí sabía ubicar.
+ */
+const EQUIVALENTES: Record<string, string> = {
+  á: "a", é: "e", í: "i", ó: "o", ú: "u", ü: "u", ñ: "n",
+  à: "a", è: "e", ì: "i", ò: "o", ù: "u",
+  â: "a", ê: "e", î: "i", ô: "o", û: "u",
+  "\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'", "\u2013": "-", "\u2014": "-",
+}
+
+export function plano(texto: string): string {
+  return texto.replace(/./gu, (c) => {
+    const equivalente = EQUIVALENTES[c]
+    if (equivalente) return equivalente
+    const minuscula = c.toLowerCase()
+    // El reemplazo tiene que ser de un carácter por uno: si baja de caja y
+    // crece, se deja como está antes que correr los índices.
+    return minuscula.length === c.length ? minuscula : c
+  })
+}
+
+/** La forma canónica de un titular: un espacio entre palabras y nada en los bordes. */
+export function limpiarTitular(texto: string): string {
+  return texto.replace(/\s+/g, " ").trim()
+}
+
+/**
+ * Dónde termina cada oración del titular.
+ *
+ * No alcanza con partir por punto: "4.400 pantallas" tiene un punto adentro que
+ * es un separador de miles, y partir ahí convertía el titular de la muestra en
+ * dos oraciones falsas. Un punto corta solo si no está entre dígitos y si lo
+ * que sigue es un espacio o el final.
+ */
+function cortesDeOracion(texto: string): number[] {
+  const cortes: number[] = []
+
+  for (let i = 0; i < texto.length; i++) {
+    if (!".?!".includes(texto[i])) continue
+    if (texto[i] === "." && /\d/.test(texto[i - 1] ?? "") && /\d/.test(texto[i + 1] ?? "")) continue
+
+    // "…?!" cierra una vez sola. La guarda de largo no es decorativa:
+    // `".?!".includes("")` es true, y sin ella el cursor no frena en el final.
+    let fin = i + 1
+    while (fin < texto.length && ".?!".includes(texto[fin])) fin++
+
+    if (fin >= texto.length) {
+      cortes.push(fin)
+      break
+    }
+    // "accedra.com.ar" no son tres oraciones: sin espacio detrás, no corta.
+    if (texto[fin] !== " ") continue
+
+    cortes.push(fin)
+    i = fin - 1
+  }
+
+  return cortes
+}
+
+/** El titular partido en oraciones, cada una con el signo con el que cierra. */
+export function oracionesDe(texto: string): string[] {
+  const limpio = limpiarTitular(texto)
+  const salida: string[] = []
+  let desde = 0
+
+  for (const corte of cortesDeOracion(limpio)) {
+    const trozo = limpio.slice(desde, corte).trim()
+    if (trozo) salida.push(trozo)
+    desde = corte
+  }
+
+  const resto = limpio.slice(desde).trim()
+  if (resto) salida.push(resto)
+
+  return salida
+}
+
+/**
+ * Las palabras que no pueden quedar últimas en un titular.
+ *
+ * Es la lista que faltaba. El corte por palabra entera ya evitaba "…acceso a tu
+ * re", pero no evitaba "…400 sucursales. Un", que es la muestra que llegó: la
+ * palabra está completa y la frase igual quedó colgada. Un titular que termina
+ * en artículo, preposición o conjunción no es un titular corto, es uno roto.
+ */
+const COLGANTES = new Set([
+  "el", "la", "los", "las", "un", "una", "unos", "unas", "lo", "le", "les",
+  "de", "del", "al", "a", "en", "con", "por", "para", "sin", "sobre", "tras",
+  "desde", "hasta", "entre", "hacia", "segun", "contra", "durante",
+  "y", "e", "o", "u", "ni", "que", "pero", "sino", "porque", "si", "como",
+  "cuando", "donde", "mientras", "aunque", "su", "sus", "tu", "tus", "mi",
+  "mis", "nuestro", "nuestra", "este", "esta", "ese", "esa", "se", "es", "son",
+  "no", "ya", "mas", "muy", "todo", "toda", "cada", "otro", "otra",
+])
+
+/**
+ * ¿El titular quedó colgado?
+ *
+ * Terminar en artículo, preposición o conjunción es la firma exacta del defecto
+ * que se venía publicando: "…400 sucursales. Un". La palabra está entera, la
+ * frase no. Se mira acá y no a ojo porque es lo único que distingue un titular
+ * corto de uno roto.
+ */
+export function terminaColgado(texto: string): boolean {
+  const limpio = limpiarTitular(texto)
+
+  // Un titular que cierra con punto, interrogación o exclamación NO está
+  // colgado, termine en la palabra que termine: "La validez legal, no." es una
+  // frase completa y es uno de los titulares que el Brand Kit da como ejemplo.
+  // Es la puntuación la que separa un remate de un recorte — "…400 sucursales.
+  // Un" no tiene con qué cerrar.
+  if (/[.?!]$/.test(limpio)) return false
+
+  const palabras = limpio.split(" ").filter(Boolean)
+  if (palabras.length < 2) return false
+  return COLGANTES.has(raiz(palabras[palabras.length - 1]))
+}
+
+/** La palabra, sin puntuación ni tildes, para poder mirarla en una lista. */
+function raiz(palabra: string): string {
+  return plano(palabra).replace(/[^a-z0-9]/g, "")
+}
+
+/** Saca la puntuación colgada y el punto final cuando quedó una sola oración. */
+function cerrarTitular(texto: string): string {
+  const sinCola = texto.replace(/[\s,;:·\u2014\u2013-]+$/, "")
+  // La doctrina pide sin punto final si es una sola oración; con dos, el punto
+  // del medio es parte de la forma y el último acompaña.
+  return oracionesDe(sinCola).length <= 1 ? sinCola.replace(/\.+$/, "") : sinCola
+}
+
+/**
+ * El titular dentro del presupuesto, SIN cambiar lo que dice.
+ *
+ * Es el último recurso, no el primero: antes de llegar acá el titular ya se le
+ * pidió de vuelta al modelo con la medición concreta delante. Existe para que un
+ * fallo de esa reparación no publique una frase colgada.
+ *
+ * Solo suelta ORACIONES ENTERAS. "4.400 pantallas de firma. 400 sucursales."
+ * sigue siendo un titular; "…400 sucursales. Un" no es nada. Y si el titular es
+ * una sola oración NO se toca: cortarle palabras a una frase siempre le cambia
+ * el sentido —"Las caídas pasaron de 5 por semana a menos de 1 por mes" recortado
+ * a "…a menos de 1" dice otra cosa— así que vuelve entero y la pieza queda
+ * marcada como fuera de sistema. Un titular unos píxeles más chico es un
+ * problema de grilla; uno que dice algo distinto es una pieza tirada.
+ */
+export function ajustarTitular(texto: string, max: number = HEADLINE_MAX_CARACTERES): string {
+  const limpio = limpiarTitular(texto)
+  if (!limpio || limpio.length <= max) return limpio
+
+  const oraciones = oracionesDe(limpio)
+  if (oraciones.length <= 1) return limpio
+
+  let acumulado = ""
+  for (const oracion of oraciones) {
+    const tentativa = acumulado ? `${acumulado} ${oracion}` : oracion
+    if (tentativa.length > max) break
+    acumulado = tentativa
+  }
+
+  return acumulado ? cerrarTitular(acumulado) : limpio
+}
+
+/**
+ * El remate del titular, calculado sin modelo.
+ *
+ * Es el fallback del azul, y por eso no puede devolver cualquier cosa: tiene
+ * que ser un tramo consecutivo del titular, de más de una palabra, que no
+ * arranque con un artículo suelto y que NUNCA sea el titular entero —si todo va
+ * en azul no hay acento, hay otro color de titular—.
+ */
+export function remateDe(texto: string): string {
+  const limpio = limpiarTitular(texto)
+  if (!limpio) return ""
+
+  const palabras = limpio.split(" ")
+  // Un titular de una palabra no tiene remate: va entero en azul, que es la
+  // única lectura posible.
+  if (palabras.length === 1) return limpio
+
+  const oraciones = oracionesDe(limpio)
+  if (oraciones.length > 1) {
+    const ultima = oraciones[oraciones.length - 1]
+    const cuantas = ultima.split(" ").length
+    if (cuantas >= 2 && cuantas <= 6) return ultima
+  }
+
+  let inicio = Math.max(1, palabras.length - (palabras.length <= 4 ? 2 : 3))
+  while (inicio < palabras.length - 1 && COLGANTES.has(raiz(palabras[inicio]))) inicio++
+
+  return palabras.slice(inicio).join(" ")
+}
+
+/**
+ * Dónde cae el destacado dentro del titular, tal como está escrito ahí.
+ *
+ * Devuelve el tramo COPIADO DEL TITULAR, no el que mandó el modelo: así lo que
+ * se pinta y lo que se imprime son literalmente el mismo texto y el color no
+ * puede deformar una palabra.
+ *
+ * Y si no coincide letra por letra, no se tira: se busca el tramo consecutivo
+ * más largo del destacado que sí esté. Casi todos los fallos son de ese tipo
+ * —una tilde que el modelo perdió, una coma de más, el recorte de un tope— y
+ * hasta ahora cada uno costaba el azul de la pieza entera.
+ */
+export function ubicarDestacado(titular: string, destacado: string): string {
+  const base = limpiarTitular(titular)
+  const buscado = limpiarTitular(destacado ?? "")
+  if (!base || !buscado) return ""
+
+  const aguja = plano(base)
+
+  const exacto = aguja.indexOf(plano(buscado))
+  if (exacto !== -1) return base.slice(exacto, exacto + buscado.length)
+
+  const palabras = buscado.split(" ")
+  for (let largo = palabras.length - 1; largo >= 2; largo--) {
+    for (let i = 0; i + largo <= palabras.length; i++) {
+      const trozo = palabras.slice(i, i + largo).join(" ")
+      const donde = aguja.indexOf(plano(trozo))
+      if (donde !== -1) return base.slice(donde, donde + trozo.length)
+    }
+  }
+
+  return ""
+}
+
+/**
+ * EL tramo azul de la pieza. Nunca vacío salvo que no haya titular.
+ *
+ * Es la garantía, y por eso es una sola función que usan el derivador y el
+ * renderizador: el que propuso el modelo si se puede ubicar, el remate
+ * calculado si no. Antes había tres lugares distintos donde el azul podía
+ * desaparecer en silencio, y el resultado de cualquiera de los tres era el
+ * mismo — el titular entero en blanco.
+ */
+export function tramoAzul(titular: string, propuesto?: string): string {
+  const base = limpiarTitular(titular)
+  if (!base) return ""
+
+  const ubicado = ubicarDestacado(base, propuesto ?? "")
+  // Un destacado que se comió el titular entero deja la pieza sin blanco: no es
+  // un acento, es otro color de titular.
+  if (ubicado && (ubicado !== base || base.split(" ").length === 1)) return ubicado
+
+  return remateDe(base)
 }

@@ -40,7 +40,14 @@ export const FAMILIA_LABEL: Record<FamiliaFeed, string> = {
   editorial: "Editorial / corporativo",
 }
 
-/** Qué variable pide cada template. Lo lee el derivador para no pedir de más. */
+/**
+ * Qué variable pide cada template. Lo lee el derivador para no pedir de más.
+ *
+ * "category" ya no aparece en ningún `pide`: el rótulo lo lleva TODA pieza, así
+ * que el derivador lo pide siempre —igual que la bajada— y el `rubro` del
+ * template lo completa si el modelo no contesta. Sigue en esta lista porque
+ * `INSTRUCCION` se indexa por acá.
+ */
 export type CampoFeed =
   | "headline"
   | "category"
@@ -64,6 +71,20 @@ export type TemplateFeed = {
    * `secuenciaRecomendada`, que reparte los formatos del plan mirando esto.
    */
   densidad: Densidad
+  /**
+   * El rótulo de la pieza cuando el derivador no propone uno.
+   *
+   * No es un adorno ni un default perezoso: es LA garantía de que ninguna pieza
+   * sale sin eyebrow. Seis de estos quince templates ni siquiera pedían
+   * `category`, así que el 40% del feed salía sin rótulo por construcción; y
+   * hasta los que lo pedían tenían permitido devolverlo vacío. El template ya
+   * sabe de qué habla —para eso existe—, así que puede contestar solo.
+   *
+   * En VERSALITA, como se imprime, y del mismo vocabulario que el derivador
+   * elige: dos rubros para la misma clase de pieza es lo que hace que el feed
+   * parezca de dos marcas.
+   */
+  rubro: string
   pide: CampoFeed[]
   /** El prompt en inglés, con las variables ya resueltas. */
   cuerpo: (v: VariablesFeed) => string
@@ -109,6 +130,18 @@ function destacado(v: VariablesFeed): string {
   ]
     .filter(Boolean)
     .join("\n")
+}
+
+/**
+ * El rótulo de arriba, en la única redacción que se usa.
+ *
+ * No lleva `si(...)`: el rótulo dejó de ser opcional. Antes seis de los quince
+ * templates ni siquiera lo nombraban, así que esas piezas salían sin nada arriba
+ * del titular por construcción; y `v.category` ya viene garantizado —lo completa
+ * el `rubro` del template cuando el derivador no propone ninguno—.
+ */
+function rotulo(v: VariablesFeed): string {
+  return `Eyebrow at the upper left, above the headline: “${v.category.toUpperCase()}” — small, uppercase, letter-spaced, in the accent blue.`
 }
 
 /** Una lista de etiquetas cortas, entre comillas, o nada si no hay. */
@@ -248,7 +281,8 @@ export const TEMPLATES_FEED: TemplateFeed[] = [
     familia: "tecnologia",
     cuandoUsar: "Networking y datacenter con servicios listados al pie. El formato de catálogo técnico.",
     densidad: "mixta",
-    pide: ["category", "headline", "servicios"],
+    rubro: "INFRAESTRUCTURA",
+    pide: ["headline", "servicios"],
     cuerpo: (v) => `Create a premium square Instagram post template for Accedra, 1080x1080.
 
 Composition: ONE single full-bleed photograph of a modern enterprise data center corridor — tall server racks receding in strong depth perspective, shot low and close so the racks fill the right side AND the lower half of the frame with real texture: cabling, vents, the fine grid of drive bays.
@@ -259,10 +293,7 @@ A soft black gradient falls over the upper left, and only there, so the typograp
 
 Realistic architectural photography, not futuristic or sci-fi.
 
-${si(
-      Boolean(v.category),
-      `Eyebrow at the upper left, above the headline: “${v.category.toUpperCase()}” — small, uppercase, letter-spaced, in the accent blue.`
-    )}
+${rotulo(v)}
 Typography area: large headline set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
 ${destacado(v)}${si(
@@ -278,11 +309,13 @@ Visual identity: premium B2B technology company, elegant, minimal, high-end corp
     familia: "tecnologia",
     cuandoUsar: "Redes, enlaces, multi-sede. Cuando el tema es la conexión y no el equipo.",
     densidad: "mixta",
+    rubro: "CONECTIVIDAD",
     pide: ["headline"],
     cuerpo: (v) => `Create a premium square Instagram template for Accedra, 1080x1080.
 
 Background: deep black fading into very dark navy.
 
+${rotulo(v)}
 Upper-left area contains a large clean headline, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
 ${destacado(v)}
@@ -303,12 +336,10 @@ Premium enterprise technology advertising, restrained lighting, precise composit
     familia: "foto-real",
     cuandoUsar: "Prueba de trabajo real: alguien de Accedra con las manos en el rack. Servicios al costado.",
     densidad: "foto",
-    pide: ["category", "servicios", "headline"],
+    rubro: "SOPORTE TÉCNICO",
+    pide: ["servicios", "headline"],
     cuerpo: (v) => `Create a premium square Instagram template for Accedra using REALISTIC HUMAN PHOTOGRAPHY.
-${si(
-      Boolean(v.category),
-      `Eyebrow at the upper left, above the headline: “${v.category.toUpperCase()}” — small, uppercase, letter-spaced, in the accent blue.`
-    )}
+${rotulo(v)}
 
 Background image: candid documentary-style photograph of an IT/network technician working inside a real server room. Show the person from behind or in three-quarter back view while physically connecting or inspecting network equipment inside a rack.
 
@@ -340,15 +371,13 @@ Avoid: AI-perfect faces, excessive blue grading, cyberpunk, staged stock photogr
     familia: "tecnologia",
     cuandoUsar: "La pieza de campaña: una sola afirmación grande sobre infraestructura, a sangre.",
     densidad: "foto",
-    pide: ["category", "headline"],
+    rubro: "DATA CENTER",
+    pide: ["headline"],
     cuerpo: (v) => `Create a premium square Instagram post template for Accedra.
 
 Full-bleed cinematic photograph of a modern enterprise data center: shot low and close so one rack stands near the lens with real texture and the rest falls away in depth. Very dark environment, lit by its own restrained cold-blue LEDs. Not a symmetric corridor with the vanishing point dead centre.
 
-A soft black gradient falls over the typography area, and only there, so the type sits on calm ground. It protects the text; it does not erase the image — the photograph stays visible and powerful on the right AND across the lower half.${si(
-      Boolean(v.category),
-      `At upper-left include a tiny uppercase eyebrow: “${v.category.toUpperCase()}”`
-    )}
+A soft black gradient falls over the typography area, and only there, so the type sits on calm ground. It protects the text; it does not erase the image — the photograph stays visible and powerful on the right AND across the lower half.${rotulo(v)}
 
 Below it, a large editorial headline set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
@@ -363,6 +392,7 @@ Style: enterprise infrastructure campaign, architectural photography, premium, m
     familia: "foto-real",
     cuandoUsar: "Caso de cliente con un número. Gente conversando, no posando.",
     densidad: "foto",
+    rubro: "CASO DE ÉXITO",
     pide: ["headline", "metrica"],
     cuerpo: (v) => `Create a premium square Instagram template for Accedra based on AUTHENTIC CORPORATE PHOTOGRAPHY.
 
@@ -377,6 +407,7 @@ Use REAL NATURAL COLORS: warm skin tones, neutral grey/black clothing, natural d
 
 Add a dark translucent gradient behind the typography.
 
+${rotulo(v)}
 Large white headline, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}${si(
       Boolean(v.metrica),
@@ -396,14 +427,12 @@ Avoid: stock-photo poses, everyone smiling at camera, artificial blue lighting, 
     familia: "tecnologia",
     cuandoUsar: "Seguridad IT: la tesis arriba y dos o tres capacidades en pastillas.",
     densidad: "texto",
-    pide: ["category", "headline", "features"],
+    rubro: "CIBERSEGURIDAD",
+    pide: ["headline", "features"],
     cuerpo: (v) => `Create a premium dark Instagram template for Accedra, 1080x1080.
 
 Background: near-black #080B12 with subtle dark navy gradients.
-${si(
-      Boolean(v.category),
-      `Eyebrow at the upper left, above the headline: “${v.category.toUpperCase()}” — small, uppercase, letter-spaced, in the accent blue.`
-    )}
+${rotulo(v)}
 Large headline positioned upper-left, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
 ${destacado(v)}${si(
@@ -423,13 +452,11 @@ Premium cybersecurity brand aesthetic. Minimal, technical, credible and enterpri
     familia: "tecnologia",
     cuandoUsar: "Nube, Azure, hiperconvergencia. Objeto único, mucho aire, estética de producto.",
     densidad: "mixta",
-    pide: ["category", "headline"],
+    rubro: "CLOUD",
+    pide: ["headline"],
     cuerpo: (v) => `Create a premium square Instagram template for Accedra.
 
-Near-black background with subtle depth.${si(
-      Boolean(v.category),
-      `Tiny uppercase category label above the headline: “${v.category.toUpperCase()}”`
-    )}
+Near-black background with subtle depth.${rotulo(v)}
 
 Elegant large headline in the upper-left, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
@@ -462,13 +489,11 @@ Visual style: Apple-like product photography meets enterprise cloud infrastructu
      */
     cuandoUsar: "Prueba social y escala: la afirmación de respaldo, sostenida por una cifra. Sin foto y sin logos.",
     densidad: "texto",
-    pide: ["category", "headline", "metrica"],
+    rubro: "CLIENTES",
+    pide: ["headline", "metrica"],
     cuerpo: (v) => `Create a premium minimalist social-proof Instagram template for Accedra.
 
-Solid near-black background #080B12 with extremely subtle texture.${si(
-      Boolean(v.category),
-      `Upper-left: small uppercase blue label: “${v.category.toUpperCase()}”`
-    )}
+Solid near-black background #080B12 with extremely subtle texture.${rotulo(v)}
 
 Large headline below, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
@@ -494,6 +519,7 @@ Design should communicate credibility, scale and enterprise trust. Minimal Swiss
     familia: "foto-real",
     cuandoUsar: "Obra, despliegue, instalación on-site. Casco y equipamiento real.",
     densidad: "foto",
+    rubro: "EN CAMPO",
     pide: ["headline"],
     cuerpo: (v) => `Create a premium square Instagram template for Accedra using authentic field photography.
 
@@ -508,6 +534,7 @@ Use mostly NATURAL photographic colors with neutral blacks, whites, greys and re
 
 Do NOT apply a heavy blue filter.
 
+${rotulo(v)}
 Place the headline over a naturally darker area, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
 ${destacado(v)}
@@ -520,11 +547,13 @@ Documentary industrial photography, natural lighting, slight grain, realistic eq
     familia: "tecnologia",
     cuandoUsar: "Alcance federal: sucursales, sitios conectados, presencia en todo el país.",
     densidad: "mixta",
+    rubro: "COBERTURA",
     pide: ["headline", "metrica"],
     cuerpo: (v) => `Create a premium square Instagram template for Accedra focused on geographic coverage.
 
 Background: elegant near-black to dark navy gradient.
 
+${rotulo(v)}
 Left side contains a large headline, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
 ${destacado(v)}${si(
@@ -548,12 +577,13 @@ Style: enterprise telecommunications infrastructure visualization, premium, mini
     familia: "editorial",
     cuandoUsar: "Nota, informe o contenido educativo. La tipografía es la pieza.",
     densidad: "texto",
-    pide: ["category", "headline", "cta"],
+    rubro: "INSIGHT",
+    pide: ["headline", "cta"],
     cuerpo: (v) => `Create a premium editorial Instagram template for Accedra.
 
 Dark near-black background with generous negative space.
 
-Upper-left small uppercase blue label: “${(v.category || "INSIGHT").toUpperCase()}”
+${rotulo(v)}
 
 Large editorial headline below, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
@@ -573,12 +603,13 @@ Style: premium technology publication, editorial design, minimalist, intelligent
     familia: "editorial",
     cuandoUsar: "Un resultado de cliente sin foto: el número manda y la tapa parece un case study.",
     densidad: "texto",
-    pide: ["category", "headline", "metrica", "cta"],
+    rubro: "CASO DE ÉXITO",
+    pide: ["headline", "metrica", "cta"],
     cuerpo: (v) => `Create a premium typography-first Instagram template for Accedra.
 
 Near-black background with an extremely subtle blue data-wave texture concentrated in the lower-right corner.
 
-Small uppercase blue label at upper-left: “${(v.category || "CASO DE ÉXITO").toUpperCase()}”
+${rotulo(v)}
 
 Large white headline, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}${si(
@@ -602,6 +633,7 @@ Keep the text well clear of the four edges — as padding inside the piece, not 
     familia: "editorial",
     cuandoUsar: "Jornada, feria, webinar: nombre, fecha, lugar y stand en un bloque ordenado.",
     densidad: "texto",
+    rubro: "EVENTO",
     pide: ["headline", "evento"],
     cuerpo: (v) => `Create a premium event announcement Instagram template for Accedra.
 
@@ -609,6 +641,7 @@ Near-black background with a subtle dark navy gradient.
 
 Small uppercase blue label: “EVENTO”
 
+${rotulo(v)}
 Large white headline, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
 ${destacado(v)}${si(
@@ -640,13 +673,11 @@ Style: premium international B2B technology conference announcement, minimal Swi
      */
     cuandoUsar: "Certificación de fabricante o nivel de partner. Institucional y tipográfico, sin sellos ni credenciales.",
     densidad: "texto",
-    pide: ["category", "headline"],
+    rubro: "PARTNERSHIP",
+    pide: ["headline"],
     cuerpo: (v) => `Create a premium partnership announcement Instagram template for Accedra.
 
-Near-black background with a subtle technological dot texture and restrained electric-blue accents.${si(
-      Boolean(v.category),
-      `Upper-left: small uppercase blue label: “${v.category.toUpperCase()}”`
-    )}
+Near-black background with a subtle technological dot texture and restrained electric-blue accents.${rotulo(v)}
 
 Large headline below it, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
@@ -663,6 +694,7 @@ Style: premium B2B partnership announcement, minimal, trustworthy, official. Do 
     familia: "foto-real",
     cuandoUsar: "Marca empleadora y cultura: alguien trabajando de verdad, oficina creíble.",
     densidad: "foto",
+    rubro: "EQUIPO ACCEDRA",
     pide: ["headline"],
     cuerpo: (v) => `Create a premium square Instagram template for Accedra using highly realistic lifestyle corporate photography.
 
@@ -679,6 +711,7 @@ Do NOT turn the entire photograph blue.
 
 Place a dark translucent gradient over the left or upper-left area.
 
+${rotulo(v)}
 Large headline over it, set in ${v.headline.length} lines exactly as broken here:
 ${titular(v)}
 ${destacado(v)}

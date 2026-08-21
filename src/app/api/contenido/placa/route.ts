@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase"
 import type { Opcion } from "@/lib/calendario-context"
 import { normalizarVariables } from "@/lib/feed-variables"
 import { placaDeVariables } from "@/lib/placa/de-variables"
+import { revisarPlaca } from "@/lib/placa/invariantes"
 import { promptDeFondo } from "@/lib/placa/fondos"
 import { generarFondo, hayMotor } from "@/lib/placa/fondo-server"
 import { renderizarPlaca } from "@/lib/placa/placa-tipografica"
@@ -100,6 +101,21 @@ export async function POST(req: Request) {
   try {
     const fondo = await generarFondo(prompt, formato)
     const placa = placaDeVariables(variables, template, formato)
+
+    /*
+     * La revisión va ANTES de rasterizar y viaja con la respuesta.
+     *
+     * No frena la generación: una pieza con una falla se publica igual, porque
+     * no tenerla es peor. Lo que cambia es que ahora se sabe. Antes el único
+     * rastro de una pieza fuera de sistema era un `console.warn` en el servidor,
+     * y por eso el titular cortado llegó hasta el feed sin que nadie lo viera
+     * hasta tener la imagen delante.
+     */
+    const fallas = revisarPlaca(placa)
+    if (fallas.length > 0) {
+      console.warn(`[contenido/placa] ${template.id}: ${fallas.map((f) => f.detalle).join(" ")}`)
+    }
+
     const jpeg = await renderizarPlaca({ ...placa, fondo })
 
     // El mismo contrato que `api/contenido/image`, para que el cliente pueda
@@ -108,6 +124,7 @@ export async function POST(req: Request) {
       image: `data:image/jpeg;base64,${jpeg.toString("base64")}`,
       modelo: "placa · fondo generado + texto compuesto",
       layout: placa.layout,
+      fallas,
     })
   } catch (err) {
     console.error("[contenido/placa]", err)

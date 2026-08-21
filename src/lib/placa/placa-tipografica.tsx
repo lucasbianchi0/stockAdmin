@@ -20,24 +20,23 @@
 
 import { ImageResponse } from "next/og"
 
+import { plano, tramoAzul } from "@/lib/copy-headline"
 import { soloLogo } from "@/lib/logo-pieza"
 import { fuentes } from "@/lib/placa/fuentes"
 import {
   AZUL_SOBRE_OSCURO,
-  BANDAS,
   EYEBROW,
   FAMILIA,
   FONDO,
   INTERLINEADO,
   ITEM,
   MEDIDAS,
+  SEPARACION,
   TEXTO,
   TITULAR,
   TRACKING_TITULAR,
-  armarTitular,
   BAJADA,
-  CUERPO_TITULAR,
-  zonaDeTexto,
+  composicionDeTexto,
   type Formato,
 } from "@/lib/placa/sistema"
 
@@ -135,51 +134,35 @@ export type PlacaTipografica = {
 type Tramo = { texto: string; azul: boolean }
 
 /**
- * Parte una línea en tramos de color.
- *
- * Compara sin acentos ni mayúsculas porque el destacado lo escribe un modelo a
- * partir del titular y vuelve con "Minimo" donde el titular dice "Mínimo". En el
- * prompt eso se resolvía pidiéndole al generador que copiara "exactamente"; acá
- * el texto que se imprime es el del titular siempre, y el destacado solo decide
- * dónde cae el color. Si no coincide, la línea entera queda blanca — nunca se
- * pierde ni se deforma una palabra.
- */
-/**
- * Sin tildes y en minúscula, SIN cambiar el largo.
- *
- * El `normalize("NFD")` de antes descomponía "á" en dos caracteres, así que las
- * posiciones que devolvía `indexOf` no servían para cortar el texto original.
- * Mientras la comparación era dentro de una sola línea el error no se veía;
- * midiendo contra el titular entero, corre el corte del color.
- */
-const SIN_TILDE: Record<string, string> = {
-  á: "a", é: "e", í: "i", ó: "o", ú: "u", ü: "u", ñ: "n", à: "a", è: "e", ì: "i", ò: "o", ù: "u",
-}
-const plano = (s: string) => s.toLowerCase().replace(/[áéíóúüñàèìòù]/g, (c) => SIN_TILDE[c] ?? c)
-
-/**
  * Parte el titular ENTERO en tramos de color, línea por línea.
  *
- * Antes se buscaba el destacado dentro de cada línea por separado, y por eso el
- * azul desaparecía sin aviso: `armarTitular` reparte el titular en las líneas que
- * mejor entran, que casi nunca son las que mandó el modelo. Un destacado como
- * "al que ya está adentro." quedaba partido entre la línea 2 y la 3, no coincidía
- * entero en ninguna, y la placa salía toda blanca — que es exactamente lo que
- * pasó con las tres muestras.
+ * Dos cosas pasan acá, y ninguna es evidente.
  *
- * Ahora la posición se calcula una vez sobre el titular unido y después se
- * reparte por línea. Si el destacado no está, todo queda blanco: nunca se
- * deforma ni se pierde una palabra del titular.
+ * La primera: la posición del azul se calcula UNA vez sobre el titular unido y
+ * después se reparte por línea. Buscándolo línea por línea el azul desaparecía
+ * sin aviso, porque `armarTitular` reparte el titular en las líneas que mejor
+ * entran y casi nunca son las que mandó el modelo: un destacado como "al que ya
+ * está adentro." quedaba partido entre la línea 2 y la 3 y no coincidía entero
+ * en ninguna.
+ *
+ * La segunda: el texto que se imprime es SIEMPRE el del titular. El destacado
+ * solo decide dónde cae el color, así que un azul mal ubicado no puede deformar
+ * ni perder una palabra.
  */
 export function tramosDeLineas(lineas: string[], destacado?: string): Tramo[][] {
-  const blanco = () => lineas.map((l) => [{ texto: l, azul: false }])
+  const unido = lineas.join(" ")
 
-  const buscado = (destacado ?? "").trim()
-  if (!buscado) return blanco()
+  // `tramoAzul` es la garantía: devuelve el tramo que propuso el modelo si se
+  // puede ubicar en el titular —tolerando tildes perdidas y recortes— y el
+  // remate calculado si no. Antes acá se devolvía todo blanco cuando el
+  // destacado no coincidía, que es como salían las piezas sin una sola palabra
+  // en azul.
+  const azul = tramoAzul(unido, destacado)
+  if (!azul) return lineas.map((l) => [{ texto: l, azul: false }])
 
-  const desde = plano(lineas.join(" ")).indexOf(plano(buscado))
-  if (desde === -1) return blanco()
-  const hasta = desde + buscado.length
+  const desde = plano(unido).indexOf(plano(azul))
+  if (desde === -1) return lineas.map((l) => [{ texto: l, azul: false }])
+  const hasta = desde + azul.length
 
   let cursor = 0
   return lineas.map((linea) => {
@@ -265,58 +248,27 @@ function Titular({
 
 function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number; alto: number }) {
   const layout = placa.layout ?? "solo"
-  const margen = Math.round(ancho * BANDAS.margen)
-  // El aire entre los tres componentes del grupo. Juntos acá y no como números
-  // sueltos en cada bloque: la separación es una decisión sola, y con los valores
-  // desperdigados subir una y olvidar las otras deja el grupo desparejo. Además
-  // `altoBloque` los usa para reservar el espacio, así que tienen que ser los
-  // mismos números en los dos lados o el titular calcula mal cuánto le queda.
-  const SEP_EYEBROW = 1.45 // × el cuerpo del rótulo
-  const SEP_BLOQUE = 0.78 // × el cuerpo del titular
-  const SEP_ITEM = 0.8 // × el cuerpo del ítem
-  // El texto NO usa todo el ancho: se queda dentro de la columna que el prompt
-  // del fondo dejó tranquila, para que la foto se siga viendo a la derecha.
   const centrado = layout === "centrado"
-  const zona = zonaDeTexto(placa.familia ?? "tecnologia", layout)
-  const util = centrado
-    ? Math.round(ancho * zona.ancho)
-    : Math.round(ancho * zona.ancho) - margen
+  const familia = placa.familia ?? "tecnologia"
   const items = placa.items ?? []
 
-  // La banda donde vive TODO el texto. En centrado es una franja superior a todo
-  // el ancho; en los otros tres, la columna izquierda de siempre.
-  const bandaDesde = Math.round(alto * (centrado ? BANDAS.centradoDesde : BANDAS.titularDesde))
-  const bandaAlto = centrado
-    ? Math.round(alto * zona.alto)
-    : Math.round(alto * (BANDAS.bloqueHasta - BANDAS.titularDesde))
-
-  /*
-   * Cuánto alto puede ocupar el titular.
-   *
-   * Se le descuenta lo que va a pedir el bloque de abajo, porque comparten la
-   * banda: sin esto, un titular largo se queda con todo y los ítems terminan
-   * sobre el logo.
-   */
-  const separacionBloque = Math.round(CUERPO_TITULAR * SEP_BLOQUE)
-  const altoBloque =
-    layout === "bullets" && items.length > 0
-      ? separacionBloque +
-        items.length * ITEM.cuerpo +
-        (items.length - 1) * Math.round(ITEM.cuerpo * SEP_ITEM)
-      : layout === "bajada" && placa.bajada
-        ? separacionBloque + Math.round(alto * 0.22)
-        : 0
-
-  const { lineas, escalas, cuerpo } = armarTitular({
-    texto: placa.titular,
-    anchoDisponible: util,
-    altoDisponible:
-      bandaAlto - altoBloque - (placa.eyebrow ? Math.round(EYEBROW.cuerpo * (1 + SEP_EYEBROW)) : 0),
+  // Cuántos ítems entran y a qué cuerpo sale el titular: la cuenta vive en
+  // `sistema.ts` porque la comparte con la revisión de la pieza. Ver ahí por qué
+  // el titular puede quedarse con el lugar del cuarto ítem.
+  const { visibles, geometria, lineas, escalas, cuerpo } = composicionDeTexto({
+    formato: placa.formato ?? "square",
+    titular: placa.titular,
+    layout,
+    familia,
+    items: items.length,
+    bajada: Boolean(placa.bajada),
+    eyebrow: Boolean(placa.eyebrow),
     enfasisPrimera: placa.enfasis === "primera",
-    // El mismo para todas: dos piezas del feed no pueden salir con la letra de
-    // dos tamaños distintos solo porque una escribió más caracteres que la otra.
-    cuerpoObjetivo: CUERPO_TITULAR,
+    avisar: true,
   })
+
+  const itemsVisibles = layout === "bullets" ? items.slice(0, visibles) : items
+  const { margen, util, bandaDesde, bandaAlto, separacionBloque } = geometria
 
   return (
     <div
@@ -403,7 +355,7 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
           <div
             style={{
               display: "flex",
-              marginBottom: Math.round(EYEBROW.cuerpo * SEP_EYEBROW),
+              marginBottom: Math.round(EYEBROW.cuerpo * SEPARACION.eyebrow),
               fontFamily: FAMILIA,
               fontSize: EYEBROW.cuerpo,
               fontWeight: EYEBROW.peso,
@@ -442,7 +394,7 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
           </div>
         ) : null}
 
-        {layout === "bullets" && items.length > 0 ? (
+        {layout === "bullets" && itemsVisibles.length > 0 ? (
           <div
             style={{
               display: "flex",
@@ -450,13 +402,13 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
               marginTop: separacionBloque,
             }}
           >
-            {items.map((item, i) => (
+            {itemsVisibles.map((item, i) => (
               <div
                 key={i}
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  marginTop: i === 0 ? 0 : Math.round(ITEM.cuerpo * SEP_ITEM),
+                  marginTop: i === 0 ? 0 : Math.round(ITEM.cuerpo * SEPARACION.item),
                 }}
               >
                 <div

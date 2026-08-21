@@ -29,6 +29,7 @@ import {
   type PlanResumen,
 } from "@/lib/calendario-context"
 import { aPlanBase, columnasResumen } from "@/lib/calendario-server"
+import { repararTitulares } from "@/lib/titular-reparacion"
 import {
   DOCTRINA_HEADLINE,
   FORMA_POR_OBJETIVO,
@@ -37,6 +38,7 @@ import {
   PATRONES_HEADLINE,
   TEST_RECHAZO,
   esPatron,
+  limpiarTitular,
 } from "@/lib/copy-headline"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -339,7 +341,8 @@ Devolvé SOLO un JSON válido, sin markdown ni texto fuera del objeto:
         {
           "id": "a",
           "tesis": "La afirmación que defiende la pieza, en 1 frase discutible",
-          "headline": "EL TEXTO IMPRESO EN LA PIEZA. Máx ${HEADLINE_MAX_PALABRAS} palabras. Ver las reglas del titular más arriba",
+          "headline": "EL TEXTO IMPRESO EN LA PIEZA. Máx ${HEADLINE_MAX_PALABRAS} palabras Y máx ${HEADLINE_MAX_CARACTERES} caracteres con espacios. Ver las reglas del titular más arriba",
+          "caracteres": "cuántos caracteres tiene el titular que acabás de escribir, contando espacios y puntuación. Si te da más de ${HEADLINE_MAX_CARACTERES}, reescribilo antes de seguir",
           "patron": ${PATRONES_HEADLINE.map((p) => `"${p.id}"`).join(" | ")},
           "titulo": "Nombre interno de la pieza para la grilla del calendario, máx 8 palabras. NO es el titular impreso",
           "hook": "Primera línea del caption, la que frena el scroll en el feed, máx 15 palabras",
@@ -413,6 +416,10 @@ Cada slot tiene exactamente UNA opción, con "id": "a".`,
   }
 
   if (slots.length === 0) throw new Error("Ningún slot válido")
+
+  // El control de calidad del titular es el mismo que usa el banco de contenido:
+  // vive en `titular-reparacion.ts` para que no haya dos.
+  await repararTitulares(slots.flatMap((s) => s.opciones))
 
   slots.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0))
 
@@ -543,32 +550,18 @@ function slotsCompletos(text: string): unknown[] {
 const LETRAS = ["a", "b", "c", "d"]
 
 /**
- * El titular, dentro del presupuesto de la placa.
+ * El titular tal como lo escribió el modelo. Entero.
  *
- * Corta por palabra entera y no por carácter: "…acceso a tu re" es peor que un
- * titular corto. Si aun así no entra, el que llega es el que el modelo escribió
- * de más — se registra, porque significa que el prompt no se cumplió y eso no se
- * ve en ningún lado.
+ * Acá antes se recortaba al presupuesto cortando por palabra, y ese recorte es
+ * el que produjo "4.400 pantallas de firma. 400 sucursales. Un": la palabra
+ * quedaba completa y la frase, colgada. El techo se hace cumplir después, con
+ * `repararTitulares`, que se lo pide de vuelta al modelo en vez de amputarlo.
+ *
+ * El tope de 200 no es el presupuesto: es un freno contra un modelo que devuelva
+ * un párrafo en el campo del titular. Ninguno real lo toca.
  */
-function recortarHeadline(raw: unknown): string {
-  if (typeof raw !== "string") return ""
-  const limpio = raw.trim().replace(/\s+/g, " ")
-  if (limpio.length <= HEADLINE_MAX_CARACTERES) return limpio
-
-  const palabras = limpio.split(" ")
-  let corto = ""
-  for (const p of palabras) {
-    const tentativa = corto ? `${corto} ${p}` : p
-    if (tentativa.length > HEADLINE_MAX_CARACTERES) break
-    corto = tentativa
-  }
-
-  console.warn(
-    `[calendario] titular de ${limpio.length} caracteres recortado a ${corto.length}: "${limpio}"`
-  )
-  // Si ni la primera palabra entra, se devuelve el original: mejor una placa
-  // fuera de sistema que una pieza sin titular.
-  return corto || limpio
+function leerHeadline(raw: unknown): string {
+  return typeof raw === "string" ? limpiarTitular(raw).slice(0, 200) : ""
 }
 
 /**
@@ -596,7 +589,7 @@ function normalizarOpciones(raw: unknown, audienciaDefault: Audiencia): Opcion[]
     // El tope es de caracteres y no de palabras porque lo que se agota es el
     // ANCHO de la columna. Cortado a 200, un titular de sesenta y cuatro salía
     // entero y la placa lo imprimía con la letra a dos tercios del resto del feed.
-    const headline = recortarHeadline(op.headline)
+    const headline = leerHeadline(op.headline)
 
     return [
       {

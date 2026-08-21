@@ -24,10 +24,12 @@ import { aSlotsCliente } from "@/lib/calendario-server"
 import {
   DOCTRINA_HEADLINE,
   FORMA_POR_OBJETIVO,
+  ajustarTitular,
   HEADLINE_MAX_CARACTERES,
   HEADLINE_MAX_PALABRAS,
   PATRONES_HEADLINE,
   TEST_RECHAZO,
+  limpiarTitular,
   esPatron,
 } from "@/lib/copy-headline"
 
@@ -63,8 +65,11 @@ export async function POST(req: Request) {
   if (!slotId) return NextResponse.json({ error: "Falta el slot" }, { status: 400 })
 
   const tituloHint = typeof raw.titulo === "string" ? raw.titulo.trim().slice(0, 200) : ""
-  const headlineHint =
-    typeof raw.headline === "string" ? raw.headline.trim().slice(0, HEADLINE_MAX_CARACTERES) : ""
+  // Sin recortar: el titular que el usuario tipeó a mano se respeta letra por
+  // letra. Cortarlo al presupuesto era peor que inútil —le devolvía su propia
+  // frase partida sin decirle por qué— y además le sacaba al modelo la
+  // referencia completa sobre la que tiene que armar el resto de la idea.
+  const headlineHint = typeof raw.headline === "string" ? limpiarTitular(raw.headline).slice(0, 200) : ""
   const anguloHint = typeof raw.angulo === "string" ? raw.angulo.trim().slice(0, 400) : ""
   const instruccion = typeof raw.instruccion === "string" ? raw.instruccion.trim().slice(0, 400) : ""
   const objetivoFijo: Objetivo | null = esObjetivo(raw.objetivo) ? raw.objetivo : null
@@ -242,7 +247,8 @@ ${instruccion ? `\nINSTRUCCIÓN DEL USUARIO — tiene prioridad sobre todo lo de
 Devolvé SOLO este JSON, sin markdown ni texto alrededor:
 {
   "tesis": "La afirmación que defiende la pieza, en 1 frase discutible",
-  "headline": "EL TEXTO IMPRESO EN LA PIEZA. Máx ${HEADLINE_MAX_PALABRAS} palabras, con las reglas del titular de más arriba",
+  "headline": "EL TEXTO IMPRESO EN LA PIEZA. Máx ${HEADLINE_MAX_PALABRAS} palabras Y máx ${HEADLINE_MAX_CARACTERES} caracteres con espacios — contalos antes de entregar. Reglas completas más arriba",
+  "caracteres": "cuántos caracteres tiene el titular que acabás de escribir, contando espacios y puntuación. Si te da más de ${HEADLINE_MAX_CARACTERES}, reescribilo antes de seguir",
   "patron": ${PATRONES_HEADLINE.map((p) => `"${p.id}"`).join(" | ")},
   "titulo": "Nombre interno para la grilla del calendario, máx 8 palabras. NO es el titular impreso",
   "hook": "Primera línea del caption, la que frena el scroll, máx 15 palabras",
@@ -264,8 +270,16 @@ Devolvé SOLO este JSON, sin markdown ni texto alrededor:
 
   return {
     titulo: str(parsed.titulo, 200),
-    // Por caracteres, no por palabras: lo que se agota es el ancho de la columna.
-    headline: str(parsed.headline, HEADLINE_MAX_CARACTERES),
+    /*
+     * El titular entero, y el presupuesto se hace cumplir sin mutilarlo.
+     *
+     * `str(..., HEADLINE_MAX_CARACTERES)` era un corte crudo por carácter: acá
+     * el titular podía salir partido a mitad de palabra, todavía peor que en el
+     * plan. `ajustarTitular` suelta oraciones completas y, si el titular es una
+     * sola, lo devuelve tal cual — que sale unos píxeles más chico, pero dice
+     * lo que tiene que decir.
+     */
+    headline: ajustarTitular(limpiarTitular(str(parsed.headline, 200))),
     patron: esPatron(parsed.patron) ? parsed.patron : "",
     tesis: str(parsed.tesis, 400),
     hook: str(parsed.hook, 300),

@@ -70,7 +70,12 @@ export function placaDeVariables(
     layout: layoutFijo ?? layoutDe(variables),
     familia: template.familia,
     formato,
-    eyebrow: variables.category || undefined,
+    // El rubro del template como red: acá el rótulo deja de ser opcional. Que
+    // esté vacío significaba que el derivador no lo propuso —o que el template
+    // ni siquiera lo pedía, el caso de seis de los quince— y la pieza salía sin
+    // nada arriba del titular. El template sabe de qué habla; no hace falta
+    // preguntárselo a un modelo para llenar ese hueco.
+    eyebrow: variables.category || template.rubro,
     // La bajada solo se dibuja si no hay ítems: comparten banda y nunca conviven.
     bajada: variables.bajada || undefined,
     titular: variables.headline,

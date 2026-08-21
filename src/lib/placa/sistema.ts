@@ -321,6 +321,7 @@ export function armarTitular({
   altoDisponible,
   enfasisPrimera,
   cuerpoObjetivo,
+  avisar = true,
 }: {
   /** Las líneas como vinieron. Se reunifican y se vuelven a repartir. */
   texto: string[]
@@ -329,6 +330,12 @@ export function armarTitular({
   enfasisPrimera: boolean
   /** El cuerpo que la placa quiere. Ver `CUERPO_TITULAR`. */
   cuerpoObjetivo?: number
+  /**
+   * Si registrar el titular que no entró. Va en `false` cuando la llamada es una
+   * MEDICIÓN y no un dibujo: `composicionDeTexto` prueba encajes a propósito, y
+   * cada prueba fallida ensuciaba el log con una alarma que no lo era.
+   */
+  avisar?: boolean
 }): { lineas: string[]; escalas: number[]; cuerpo: number } {
   const palabras = texto.join(" ").split(/\s+/).filter(Boolean)
   const objetivo = cuerpoObjetivo ?? CUERPO_TITULAR
@@ -377,13 +384,13 @@ export function armarTitular({
     if (!mejor || cuerpo > mejor.cuerpo) mejor = { lineas, escalas, cuerpo }
   }
 
-  if (mejor) {
+  if (mejor && avisar) {
     console.warn(
       `[placa] el titular no entra en ${objetivo}px y sale en ${mejor.cuerpo}px: ` +
         `"${palabras.join(" ")}" (${palabras.join(" ").length} caracteres)`
     )
-    return mejor
   }
+  if (mejor) return mejor
 
   return { lineas: texto, escalas: texto.map(() => 1), cuerpo: objetivo }
 }
@@ -402,3 +409,205 @@ export const ITEM = { cuerpo: 38, peso: 400 } as const
 
 /** Títulos apretados: la regla del kit para pesos altos, que en el default se desarman. */
 export const TRACKING_TITULAR = -0.03
+
+/* ── La geometría del bloque de texto ─────────────────────────────────────── */
+
+/**
+ * El aire entre los tres componentes del grupo de texto.
+ *
+ * Vivía dentro del componente que dibuja la placa, y de ahí venía media
+ * desprolijidad: el mismo número servía para separar los bloques al pintarlos y
+ * para RESERVAR el alto que le queda al titular, y las dos cuentas estaban
+ * escritas por separado. Acá arriba hay una sola.
+ */
+export const SEPARACION = {
+  /** × el cuerpo del rótulo */
+  eyebrow: 1.45,
+  /** × el cuerpo del titular */
+  bloque: 0.78,
+  /** × el cuerpo del ítem */
+  item: 0.8,
+} as const
+
+export type GeometriaTexto = {
+  /** El margen del cuadro. */
+  margen: number
+  /** El ancho que puede usar una línea de titular. */
+  util: number
+  /** Dónde arranca la banda de texto. */
+  bandaDesde: number
+  /** Cuánto mide la banda de texto de punta a punta. */
+  bandaAlto: number
+  /** La separación entre el titular y el bloque de abajo. */
+  separacionBloque: number
+  /** Lo que se lleva el bloque secundario, si lo hay. */
+  altoBloque: number
+  /** Lo que le queda al titular, ya descontados el rótulo y el bloque. */
+  altoTitular: number
+}
+
+/**
+ * Dónde entra el texto de una placa. La única cuenta, para los dos que la usan.
+ *
+ * La usa el renderizador para dibujar y `revisarPlaca` para verificar. Que
+ * sea la misma función es el punto: hasta ahora el presupuesto del copy
+ * —`HEADLINE_MAX_CARACTERES`— y el que impone la grilla eran dos números
+ * mantenidos a mano, con un comentario en cada archivo pidiéndole al que los
+ * tocara que se acordara del otro. Un comentario no es una garantía.
+ */
+export function geometriaTexto({
+  ancho,
+  alto,
+  layout,
+  familia,
+  items,
+  bajada,
+  eyebrow,
+}: {
+  ancho: number
+  alto: number
+  layout: string
+  familia: string
+  /** Cuántos ítems dibuja el bloque secundario. */
+  items: number
+  /** Si la pieza lleva bajada. */
+  bajada: boolean
+  /** Si la pieza lleva rótulo arriba. */
+  eyebrow: boolean
+}): GeometriaTexto {
+  const centrado = layout === "centrado"
+  const margen = Math.round(ancho * BANDAS.margen)
+  const zona = zonaDeTexto(familia, layout)
+
+  const util = centrado
+    ? Math.round(ancho * zona.ancho)
+    : Math.round(ancho * zona.ancho) - margen
+
+  const bandaDesde = Math.round(alto * (centrado ? BANDAS.centradoDesde : BANDAS.titularDesde))
+  const bandaAlto = centrado
+    ? Math.round(alto * zona.alto)
+    : Math.round(alto * (BANDAS.bloqueHasta - BANDAS.titularDesde))
+
+  const separacionBloque = Math.round(CUERPO_TITULAR * SEPARACION.bloque)
+  const altoBloque =
+    layout === "bullets" && items > 0
+      ? separacionBloque +
+        items * ITEM.cuerpo +
+        (items - 1) * Math.round(ITEM.cuerpo * SEPARACION.item)
+      : layout === "bajada" && bajada
+        ? separacionBloque + Math.round(alto * 0.22)
+        : 0
+
+  const altoEyebrow = eyebrow ? Math.round(EYEBROW.cuerpo * (1 + SEPARACION.eyebrow)) : 0
+
+  return {
+    margen,
+    util,
+    bandaDesde,
+    bandaAlto,
+    separacionBloque,
+    altoBloque,
+    altoTitular: bandaAlto - altoBloque - altoEyebrow,
+  }
+}
+
+/**
+ * Cómo queda el texto de una placa: cuántos ítems entran y a qué cuerpo sale el
+ * titular.
+ *
+ * EL TITULAR MANDA SOBRE EL BLOQUE. La banda de texto es fija y la comparten los
+ * dos, y con cuatro ítems queda tan apretada que un titular de dos oraciones
+ * sale a dos tercios del cuerpo del feed. En la grilla de Instagram una pieza
+ * con la letra más chica que sus vecinas se nota mucho más que una con tres
+ * ítems en vez de cuatro: el sistema ya decía que el titular es "the loudest
+ * element by a wide margin", y esto es esa frase convertida en una cuenta.
+ * Nunca baja de dos ítems — una lista de uno no es una lista.
+ *
+ * Vive acá y no dentro del componente que dibuja porque la usan los dos lados: el
+ * renderizador para componer y `revisarPlaca` para verificar. Cuando el recorte
+ * de ítems vivía solo en el render, la verificación medía una composición que ya
+ * no existía y marcaba fuera de sistema piezas que estaban bien.
+ */
+export function composicionDeTexto({
+  formato,
+  titular,
+  layout,
+  familia,
+  items,
+  bajada,
+  eyebrow,
+  enfasisPrimera = false,
+  avisar = false,
+}: {
+  formato: Formato
+  /** El titular, en las líneas que vinieran. Se reparte de nuevo igual. */
+  titular: string[]
+  layout: string
+  familia: string
+  /** Cuántos ítems trae el bloque secundario, antes de recortarlo. */
+  items: number
+  bajada: boolean
+  eyebrow: boolean
+  enfasisPrimera?: boolean
+  /** Si registrar el titular que no llegó al cuerpo del sistema. */
+  avisar?: boolean
+}): {
+  /** Cuántos ítems sobreviven al encaje. */
+  visibles: number
+  geometria: GeometriaTexto
+  lineas: string[]
+  escalas: number[]
+  cuerpo: number
+  /** Si el titular sale al cuerpo canónico del feed. */
+  entra: boolean
+} {
+  const { ancho, alto } = MEDIDAS[formato]
+
+  const encajar = (cuantos: number) => {
+    const geometria = geometriaTexto({ ancho, alto, layout, familia, items: cuantos, bajada, eyebrow })
+    return {
+      geometria,
+      titular: armarTitular({
+        texto: titular,
+        anchoDisponible: geometria.util,
+        altoDisponible: geometria.altoTitular,
+        enfasisPrimera,
+        // El mismo para todas: dos piezas del feed no pueden salir con la letra
+        // de dos tamaños distintos solo porque una escribió más caracteres.
+        cuerpoObjetivo: CUERPO_TITULAR,
+        // Los intentos de encaje no son alarmas: se avisa una sola vez, abajo,
+        // y sobre la composición que de verdad se dibuja.
+        avisar: false,
+      }),
+    }
+  }
+
+  let visibles = layout === "bullets" ? items : 0
+  let encaje = encajar(visibles)
+  while (encaje.titular.cuerpo < CUERPO_TITULAR && visibles > 2) {
+    visibles--
+    encaje = encajar(visibles)
+  }
+
+  const { lineas, escalas, cuerpo } = encaje.titular
+  const entra = cuerpo >= CUERPO_TITULAR
+
+  // Soltar un ítem no es un error del sistema, es el sistema resolviendo. Pero
+  // se dice: es contenido que el derivador eligió y que no se imprime.
+  if (avisar && visibles < items) {
+    console.info(
+      `[placa] el bloque baja de ${items} a ${visibles} ítems para que el titular ` +
+        `salga en ${CUERPO_TITULAR}px: "${titular.join(" ")}"`
+    )
+  }
+
+  if (!entra && avisar) {
+    const texto = titular.join(" ")
+    console.warn(
+      `[placa] el titular no entra en ${CUERPO_TITULAR}px y sale en ${cuerpo}px: ` +
+        `"${texto}" (${texto.length} caracteres)`
+    )
+  }
+
+  return { visibles, geometria: encaje.geometria, lineas, escalas, cuerpo, entra }
+}
