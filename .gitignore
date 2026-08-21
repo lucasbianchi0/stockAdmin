@@ -43,3 +43,6 @@ next-env.d.ts
 
 # documentacion de proveedores (contiene credenciales, no commitear)
 docs/*.pdf
+
+# exportaciones de Google Ads (datos de cuenta, no commitear)
+/datos-ads/

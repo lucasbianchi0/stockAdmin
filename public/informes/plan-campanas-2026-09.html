@@ -1,0 +1,1710 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Plan de campañas · Accedra · Septiembre 2026</title>
+<style>
+  @page { size: A4; margin: 14mm 13mm; }
+
+  :root{
+    --ink:#0F1724; --ink-2:#3B4757; --ink-3:#6B7787; --ink-4:#98A2B3;
+    --line:#E4E8EE; --line-2:#F0F3F7;
+    --brand:#1D4ED8; --brand-soft:#EEF3FF; --brand-line:#C7D8FF;
+    --ok:#059669; --ok-soft:#ECFDF5;
+    --warn:#B45309; --warn-soft:#FFFBEB;
+    --bad:#DC2626; --bad-soft:#FEF2F2;
+    --paper:#fff;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:"Inter","Helvetica Neue",Arial,sans-serif;
+    color:var(--ink); background:var(--paper);
+    font-size:9.6pt; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .page{ page-break-after:always; }
+  .page:last-child{ page-break-after:auto; }
+  h1,h2,h3{ margin:0; letter-spacing:-.015em; }
+  h1{ font-size:25pt; line-height:1.1; font-weight:700; }
+  h2{ font-size:14pt; font-weight:700; margin:0 0 3mm; }
+  h3{ font-size:10.5pt; font-weight:700; margin:0 0 1.5mm; }
+  p{ margin:0 0 2.5mm; }
+  strong{ font-weight:650; color:var(--ink); }
+  .eyebrow{ font-size:7pt; font-weight:700; letter-spacing:.16em;
+            text-transform:uppercase; color:var(--ink-4); }
+  .lead{ font-size:11pt; line-height:1.45; color:var(--ink-2); }
+  .muted{ color:var(--ink-3); }
+  .tiny{ font-size:7.6pt; line-height:1.45; color:var(--ink-3); }
+
+  /* ── portada ────────────────────────────────────────────── */
+  .cover{ display:flex; flex-direction:column; height:263mm; }
+  .cover-top{ border-bottom:2.5px solid var(--ink); padding-bottom:5mm; }
+  .cover-mid{ flex:1; display:flex; flex-direction:column; justify-content:center; }
+  .verdict{
+    border-left:3.5px solid var(--brand); background:var(--brand-soft);
+    padding:5mm 6mm; margin:6mm 0;
+  }
+  .verdict p:last-child{ margin-bottom:0; }
+
+  /* ── bloques ────────────────────────────────────────────── */
+  section{ margin-bottom:7mm; }
+  .sec-head{ display:flex; align-items:baseline; gap:3mm;
+             border-bottom:1px solid var(--ink); padding-bottom:1.5mm; margin-bottom:3.5mm; }
+  .sec-head .n{ font-size:8pt; font-weight:700; color:var(--brand); }
+
+  table{ width:100%; border-collapse:collapse; font-size:8.6pt; }
+  th{ text-align:left; font-weight:650; font-size:7pt; letter-spacing:.07em;
+      text-transform:uppercase; color:var(--ink-3);
+      border-bottom:1px solid var(--ink); padding:1.5mm 2mm; }
+  td{ padding:1.6mm 2mm; border-bottom:1px solid var(--line-2); vertical-align:top; }
+  tr:last-child td{ border-bottom:none; }
+  .num{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .total td{ border-top:1.5px solid var(--ink); border-bottom:none; font-weight:700; }
+  .dim td{ color:var(--ink-4); }
+
+  .tag{ display:inline-block; font-size:6.8pt; font-weight:700; letter-spacing:.05em;
+        padding:.6mm 1.6mm; border-radius:2px; white-space:nowrap; }
+  .t-up{ background:var(--ok-soft); color:var(--ok); }
+  .t-dn{ background:var(--bad-soft); color:var(--bad); }
+  .t-fl{ background:var(--line-2); color:var(--ink-3); }
+  .t-wr{ background:var(--warn-soft); color:var(--warn); }
+
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:5mm; }
+  .grid3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:4mm; }
+  .card{ border:1px solid var(--line); border-radius:3px; padding:4mm; }
+  .card.accent{ border-color:var(--brand-line); background:var(--brand-soft); }
+  .kpi{ font-size:19pt; font-weight:700; line-height:1; letter-spacing:-.02em; }
+  .kpi.bad{ color:var(--bad); } .kpi.ok{ color:var(--ok); }
+  .kpi-l{ font-size:7pt; font-weight:700; letter-spacing:.1em;
+          text-transform:uppercase; color:var(--ink-3); margin-bottom:1.5mm; }
+  .kpi-n{ font-size:7.4pt; color:var(--ink-3); margin-top:1.5mm; line-height:1.35; }
+
+  .callout{ border:1px solid var(--line); border-left:3px solid var(--warn);
+            background:var(--warn-soft); padding:3.5mm 4mm; margin:3mm 0; }
+  .callout.bad{ border-left-color:var(--bad); background:var(--bad-soft); }
+  .callout.ok{ border-left-color:var(--ok); background:var(--ok-soft); }
+  .callout p:last-child{ margin-bottom:0; }
+
+  ol,ul{ margin:0 0 2.5mm; padding-left:4.5mm; }
+  li{ margin-bottom:1.2mm; }
+
+  .foot{ border-top:1px solid var(--line); margin-top:4mm; padding-top:2mm; }
+  svg{ display:block; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ PORTADA ══════════════════ -->
+<div class="page cover">
+  <div class="cover-top">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <span class="eyebrow">Accedra IT Solutions · Plan de marketing digital</span>
+      <span class="eyebrow">21 de agosto de 2026</span>
+    </div>
+  </div>
+
+  <div class="cover-mid">
+    <div class="eyebrow" style="margin-bottom:4mm">Análisis de mercado y plan de campañas</div>
+    <h1>El mercado que buscamos<br>no está donde estamos<br>buscando.</h1>
+
+    <div class="verdict">
+      <p><strong>La minería argentina va a invertir US$ 7.510 millones en 2026</strong> y tiene
+      un pipeline de proyectos por unos US$ 44.000 millones. Es el sector de mayor crecimiento
+      del país y la intuición de apuntarle es correcta.</p>
+      <p><strong>Pero las mineras no buscan servicios de IT en Google.</strong> Lo verificamos
+      contra el Planificador de Google: «conectividad minera», «digitalización minería» y
+      «servicios IT minería» no registran volumen suficiente para reportar.
+      «software minería» tiene 10 búsquedas por mes en todo el país.</p>
+      <p><strong>Mientras tanto, «firma digital» hace 33.100 búsquedas mensuales en Argentina
+      y creció 173% en un año.</strong> Es el diferencial de Accedra, y la demanda está explotando
+      justo ahora.</p>
+    </div>
+
+    <p class="lead">Este documento propone: capturar con Google Ads la demanda de firma digital
+    que ya existe y está creciendo, y llegar a minería por un canal distinto, porque el
+    buscador no es donde esas decisiones se toman.</p>
+  </div>
+
+  <div class="grid3" style="margin-top:6mm">
+    <div class="card">
+      <div class="kpi-l">Inversión últimos 12 meses</div>
+      <div class="kpi">$712.276</div>
+      <div class="kpi-n">2.120 clics · 3 anuncios activos</div>
+    </div>
+    <div class="card">
+      <div class="kpi-l">Gasto sin resultado</div>
+      <div class="kpi bad">98,2%</div>
+      <div class="kpi-n">$494.474 en búsquedas que nunca generaron una consulta</div>
+    </div>
+    <div class="card">
+      <div class="kpi-l">Consultas desde el sitio</div>
+      <div class="kpi bad">0</div>
+      <div class="kpi-n">Las 7 conversiones del año son chats de Google, no del sitio</div>
+    </div>
+  </div>
+
+  <div class="foot tiny">
+    Fuentes: cuenta Google Ads 300-886-7811 (informes de campaña, términos, anuncios y páginas
+    de destino, 20/08/2025–20/08/2026) · Planificador de Palabras Clave de Google, Argentina,
+    ago 2025–jul 2026 · base de datos propia del sitio accedra.com.ar · CAEM, Secretaría de
+    Minería y observatorio RIGI.
+  </div>
+</div>
+
+<!-- ══════════════════ 1 · QUÉ VENDEMOS ══════════════════ -->
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">01</span><h2>Qué vendemos, y qué de eso se puede vender por buscador</h2></div>
+
+    <p>Accedra tiene cinco líneas. No todas se compran igual, y esa diferencia decide dónde
+    conviene poner la plata.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Solución</th>
+          <th>Qué es</th>
+          <th class="num">Búsquedas/mes<br>en Argentina</th>
+          <th class="num">Variación<br>interanual</th>
+          <th>¿Sirve<br>buscador?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Firma Biométrica</strong></td>
+          <td>Firma electrónica y digital con validez legal, biometría sobre tabletas Wacom,
+              eSignAnywhere, factoring digital, onboarding</td>
+          <td class="num"><strong>34.580</strong></td>
+          <td class="num"><span class="tag t-up">+173%</span></td>
+          <td><span class="tag t-up">Sí, es el motor</span></td>
+        </tr>
+        <tr>
+          <td><strong>Consultoría Microsoft</strong></td>
+          <td>Gestión documental, SharePoint, Power BI, Dynamics 365</td>
+          <td class="num">930</td>
+          <td class="num"><span class="tag t-dn">−22%</span></td>
+          <td><span class="tag t-fl">Parcial</span></td>
+        </tr>
+        <tr>
+          <td><strong>Seguridad IT</strong></td>
+          <td>Zero Trust, Palo Alto, Cisco Umbrella, seguridad OT</td>
+          <td class="num">310</td>
+          <td class="num"><span class="tag t-fl">≈0%</span></td>
+          <td><span class="tag t-fl">Parcial, caro</span></td>
+        </tr>
+        <tr>
+          <td><strong>Networking</strong></td>
+          <td>Cableado estructurado, switching, wireless, telefonía IP, contingencia</td>
+          <td class="num">50</td>
+          <td class="num"><span class="tag t-dn">−30%</span></td>
+          <td><span class="tag t-dn">No como está hoy</span></td>
+        </tr>
+        <tr>
+          <td><strong>Software &amp; AI</strong></td>
+          <td>Desarrollo a medida, inteligencia aplicada</td>
+          <td class="num">—</td>
+          <td class="num">—</td>
+          <td><span class="tag t-fl">Nunca se probó</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="tiny" style="margin-top:2mm">Volumen = suma de las búsquedas medidas para cada
+    línea en el Planificador de Google (Argentina, promedio mensual ago 2025–jul 2026).
+    «Networking» excluye a propósito el genérico «cableado estructurado», que atrae consumidores
+    y no empresas.</p>
+
+    <div class="callout">
+      <p><strong>La conclusión incómoda:</strong> Networking se lleva hoy el 32% del presupuesto
+      ($224.498 en 12 meses) y su mercado de búsqueda es 690 veces más chico que el de firma.
+      No es que Networking no sirva como negocio — es que <em>no se compra buscándolo en Google</em>.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">02</span><h2>La tendencia: un mercado que se duplicó</h2></div>
+
+    <div class="grid2">
+      <div>
+        <p>El volumen agregado de las 24 búsquedas analizadas pasó de unas <strong>35 mil consultas
+        mensuales en agosto de 2025 a unas 65 mil en julio de 2026</strong>. Casi el doble en
+        doce meses.</p>
+        <p>El salto no es parejo: se concentra entre mayo y junio de 2026, y lo empuja casi
+        enteramente <strong>«firma digital»</strong>, que solo creció 49% en los últimos tres
+        meses.</p>
+        <p>La lectura de negocio: la digitalización documental en Argentina dejó de ser una
+        conversación de early adopters. Hay una ola, empezó hace pocos meses y todavía está
+        subiendo.</p>
+        <div class="callout ok">
+          <p><strong>Ventana de oportunidad.</strong> La competencia en «firma digital» está
+          calificada como <em>Media</em>, no Alta. Un mercado que se duplica con competencia
+          media es exactamente el momento de entrar — dentro de un año va a ser Alta y la puja
+          va a costar el doble.</p>
+        </div>
+      </div>
+
+      <div>
+        <svg viewBox="0 0 340 220" width="100%" role="img"
+             aria-label="Volumen de búsqueda agregado por mes, agosto 2025 a julio 2026">
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#1D4ED8" stop-opacity=".22"/>
+              <stop offset="100%" stop-color="#1D4ED8" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <!-- ejes -->
+          <line x1="34" y1="15" x2="34" y2="175" stroke="#E4E8EE"/>
+          <line x1="34" y1="175" x2="330" y2="175" stroke="#0F1724" stroke-width="1"/>
+          <!-- guías -->
+          <line x1="34" y1="55" x2="330" y2="55" stroke="#F0F3F7"/>
+          <line x1="34" y1="95" x2="330" y2="95" stroke="#F0F3F7"/>
+          <line x1="34" y1="135" x2="330" y2="135" stroke="#F0F3F7"/>
+          <text x="30" y="58"  text-anchor="end" font-size="7.5" fill="#98A2B3">80 mil</text>
+          <text x="30" y="98"  text-anchor="end" font-size="7.5" fill="#98A2B3">60 mil</text>
+          <text x="30" y="138" text-anchor="end" font-size="7.5" fill="#98A2B3">40 mil</text>
+          <!-- serie: ago25..jul26 -->
+          <path d="M44,150 L70,148 L96,152 L122,158 L148,155 L174,152 L200,146 L226,142
+                   L252,136 L278,128 L304,92 L330,88 L330,175 L44,175 Z" fill="url(#g1)"/>
+          <path d="M44,150 L70,148 L96,152 L122,158 L148,155 L174,152 L200,146 L226,142
+                   L252,136 L278,128 L304,92 L330,88"
+                fill="none" stroke="#1D4ED8" stroke-width="2.2"
+                stroke-linejoin="round" stroke-linecap="round"/>
+          <circle cx="44"  cy="150" r="2.8" fill="#1D4ED8"/>
+          <circle cx="330" cy="88"  r="3.4" fill="#1D4ED8"/>
+          <text x="44"  y="190" text-anchor="middle" font-size="7.5" fill="#6B7787">ago 25</text>
+          <text x="187" y="190" text-anchor="middle" font-size="7.5" fill="#6B7787">ene 26</text>
+          <text x="330" y="190" text-anchor="end"    font-size="7.5" fill="#6B7787">jul 26</text>
+          <text x="330" y="78"  text-anchor="end" font-size="8.5" font-weight="700" fill="#1D4ED8">≈65 mil</text>
+          <text x="44"  y="142" text-anchor="start" font-size="8.5" font-weight="700" fill="#6B7787">≈35 mil</text>
+          <text x="34" y="212" font-size="7" fill="#98A2B3">Volumen mensual agregado · 24 búsquedas · Argentina</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">03</span><h2>El mercado, con números</h2></div>
+
+    <p>Consultamos el Planificador de Palabras Clave de Google para Argentina sobre 24 términos
+    del negocio. Estos son los que tienen volumen real:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Búsqueda</th>
+          <th class="num">Prom.<br>mensual</th>
+          <th class="num">3 meses</th>
+          <th class="num">Interanual</th>
+          <th>Compe-<br>tencia</th>
+          <th class="num">Nuestra cuota<br>de impresiones</th>
+          <th class="num">Puja tope<br>de página</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--brand-soft)">
+          <td><strong>firma digital</strong></td>
+          <td class="num"><strong>33.100</strong></td>
+          <td class="num"><span class="tag t-up">+83%</span></td>
+          <td class="num"><span class="tag t-up">+173%</span></td>
+          <td>Media</td>
+          <td class="num"><strong>&lt; 1%</strong></td>
+          <td class="num">$236 – $652</td>
+        </tr>
+        <tr>
+          <td>firma electrónica</td>
+          <td class="num">1.300</td>
+          <td class="num"><span class="tag t-fl">0%</span></td>
+          <td class="num"><span class="tag t-fl">0%</span></td>
+          <td>Media</td>
+          <td class="num"><span class="muted">1%</span></td>
+          <td class="num">$337 – $1.035</td>
+        </tr>
+        <tr>
+          <td>gestión documental</td>
+          <td class="num">720</td>
+          <td class="num"><span class="tag t-dn">−33%</span></td>
+          <td class="num"><span class="tag t-dn">−18%</span></td>
+          <td>Baja</td>
+          <td class="num"><span class="muted">0%</span></td>
+          <td class="num">$582 – $3.861</td>
+        </tr>
+        <tr>
+          <td>digitalización de documentos</td>
+          <td class="num">210</td>
+          <td class="num"><span class="tag t-up">+24%</span></td>
+          <td class="num"><span class="tag t-dn">−34%</span></td>
+          <td>Media</td>
+          <td class="num"><span class="muted">0%</span></td>
+          <td class="num">$663 – $7.053</td>
+        </tr>
+        <tr>
+          <td>zero trust</td>
+          <td class="num">210</td>
+          <td class="num"><span class="tag t-dn">−35%</span></td>
+          <td class="num"><span class="tag t-dn">−19%</span></td>
+          <td>Media</td>
+          <td class="num"><span class="muted">0%</span></td>
+          <td class="num">$1.174 – $8.196</td>
+        </tr>
+        <tr>
+          <td>proveedores mineros</td>
+          <td class="num">140</td>
+          <td class="num"><span class="tag t-dn">−58%</span></td>
+          <td class="num"><span class="tag t-dn">−21%</span></td>
+          <td>Media</td>
+          <td class="num"><span class="muted">0%</span></td>
+          <td class="num">$697 – $2.015</td>
+        </tr>
+        <tr>
+          <td>onboarding digital</td>
+          <td class="num">70</td>
+          <td class="num"><span class="tag t-dn">−60%</span></td>
+          <td class="num"><span class="tag t-dn">−71%</span></td>
+          <td>Media</td>
+          <td class="num"><span class="muted">0%</span></td>
+          <td class="num">$713 – $6.093</td>
+        </tr>
+        <tr>
+          <td>ciberseguridad empresas</td>
+          <td class="num">50</td>
+          <td class="num"><span class="tag t-dn">−25%</span></td>
+          <td class="num"><span class="tag t-dn">−25%</span></td>
+          <td>Alta</td>
+          <td class="num"><span class="muted">0%</span></td>
+          <td class="num">$1.024 – $6.021</td>
+        </tr>
+        <tr>
+          <td>ciberseguridad industrial</td>
+          <td class="num">40</td>
+          <td class="num"><span class="tag t-fl">0%</span></td>
+          <td class="num"><span class="tag t-up">+150%</span></td>
+          <td>Media</td>
+          <td class="num"><span class="muted">0%</span></td>
+          <td class="num">$1.006 – $5.223</td>
+        </tr>
+        <tr>
+          <td>firma biométrica</td>
+          <td class="num">30</td>
+          <td class="num"><span class="tag t-fl">0%</span></td>
+          <td class="num"><span class="tag t-fl">0%</span></td>
+          <td>Media</td>
+          <td class="num"><span class="muted">0%</span></td>
+          <td class="num">$434 – $5.985</td>
+        </tr>
+        <tr>
+          <td>firma electrónica avanzada</td>
+          <td class="num">30</td>
+          <td class="num"><span class="tag t-fl">0%</span></td>
+          <td class="num"><span class="tag t-fl">0%</span></td>
+          <td>Media</td>
+          <td class="num"><span class="muted">0%</span></td>
+          <td class="num">$696 – $3.354</td>
+        </tr>
+        <tr>
+          <td>redes industriales</td>
+          <td class="num">30</td>
+          <td class="num"><span class="tag t-fl">0%</span></td>
+          <td class="num"><span class="tag t-dn">−50%</span></td>
+          <td>Baja</td>
+          <td class="num"><span class="muted">0%</span></td>
+          <td class="num">—</td>
+        </tr>
+        <tr>
+          <td>firma digital contratos</td>
+          <td class="num">20</td>
+          <td class="num"><span class="tag t-dn">−50%</span></td>
+          <td class="num"><span class="tag t-dn">−50%</span></td>
+          <td>Alta</td>
+          <td class="num"><span class="muted">0%</span></td>
+          <td class="num">$384 – $1.694</td>
+        </tr>
+        <tr>
+          <td>firma digital empresas</td>
+          <td class="num">20</td>
+          <td class="num"><span class="tag t-dn">−50%</span></td>
+          <td class="num"><span class="tag t-dn">−75%</span></td>
+          <td>Media</td>
+          <td class="num"><span class="muted">0%</span></td>
+          <td class="num">$1.082 – $4.411</td>
+        </tr>
+        <tr class="dim">
+          <td>cableado estructurado empresas · factoring digital ·
+              seguridad OT · software minería · soporte IT empresas · wifi industrial</td>
+          <td class="num">10 c/u</td>
+          <td class="num">—</td>
+          <td class="num">—</td>
+          <td>—</td>
+          <td class="num">0%</td>
+          <td class="num">—</td>
+        </tr>
+        <tr class="dim">
+          <td><strong>conectividad minera · digitalización minería ·
+              servicios IT minería · infraestructura IT empresas</strong></td>
+          <td class="num"><strong>sin datos</strong></td>
+          <td class="num">—</td>
+          <td class="num">—</td>
+          <td>—</td>
+          <td class="num">—</td>
+          <td class="num">—</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="tiny" style="margin-top:2mm">«Sin datos» significa que Google no reporta volumen:
+    hay tan pocas búsquedas que no alcanza el umbral mínimo de la herramienta.
+    Pujas en pesos argentinos, rango de la parte superior de la página. Los volúmenes y las variaciones son estimaciones de Google y se recalculan a diario: pueden moverse algunos puntos entre consultas.</p>
+  </section>
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">04</span><h2>Minería: por qué sí como cliente, por qué no como campaña</h2></div>
+
+    <div class="grid2">
+      <div>
+        <h3>El sector es real y es enorme</h3>
+        <ul>
+          <li>Inversión extranjera directa minera proyectada: <strong>US$ 7.510 millones en 2026</strong>,
+              contra US$ 1.388 millones en 2025.</li>
+          <li>Pipeline bajo el RIGI: <strong>cerca de US$ 40.000 millones</strong> entre proyectos
+              aprobados y en evaluación. El cobre lidera con el 65,7%; el litio, el 30%.</li>
+          <li>Exportaciones mineras: <strong>US$ 4.742 millones</strong> en el primer semestre
+              de 2026, récord histórico.</li>
+          <li>Los trámites del sector se están digitalizando: el Registro Federal de Proveedores
+              Mineros y los trámites de la Secretaría de Minería ya migraron a plataforma digital
+              con firma electrónica.</li>
+        </ul>
+        <p>Una minera que abre un proyecto en San Juan o Catamarca necesita exactamente lo que
+        Accedra vende: red en sitio remoto, seguridad OT, y firma digital para contratos,
+        remitos y certificaciones con proveedores.</p>
+      </div>
+
+      <div>
+        <h3>Pero no lo busca en Google</h3>
+        <svg viewBox="0 0 340 176" width="100%" role="img"
+             aria-label="Comparación de volumen de búsqueda mensual: firma digital contra términos de minería">
+          <text x="0" y="12" font-size="7.5" fill="#6B7787">Búsquedas mensuales en Argentina</text>
+          <!-- firma digital -->
+          <text x="0" y="36" font-size="8" fill="#0F1724" font-weight="650">firma digital</text>
+          <rect x="0" y="41" width="330" height="15" rx="2" fill="#1D4ED8"/>
+          <text x="324" y="52" text-anchor="end" font-size="8.5" font-weight="700" fill="#fff">33.100</text>
+          <!-- proveedores mineros -->
+          <text x="0" y="76" font-size="8" fill="#0F1724">proveedores mineros</text>
+          <rect x="0" y="81" width="1.4" height="15" rx="0.7" fill="#98A2B3"/>
+          <text x="8" y="93" font-size="8.5" font-weight="700" fill="#6B7787">140</text>
+          <!-- software mineria -->
+          <text x="0" y="116" font-size="8" fill="#0F1724">software minería</text>
+          <rect x="0" y="121" width="1" height="15" rx="0.5" fill="#98A2B3"/>
+          <text x="8" y="133" font-size="8.5" font-weight="700" fill="#6B7787">10</text>
+          <!-- sin datos -->
+          <text x="0" y="156" font-size="8" fill="#0F1724">conectividad minera</text>
+          <text x="0" y="170" font-size="8.5" font-weight="700" fill="#DC2626">sin volumen medible</text>
+        </svg>
+        <div class="callout bad" style="margin-top:2mm">
+          <p><strong>Y ojo con «proveedores mineros» (140/mes).</strong> Esa búsqueda la hace
+          gente que quiere <em>ser</em> proveedora y busca cómo inscribirse en el registro
+          federal — no una minera buscando contratar IT. Pujar ahí es repetir el error de
+          <code>gde</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <p><strong>Cómo se llega entonces a minería.</strong> Las compras de IT en minería no
+      salen de una búsqueda: salen de licitaciones, registros de proveedores y relaciones.
+      El plan las ataca por vías que no son el buscador — inscripción en el Registro Federal
+      de Proveedores Mineros, LinkedIn dirigido a los perfiles que deciden, y presencia en los
+      eventos del sector. Presupuesto y detalle en las secciones 09 y 10.</p>
+    </div>
+  </section>
+</div>
+
+<!-- ══════════════════ 5 · DIAGNÓSTICO ══════════════════ -->
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">05</span><h2>De dónde partimos: la cuenta hoy</h2></div>
+
+    <table>
+      <thead>
+        <tr><th>Campaña</th><th>Estado</th><th class="num">Inversión 12m</th>
+            <th class="num">Clics</th><th class="num">CPC medio</th>
+            <th class="num">Consultas<br>reales</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Firma Digital Biométrica</strong></td>
+          <td><span class="tag t-wr">Limitada por presupuesto</span></td>
+          <td class="num">$487.779</td><td class="num">1.741</td>
+          <td class="num">$280</td><td class="num">0</td>
+        </tr>
+        <tr>
+          <td><strong>Cableado Estructurado</strong></td>
+          <td>Activa</td>
+          <td class="num">$224.498</td><td class="num">379</td>
+          <td class="num">$592</td><td class="num">0</td>
+        </tr>
+        <tr class="dim">
+          <td>Soluciones Cisco · Palo Alto · Sharepoint ·<br>Hiperconvergencia · Display</td>
+          <td>En pausa</td>
+          <td class="num">$0</td><td class="num">0</td>
+          <td class="num">—</td><td class="num">—</td>
+        </tr>
+        <tr class="total">
+          <td>Total</td><td></td>
+          <td class="num">$712.276</td><td class="num">2.120</td>
+          <td class="num">$336</td><td class="num">0</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="grid2" style="margin-top:4mm">
+      <div>
+        <h3>Los cuatro problemas</h3>
+        <ol>
+          <li><strong>Se le pidió a Google clics, no clientes.</strong> Las dos campañas activas
+          usan «Maximizar clics» con concordancia amplia. Google cumplió: compró lo más barato
+          que encontró.</li>
+          <li><strong>El resultado de eso son $242.666 tirados.</strong> Un solo término,
+          <code>gde</code> —el sistema de expedientes del Estado— se llevó $171.306 en 641 clics
+          sin una sola consulta. Son empleados públicos buscando soporte de un sistema estatal.</li>
+          <li><strong>Todo el tráfico cae en 2 páginas genéricas.</strong> El sitio tiene 30
+          landings construidas (5 soluciones × 6 industrias) y ninguna recibe tráfico pago.</li>
+          <li><strong>Google no ve nada.</strong> La acción de conversión del sitio figura como
+          «Requiere atención» con 0 registros: el sitio nuevo se publicó sin el puente de datos
+          hacia Google. Las 7 conversiones del año son chats del Perfil de Empresa.</li>
+        </ol>
+      </div>
+      <div>
+        <h3>Dónde se fue la plata</h3>
+        <table style="font-size:8.2pt">
+          <thead><tr><th>Término</th><th class="num">Gasto</th><th class="num">Consultas</th></tr></thead>
+          <tbody>
+            <tr><td><code>gde</code></td><td class="num">$171.306</td><td class="num">0</td></tr>
+            <tr><td>«san antonio firmas» y variantes</td><td class="num">$37.509</td><td class="num">0</td></tr>
+            <tr><td><code>accedra</code> (marca propia)</td><td class="num">$17.473</td><td class="num">0</td></tr>
+            <tr><td><code>encustody</code> (competidor)</td><td class="num">$8.662</td><td class="num">0</td></tr>
+            <tr><td><code>contractia</code> (competidor)</td><td class="num">$7.716</td><td class="num">0</td></tr>
+            <tr class="total"><td>Suma</td><td class="num">$242.666</td><td class="num">0</td></tr>
+          </tbody>
+        </table>
+        <p class="tiny" style="margin-top:2mm">El 34% de la inversión anual, en cinco líneas.
+        Ninguna de estas búsquedas la hace un cliente potencial.</p>
+        <div class="callout ok" style="margin-top:3mm">
+          <p><strong>Esto también es la buena noticia.</strong> No hace falta más presupuesto
+          para crecer: hace falta dejar de tirar el que ya se tiene. Recuperar esos $242.666
+          equivale a cuatro meses de inversión gratis.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ══════════════════ 6 · LA TESIS ══════════════════ -->
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">06</span><h2>La tesis: dos motores con física distinta</h2></div>
+
+    <p>Todo el plan sale de una sola distinción. Accedra tiene dos negocios que se compran de
+    maneras opuestas, y tratarlos igual es lo que rompió la cuenta.</p>
+
+    <div class="grid2">
+      <div class="card accent">
+        <div class="eyebrow" style="margin-bottom:2mm">Motor 1</div>
+        <h3>Firma Biométrica</h3>
+        <p style="font-size:8.8pt"><strong>La demanda ya existe.</strong> 34.580 búsquedas
+        mensuales en la línea, y el término principal creció 173% en un año. La gente ya está
+        buscando: sólo hay que aparecer y no hacerle perder el tiempo.</p>
+        <table style="font-size:8pt;margin-top:2mm">
+          <tr><td style="padding-left:0">Canal</td><td class="num">Google Search</td></tr>
+          <tr><td style="padding-left:0">Ciclo</td><td class="num">3–6 meses</td></tr>
+          <tr><td style="padding-left:0">Techo</td><td class="num">6.100 búsq/mes útiles</td></tr>
+          <tr><td style="padding-left:0">Qué convierte</td><td class="num">La landing de la industria</td></tr>
+          <tr><td style="padding-left:0">Su función</td><td class="num"><strong>Volumen de consultas</strong></td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="eyebrow" style="margin-bottom:2mm">Motor 2</div>
+        <h3>Conectividad Crítica · Minería</h3>
+        <p style="font-size:8.8pt"><strong>La demanda no se busca.</strong> «conectividad
+        minera», «servicios IT minería» y «digitalización minería» no registran volumen medible.
+        Nadie va a googlear «integrador para yacimiento»: se decide por antecedentes.</p>
+        <table style="font-size:8pt;margin-top:2mm">
+          <tr><td style="padding-left:0">Canal</td><td class="num">LinkedIn · RFPM · licitaciones</td></tr>
+          <tr><td style="padding-left:0">Ciclo</td><td class="num">6–18 meses</td></tr>
+          <tr><td style="padding-left:0">Techo</td><td class="num">No tiene</td></tr>
+          <tr><td style="padding-left:0">Qué convierte</td><td class="num">El caso Finning</td></tr>
+          <tr><td style="padding-left:0">Su función</td><td class="num"><strong>Valor por consulta</strong></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:4mm">
+      <p><strong>Por qué esta distinción importa tanto:</strong> durante nueve años se le aplicó
+      lógica de buscador al motor 2. El resultado son $665.010 gastados en «Cableado Estructurado»
+      con 6 conversiones — <strong>$110.595 cada una</strong>, diez veces el costo de una consulta
+      de firma. No es que Networking no sirva: es que se lo estaba vendiendo por el canal
+      equivocado, con el nombre equivocado.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">07</span><h2>El principio: primero eficiencia, después escala</h2></div>
+
+    <p>La pregunta de fondo es dónde está el peso más barato que produce una consulta. Y la
+    respuesta no es un canal nuevo ni más presupuesto.</p>
+
+    <table>
+      <thead>
+        <tr><th class="num">Orden</th><th>Palanca</th><th class="num">Costo en<br>medios</th>
+            <th class="num">Efecto</th><th>El dato que lo justifica</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--ok-soft)">
+          <td class="num"><strong>1</strong></td>
+          <td><strong>Negativas + concordancia exacta y frase</strong></td>
+          <td class="num"><strong>$0</strong></td>
+          <td class="num"><strong>+$20.000/mes</strong></td>
+          <td>El 98,2% del gasto va a búsquedas sin consulta. <code>gde</code> solo se llevó
+              $171.306 en 641 clics</td>
+        </tr>
+        <tr>
+          <td class="num">2</td>
+          <td>Cada grupo a la landing de su industria</td>
+          <td class="num">$0</td>
+          <td class="num">↑ conversión</td>
+          <td>Las 30 landings (5 soluciones × 6 industrias) <strong>ya están construidas</strong>
+              y ninguna recibe tráfico pago</td>
+        </tr>
+        <tr>
+          <td class="num">3</td>
+          <td>Formulario: el mensaje pasa a opcional</td>
+          <td class="num">$0</td>
+          <td class="num">↑ conversión</td>
+          <td>Hoy son 4 campos obligatorios, uno de ellos texto libre. 73 clics pagos en 17 días
+              produjeron 0 consultas</td>
+        </tr>
+        <tr>
+          <td class="num">4</td>
+          <td>Landing de minería con el caso Finning</td>
+          <td class="num">$0</td>
+          <td class="num">habilita el motor 2</td>
+          <td>Hay 6 industrias y <strong>ninguna es minería</strong>, teniendo el mejor caso
+              minero del mercado</td>
+        </tr>
+        <tr class="dim">
+          <td class="num">5</td>
+          <td>Recién acá: subir el presupuesto</td>
+          <td class="num">$$$</td>
+          <td class="num">↑ volumen</td>
+          <td>Escalar un embudo roto multiplica el desperdicio, no las consultas</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout ok">
+      <p><strong>Las cuatro primeras palancas no cuestan un peso de medios y valen más que
+      cualquier aumento de presupuesto.</strong> Recuperar los $242.666 anuales que hoy se tiran
+      equivale a cuatro meses de inversión gratis. Ése es el primer lugar donde ir a buscar
+      consultas — no el segundo.</p>
+    </div>
+  </section>
+</div>
+
+<!-- ══════════════════ 8 · LAS CAMPAÑAS ══════════════════ -->
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">08</span><h2>Las cinco campañas, y por qué cada una</h2></div>
+
+    <table>
+      <thead>
+        <tr><th>Campaña</th><th>Estructura</th><th>Destino</th>
+            <th class="num">$/mes<br>mes 1</th><th>Por qué existe — el dato</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--brand-soft)">
+          <td><strong>1 · Firma Biométrica</strong><br><span class="tiny">el motor</span></td>
+          <td>6 grupos = 6 industrias<br>70 keywords, frase y exacta</td>
+          <td>Una landing por industria</td>
+          <td class="num"><strong>$30.000</strong></td>
+          <td><strong>94% de las conversiones históricas</strong> con el 65% del gasto. Costo por
+              consulta $11.112, diez veces mejor que cableado. Y la demanda creció 173%</td>
+        </tr>
+        <tr>
+          <td><strong>2 · Gestión Documental</strong></td>
+          <td>2 grupos: gestión documental,<br>digitalización</td>
+          <td>/soluciones/consultoria</td>
+          <td class="num">$4.000</td>
+          <td>930 búsquedas/mes con competencia <strong>Baja</strong> — el único bloque barato
+              del set. Puja tope desde $582 contra $1.174 de zero trust</td>
+        </tr>
+        <tr>
+          <td><strong>3 · Marca</strong></td>
+          <td>1 grupo, sólo exacta</td>
+          <td>Home</td>
+          <td class="num">$2.000</td>
+          <td>Hoy se pagan <strong>$17.473/año por «accedra»</strong> mezclado dentro de la
+              captación. Separarla no ahorra ese dinero: lo hace visible</td>
+        </tr>
+        <tr>
+          <td><strong>4 · Conectividad Crítica</strong><br><span class="tiny">antes «Networking»</span></td>
+          <td>1 grupo, sólo exacta,<br>sin genéricos de cableado</td>
+          <td>/soluciones/networking</td>
+          <td class="num">$2.000</td>
+          <td><strong>Techo real: 60 búsquedas/mes</strong> en toda la categoría. Al 80% de cuota
+              son 3 clics. Es una red de pesca, no un motor</td>
+        </tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>5 · Minería · ABM</strong><br><span class="tiny">no es Google</span></td>
+          <td>LinkedIn dirigido + RFPM +<br>eventos del sector</td>
+          <td>/soluciones/networking/<br>mineria <span class="tag t-wr">a crear</span></td>
+          <td class="num">$6.000<br><span class="tiny">piloto</span></td>
+          <td>US$ 7.510 M de inversión minera en 2026, 5,4× la de 2025. Y cero búsquedas: la
+              única vía es dirigida</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <p><strong>Por qué la campaña 5 arranca chica.</strong> No por falta de convicción: porque
+      la landing de minería todavía no existe. Gastar en tráfico dirigido hacia una página
+      genérica es la forma más cara de descubrir que faltaba la página. En septiembre el
+      presupuesto de minería va a construir el activo; en octubre, a comprar audiencia.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">09</span><h2>Potenciar minería: los cuatro movimientos</h2></div>
+
+    <div class="grid2">
+      <div>
+        <h3>1 · Renombrar la línea</h3>
+        <p style="font-size:8.8pt"><strong>«Networking» → «Conectividad Crítica».</strong>
+        Hoy la página abre con «Networking de alta disponibilidad» y la primera capacidad listada
+        es «Cableado estructurado». Tapá el logo y poné el de cualquier competidor: el texto sigue
+        siendo cierto. Ése es el diagnóstico.</p>
+        <p style="font-size:8.8pt">Lo que sí hacen —Starlink integrado por SD-WAN, relevamiento
+        con mapas de calor, certificación según normas de Seguridad e Higiene minera— no lo puede
+        firmar cualquiera. Eso tiene que ser el titular.</p>
+
+        <h3 style="margin-top:3mm">2 · Dar vuelta el orden</h3>
+        <p style="font-size:8.8pt">La primera capacidad define la categoría en la cabeza de quien
+        lee. Hoy la primera es la commodity. Nuevo orden: conectividad satelital + SD-WAN →
+        relevamiento y certificación → … → cableado estructurado <strong>último</strong>.
+        Sigue en la oferta; sale de la vitrina.</p>
+      </div>
+      <div>
+        <h3>3 · Crear la industria Minería</h3>
+        <p style="font-size:8.8pt">Cinco landings nuevas (una por solución), con
+        <code>/soluciones/networking/mineria</code> como pieza central y Finning de héroe.
+        <strong>Costo en medios: cero.</strong> Es la mayor palanca del plan y sale de escribir,
+        no de pagar.</p>
+
+        <h3 style="margin-top:3mm">4 · Ascender el caso Finning</h3>
+        <p style="font-size:8.8pt">Hoy es el caso #2 dentro de la página de Networking. Debería
+        tener página propia. Es la credencial más difícil de conseguir en el mercado minero
+        argentino y está enterrada.</p>
+        <div class="card" style="margin-top:2mm;padding:3mm">
+          <div class="kpi-l">Lo que dice el caso</div>
+          <p class="tiny" style="margin:1.5mm 0 0">+4 provincias · 100% de sitios conectados ·
+          24/7 en mina · Starlink + SD-WAN VeloCloud · Cisco Catalyst 9200L PoE · certificado
+          según normas de Seguridad e Higiene de la industria minera</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout ok" style="margin-top:3mm">
+      <p><strong>El movimiento que más plata mueve y que nadie ve:</strong> en el Registro
+      Federal de Proveedores Mineros y en las licitaciones, <strong>la categoría en la que te
+      inscribís determina a qué te convocan</strong>. Anotarse como «cableado estructurado» te
+      pone en la lista larga de instaladores, donde se decide por precio. Anotarse como
+      «conectividad para operaciones remotas» te pone en la corta. Misma empresa, mismo equipo,
+      mismo caso — dos flujos de oportunidades distintos.</p>
+    </div>
+  </section>
+</div>
+
+<!-- ══════════════════ 10 · PRESUPUESTO ══════════════════ -->
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">10</span><h2>El presupuesto de septiembre, línea por línea</h2></div>
+
+    <p>Septiembre arranca en <strong>$100.000, íntegramente a medios</strong>. La producción de
+    los activos —landings de minería, caso Finning, reposicionamiento— la hace el equipo interno,
+    así que no consume presupuesto: consume calendario. Eso cambia el cuello de botella del plan,
+    y hay que decirlo claro: <strong>a partir de acá el camino crítico son las semanas de trabajo,
+    no la plata.</strong></p>
+
+    <h3 style="margin-bottom:2mm">Septiembre · $100.000, y por qué cada peso va donde va</h3>
+    <table style="font-size:8.1pt">
+      <thead>
+        <tr><th style="width:26%">Destino</th><th class="num" style="width:12%">Monto</th>
+            <th>La justificación, con el dato</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--brand-soft)">
+          <td><strong>Firma Biométrica</strong><br><span class="tiny">6 grupos por industria</span></td>
+          <td class="num"><strong>$65.000</strong><br><span class="tiny">65%</span></td>
+          <td><strong>Es donde está la demanda y donde está la evidencia.</strong>
+              33.100 búsquedas mensuales sólo en «firma digital», 34.580 sumando toda la línea,
+              y <strong>creció 173% en un año</strong> con la competencia todavía calificada
+              Media —no Alta—. Hoy aparecemos en <strong>menos del 1%</strong> de esas búsquedas
+              y la campaña ya figura «limitada por presupuesto»: hay demanda que no se captura.
+              Del lado del histórico, es la línea que produjo el <strong>94% de las conversiones
+              con el 65% del gasto</strong>, a $11.112 por consulta. $65.000 compran unos 160
+              clics y ~44% de cuota; más arriba el CPC se dispara y cada peso trae menos.</td>
+        </tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>Minería · ABM</strong><br><span class="tiny">LinkedIn · RFPM · licitaciones</span></td>
+          <td class="num"><strong>$12.000</strong><br><span class="tiny">12%</span></td>
+          <td><strong>El sector es enorme pero no pasa por el buscador.</strong>
+              «conectividad minera», «servicios IT minería» y «digitalización minería»
+              <strong>no registran volumen medible</strong> en Google — no es que sea caro, es
+              que no existe. La demanda sí existe: <strong>US$ 7.510 M de inversión minera
+              proyectada para 2026, 5,4× la de 2025</strong>, y un pipeline de US$ 44.000 M.
+              Se llega por LinkedIn dirigido, Registro Federal de Proveedores Mineros y
+              licitaciones. <strong>Arranca chico y recién en la semana 3</strong> no por falta de
+              convicción, sino porque la landing de minería todavía no existe: mandar tráfico
+              dirigido a una página genérica es la forma más cara de descubrir que faltaba la
+              página.</td>
+        </tr>
+        <tr>
+          <td><strong>Gestión Documental</strong></td>
+          <td class="num"><strong>$10.000</strong><br><span class="tiny">10%</span></td>
+          <td><strong>El único bloque barato de todo el set.</strong> 930 búsquedas mensuales
+              entre «gestión documental» (720) y «digitalización de documentos» (210), con
+              competencia calificada <strong>Baja</strong> — la única Baja del análisis. La puja
+              tope arranca en $582, contra $1.174 de zero trust y $1.024 de ciberseguridad
+              empresas. Es el segundo mejor peso por consulta después de firma, y va a la misma
+              landing de consultoría que ya existe.</td>
+        </tr>
+        <tr>
+          <td><strong>Reserva de pruebas</strong><br><span class="tiny">sólo el primer mes</span></td>
+          <td class="num"><strong>$8.000</strong><br><span class="tiny">8%</span></td>
+          <td><strong>Para dos incógnitas concretas, no para «probar cosas».</strong>
+              Primero, medir «conectividad satelital», «starlink empresas» e «integrador de
+              redes», que quedaron sin medir y que —si tienen volumen— cambian qué va primero en
+              la página de Conectividad Crítica. Segundo, testear un segundo ángulo de anuncio:
+              <strong>los 3 anuncios que hoy sostienen toda la cuenta tienen eficacia
+              «Media»</strong> y no hay ninguno mejor contra el cual compararlos.</td>
+        </tr>
+        <tr>
+          <td><strong>Conectividad Crítica</strong><br><span class="tiny">búsqueda de nicho</span></td>
+          <td class="num"><strong>$3.000</strong><br><span class="tiny">3%</span></td>
+          <td><strong>No es desinterés: es que no hay más para comprar.</strong> Toda la
+              categoría suma <strong>60 búsquedas mensuales</strong> — redes industriales 30,
+              wifi industrial 10, cableado estructurado empresas 10, seguridad OT 10. Al 80% de
+              cuota son <strong>3 clics al mes</strong>. Poner más plata compra las mismas
+              búsquedas más caras, o fuerza a abrir la concordancia y vuelve el comprador de cable
+              minorista — que es exactamente lo que costó <strong>$224.498 este año con cero
+              consultas</strong>. La apuesta a esta línea va por ABM, no por acá.</td>
+        </tr>
+        <tr>
+          <td><strong>Marca</strong></td>
+          <td class="num"><strong>$2.000</strong><br><span class="tiny">2%</span></td>
+          <td><strong>Defensivo, y sobre todo para poder leer el resto.</strong> Hoy se pagan
+              <strong>$17.473 al año por «accedra»</strong> mezclado dentro de la campaña de
+              captación, donde infla sus resultados y tapa cómo rinde la captación real.
+              Separarla no ahorra ese dinero: lo hace visible. Con 83 clics anuales, $2.000
+              mensuales alcanzan y sobran.</td>
+        </tr>
+        <tr class="total">
+          <td>Total septiembre</td><td class="num">$100.000</td>
+          <td class="tiny" style="font-weight:400">Mismo orden de magnitud que el gasto actual
+              ($59.356/mes promedio), con la diferencia de que ahora se sabe a dónde va</td>
+        </tr>
+      </tbody>
+    </table>
+
+  </section>
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">10</span><h2>El presupuesto · proyección y expectativa</h2></div>
+
+    <h3 style="margin:0 0 2mm">La proyección a tres meses</h3>
+    <table>
+      <thead>
+        <tr><th>Destino</th><th class="num">Septiembre</th><th class="num">Octubre</th>
+            <th class="num">Noviembre</th><th>Qué cambia</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--brand-soft)">
+          <td><strong>Firma Biométrica</strong></td>
+          <td class="num">$65.000</td><td class="num">$70.000</td><td class="num">$72.000</td>
+          <td>Se aplana: a partir de ~$72.000 el inventario de calidad se agota</td></tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>Minería · ABM</strong></td>
+          <td class="num">$12.000</td><td class="num">$45.000</td><td class="num">$76.000</td>
+          <td>Escala cuando existe el activo. En noviembre es el destino principal</td></tr>
+        <tr><td>Gestión Documental</td>
+          <td class="num">$10.000</td><td class="num">$10.000</td><td class="num">$12.000</td>
+          <td>Sube poco: 930 búsquedas/mes es su techo</td></tr>
+        <tr><td>Reserva de pruebas</td>
+          <td class="num">$8.000</td><td class="num">—</td><td class="num">—</td>
+          <td>Se agota al responder las dos incógnitas</td></tr>
+        <tr><td>Conectividad Crítica</td>
+          <td class="num">$3.000</td><td class="num">$3.000</td><td class="num">$3.000</td>
+          <td>Plano a propósito: 60 búsquedas/mes no crecen con presupuesto</td></tr>
+        <tr><td>Marca</td>
+          <td class="num">$2.000</td><td class="num">$2.000</td><td class="num">$2.000</td>
+          <td>No escala con el resto</td></tr>
+        <tr class="total">
+          <td>Total</td><td class="num">$100.000</td><td class="num">$130.000</td>
+          <td class="num">$165.000</td><td></td></tr>
+        <tr style="border-top:1px solid var(--line)">
+          <td class="tiny">Peso de minería sobre el total</td>
+          <td class="num"><strong>12%</strong></td><td class="num"><strong>35%</strong></td>
+          <td class="num"><strong>46%</strong></td>
+          <td class="tiny">La rampa la marca la preparación del activo, no la fe</td></tr>
+      </tbody>
+    </table>
+
+    <div class="grid3" style="margin-top:4mm">
+      <div class="card">
+        <div class="kpi-l">Consultas objetivo · septiembre</div>
+        <div class="kpi ok">5–7</div>
+        <div class="kpi-n">Hoy: 0</div>
+      </div>
+      <div class="card">
+        <div class="kpi-l">Consultas objetivo · noviembre</div>
+        <div class="kpi ok">13–17</div>
+        <div class="kpi-n">10–13 de firma + 3–4 de minería</div>
+      </div>
+      <div class="card accent">
+        <div class="kpi-l">Costo por consulta objetivo</div>
+        <div class="kpi">~$13.000</div>
+        <div class="kpi-n">Contra $11.112 histórico de Firma y $110.595 de Cableado</div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <p><strong>La advertencia sobre el salto a $100.000.</strong> De $60.000 a $100.000 en
+      búsqueda se ganan aproximadamente <em>una o dos consultas más</em>, no el doble: el
+      inventario útil sigue siendo 6.100 búsquedas mensuales y el CPC sube a medida que se empuja
+      la cuota. Lo que sí compra el presupuesto extra es <strong>señal más rápida</strong> — más
+      clics repartidos entre los seis grupos de industria significa saber antes cuál vertical
+      responde. Vale la pena, pero conviene esperarlo como aceleración del aprendizaje, no como
+      duplicación de resultados.</p>
+    </div>
+
+    <div class="callout bad">
+      <p><strong>El riesgo real ahora es de agenda, no de plata.</strong> Con $100.000 corriendo
+      desde el día 1 y la landing de minería a tres semanas, el peligro es que Firma gaste bien
+      mientras el presupuesto minero espera un activo que no llega. Si a la semana 3 las landings
+      de minería no están, ese dinero se reasigna a Firma <strong>y no al revés</strong>: nunca se
+      manda tráfico dirigido a una página genérica.</p>
+    </div>
+  </section>
+  </section>
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">11</span><h2>¿Cuánto se puede subir el presupuesto?</h2></div>
+
+    <p><strong>Se puede, y hay margen real — pero por escalones, y con un techo.</strong>
+    La evidencia de que hay margen viene de Google mismo:</p>
+
+    <div class="grid3" style="margin-bottom:4mm">
+      <div class="card accent">
+        <div class="kpi-l">Nuestra cuota en «firma digital»</div>
+        <div class="kpi">&lt; 1%</div>
+        <div class="kpi-n">De 33.100 búsquedas mensuales, aparecemos en menos de una de cada cien</div>
+      </div>
+      <div class="card">
+        <div class="kpi-l">Estado de la campaña de Firma</div>
+        <div class="kpi" style="font-size:13pt;line-height:1.2">Limitada por<br>presupuesto</div>
+        <div class="kpi-n">Lo dice la propia cuenta: hay demanda que no se captura por falta de plata</div>
+      </div>
+      <div class="card">
+        <div class="kpi-l">Cuota en el resto de los términos</div>
+        <div class="kpi">0%</div>
+        <div class="kpi-n">No estamos pujando en nada más que firma digital y firma electrónica</div>
+      </div>
+    </div>
+
+    <h3>El techo: cuánta demanda de calidad existe realmente</h3>
+    <p>Subir el presupuesto sólo sirve mientras haya búsquedas buenas que comprar. El inventario
+    con intención comercial real es de unas <strong>6.100 búsquedas mensuales</strong>: 2.790 de
+    los términos específicos del negocio, más una porción conservadora del 10% de «firma digital»
+    —el resto de ese término es intención estatal y de consumidor, que es exactamente de donde
+    salió <code>gde</code>—.</p>
+
+    <table>
+      <thead>
+        <tr><th>Escenario</th><th class="num">Cuota de<br>impresiones</th>
+            <th class="num">Clics/mes</th><th class="num">Inversión/mes</th>
+            <th class="num">Consultas<br>estimadas</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Hoy</td><td class="num">&lt;1%</td><td class="num">177</td>
+            <td class="num">$60.000</td><td class="num">0</td></tr>
+        <tr><td><strong>Escalón 1</strong> — presupuesto actual, sin desperdicio</td>
+            <td class="num">~35%</td><td class="num">130</td>
+            <td class="num">$60.000</td><td class="num">4–6</td></tr>
+        <tr style="background:var(--brand-soft)">
+            <td><strong>Octubre</strong></td>
+            <td class="num">~60%</td><td class="num">220</td>
+            <td class="num"><strong>$90.000</strong></td><td class="num"><strong>7–9</strong></td></tr>
+        <tr><td><strong>Noviembre</strong> — cerca del techo de búsqueda</td>
+            <td class="num">~85%</td><td class="num">310</td>
+            <td class="num">$125.000</td><td class="num">9–12</td></tr>
+        <tr class="dim"><td>Más allá de $130.000 en buscador</td>
+            <td class="num">—</td><td class="num">—</td>
+            <td class="num">—</td><td class="num">se degrada</td></tr>
+      </tbody>
+    </table>
+    <p class="tiny" style="margin-top:2mm">Estimado sobre CTR del 6% en anuncios bien
+    emparejados y CPC medio de $400 en términos comerciales. Las consultas asumen una conversión
+    de landing del 3%.</p>
+
+    <div class="callout ok">
+      <p><strong>Por qué sí se puede arrancar en $100.000.</strong> Dos objeciones que valían
+      hace una semana ya no aplican. La primera —«la plata extra compraría más <code>gde</code>»—
+      cae porque las negativas y la concordancia se cargan el <strong>día 1</strong>, antes de que
+      el presupuesto nuevo gaste un peso. La segunda —«duplicar el presupuesto reinicia la fase de
+      aprendizaje»— sólo vale al modificar una campaña existente: <strong>las campañas se están
+      construyendo de cero</strong>, así que arrancan con el presupuesto que se les fije y no hay
+      aprendizaje que interrumpir.</p>
+    </div>
+
+    <div class="callout">
+      <p><strong>Lo que queda como riesgo asumido:</strong> durante las primeras semanas se va a
+      gastar con la medición todavía a medio reconstruir. Es tolerable por una razón concreta —
+      el indicador principal de septiembre, el % del gasto en búsquedas sin consulta, se calcula
+      del informe de términos y <strong>funciona esté rota o no la etiqueta de conversión</strong>.
+      Se puede corregir el rumbo dentro del mes.</p>
+    </div>
+
+    <div class="callout ok">
+      <p><strong>Dónde sí poner plata sin límite práctico:</strong> minería. El buscador se
+      satura a los $130.000 porque no hay más búsquedas que comprar, pero LinkedIn dirigido a
+      Gerentes de Sistemas y Compras de las empresas del pipeline RIGI no tiene ese techo — ahí
+      el inventario es la cantidad de personas, no la cantidad de búsquedas. Si el apetito de
+      inversión es grande, ése es el destino natural del excedente, no forzar el buscador.</p>
+    </div>
+
+  </section>
+
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">12</span><h2>Quién es el cliente</h2></div>
+
+    <table>
+      <thead>
+        <tr><th>Segmento</th><th>Quién decide</th><th>Qué le duele</th>
+            <th>Canal</th><th class="num">Prioridad</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--brand-soft)">
+          <td><strong>Bancos y aseguradoras</strong></td>
+          <td>Gerente de Operaciones · Compliance</td>
+          <td>Onboarding con papel, sucursales que imprimen y archivan</td>
+          <td>Google Ads</td><td class="num">1</td>
+        </tr>
+        <tr>
+          <td><strong>Estudios jurídicos y escribanías</strong></td>
+          <td>Socio · Administración</td>
+          <td>Firma de contratos a distancia con validez legal</td>
+          <td>Google Ads</td><td class="num">2</td>
+        </tr>
+        <tr>
+          <td><strong>Logística</strong></td>
+          <td>Gerente de Operaciones</td>
+          <td>Remitos en papel, prueba de entrega</td>
+          <td>Google Ads</td><td class="num">3</td>
+        </tr>
+        <tr>
+          <td><strong>Salud y laboratorios</strong></td>
+          <td>Dirección Médica · Sistemas</td>
+          <td>Consentimientos informados, historia clínica</td>
+          <td>Google Ads</td><td class="num">4</td>
+        </tr>
+        <tr>
+          <td><strong>Minería y energía</strong></td>
+          <td>Gerente de Sistemas · Compras · Superintendente</td>
+          <td>Red en sitio remoto, seguridad OT, certificación de proveedores y remitos</td>
+          <td><strong>LinkedIn · RFPM · eventos</strong></td><td class="num">5</td>
+        </tr>
+        <tr>
+          <td><strong>Retail</strong></td>
+          <td>Sistemas · RRHH</td>
+          <td>Legajos y altas de personal</td>
+          <td>Google Ads</td><td class="num">6</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout" style="margin-top:3mm">
+      <p><strong>La jugada de minería, concreta:</strong> (1) inscribir a Accedra en el Registro
+      Federal de Proveedores Mineros — es gratis y es el filtro por el que pasan las compras del
+      sector; (2) LinkedIn Ads segmentado a Gerentes de Sistemas y Compras de las empresas del
+      pipeline RIGI, con el caso de Andreani como pieza central; (3) presencia en Arminera y en
+      los encuentros provinciales de San Juan, Salta y Catamarca. Los tres apuntan a la misma
+      landing de firma biométrica.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">13</span><h2>Próxima revisión: 24 de septiembre de 2026</h2></div>
+
+    <h3>Qué se mide el 24 de septiembre</h3>
+
+    <p>Treinta días. Con ~170 clics mensuales, un mes no alcanza para juzgar calidad —
+    pero sí alcanza de sobra para verificar que <strong>dejamos de tirar plata</strong>.
+    Por eso el indicador principal no es «cuántos clientes trajo».</p>
+
+    <table>
+      <thead>
+        <tr><th>Indicador</th><th class="num">Hoy</th><th class="num">Meta al 24/09</th>
+            <th>Por qué éste</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--brand-soft)">
+          <td><strong>% del gasto en búsquedas sin consulta</strong><br>
+              <span class="tiny">← indicador principal</span></td>
+          <td class="num"><strong>98,2%</strong></td>
+          <td class="num"><strong>&lt; 40%</strong></td>
+          <td>Es el único que puede moverse de verdad en 30 días y depende sólo de nuestras
+              decisiones, no del ciclo de venta del cliente</td>
+        </tr>
+        <tr>
+          <td>Consultas registradas en Google</td>
+          <td class="num">0</td><td class="num">&gt; 0</td>
+          <td>Prueba de que el puente de datos funciona. Un solo registro alcanza</td>
+        </tr>
+        <tr>
+          <td>Leads con <code>gclid</code> en la base</td>
+          <td class="num">0</td><td class="num">≥ 3</td>
+          <td>Confirma la cadena completa: anuncio → landing → formulario → atribución</td>
+        </tr>
+        <tr>
+          <td>Cuota de impresiones perdida por presupuesto</td>
+          <td class="num">s/d</td><td class="num">medida</td>
+          <td>Dice si hay demanda de firma que no estamos capturando por falta de plata</td>
+        </tr>
+        <tr>
+          <td>CPC medio</td>
+          <td class="num">$336</td><td class="num">$350–400</td>
+          <td>Va a <em>subir</em>, y está bien: dejamos de comprar clics baratos y basura</td>
+        </tr>
+        <tr class="dim">
+          <td>Contratos firmados</td>
+          <td class="num">—</td><td class="num">no aplica</td>
+          <td>El ciclo es de 3 a 6 meses. Prometerlo a 30 días es la forma más rápida de que
+              el programa se cancele en el mes 2</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout ok" style="margin-top:3mm">
+      <p><strong>Regla de la revisión:</strong> máximo tres decisiones, y cada una se anota con
+      su hipótesis <em>antes</em> de ejecutarla. La revisión del 24 de octubre evalúa cada una
+      contra lo que esperábamos. Sin hipótesis previa nunca se sabe si mejoró por lo que hicimos
+      o por casualidad.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">14</span><h2>Anexo · Qué pasa con cada campaña que existe hoy</h2></div>
+
+    <p>La cuenta tiene <strong>siete campañas</strong>: dos activas y cinco pausadas desde hace
+    años. Ninguna se toca hasta que esté decidido qué pasa con cada una. Éste es el destino
+    propuesto para las siete.</p>
+
+    <table>
+      <thead>
+        <tr><th>Campaña actual</th><th class="num">Gasto histórico</th>
+            <th class="num">Conv.</th><th>Qué hacemos</th><th>Por qué</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Firma Digital Biometrica</strong><br><span class="tiny">activa</span></td>
+          <td class="num">$1.453.324</td><td class="num">130</td>
+          <td><span class="tag t-wr">Pausar y reemplazar</span></td>
+          <td>Un solo grupo genérico apuntando a una landing genérica. Se reemplaza por la
+              campaña nueva con seis grupos por industria</td>
+        </tr>
+        <tr>
+          <td><strong>Cableado Estructurado</strong><br><span class="tiny">activa</span></td>
+          <td class="num">$665.010</td><td class="num">6</td>
+          <td><span class="tag t-dn">Pausar</span></td>
+          <td>$110.595 por conversión. Su mercado de búsqueda son 50 consultas al mes y atrae
+              compradores de cable minorista</td>
+        </tr>
+        <tr class="dim">
+          <td>Soluciones Cisco</td><td class="num">$69.088</td><td class="num">0</td>
+          <td>Archivar</td>
+          <td>Pausada hace años, 9.652 clics sin una conversión. Sus anuncios apuntan al sitio viejo</td>
+        </tr>
+        <tr class="dim">
+          <td>Sharepoint etc</td><td class="num">$24.520</td><td class="num">0</td>
+          <td>Archivar</td>
+          <td>Se reemplaza por la campaña nueva de Gestión Documental, que sí tiene mercado (930/mes)</td>
+        </tr>
+        <tr class="dim">
+          <td>Display + Remarketing</td><td class="num">$23.882</td><td class="num">3</td>
+          <td>Archivar</td>
+          <td>Display en B2B con ciclo largo no genera consultas. Se revisa recién cuando haya
+              tráfico propio suficiente para remarketing real</td>
+        </tr>
+        <tr class="dim">
+          <td>Soluciones Palo Alto</td><td class="num">$2.312</td><td class="num">0</td>
+          <td>Archivar</td>
+          <td>309 clics en total. Se retoma dentro de Seguridad IT cuando haya presupuesto</td>
+        </tr>
+        <tr class="dim">
+          <td>Hiperconvergencia</td><td class="num">$57</td><td class="num">0</td>
+          <td>Archivar</td>
+          <td>9 clics históricos. No tiene mercado de búsqueda medible</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="tiny" style="margin-top:2mm">«Archivar» = queda pausada y sin presupuesto, no se
+    borra. El historial sirve para comparar y borrarlo lo perdería.</p>
+
+    <div class="callout">
+      <p><strong>Las 130 conversiones de Firma no se tiran a la basura.</strong> Son de cuando
+      la medición funcionaba y siguen siendo la única referencia real de qué cuesta una consulta
+      en este negocio: $11.112. Es contra ese número que se va a juzgar la campaña nueva.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">15</span><h2>Anexo · Las campañas nuevas, en detalle</h2></div>
+
+    <p>Las dos primeras <strong>ya están generadas y listas para importar</strong> desde el
+    propio contenido del sitio: las keywords salen del mismo listado que orienta el SEO de cada
+    landing, así que término buscado, anuncio y página quedan alineados — que es exactamente lo
+    que mide el nivel de calidad de Google.</p>
+
+    <table>
+      <thead>
+        <tr><th>Campaña · grupo</th><th>Landing</th><th class="num">Keywords</th>
+            <th>Ejemplos</th></tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="4" style="background:var(--line-2);font-weight:700;font-size:8pt">
+            ACCEDRA · MARCA — $2.000/mes · CPC manual</td></tr>
+        <tr>
+          <td>Marca</td><td>/ (home)</td><td class="num">10</td>
+          <td>accedra · accedra it · accedra firma digital</td>
+        </tr>
+        <tr><td colspan="4" style="background:var(--brand-soft);font-weight:700;font-size:8pt">
+            ACCEDRA · FIRMA BIOMÉTRICA — $30.000/mes · CPC manual · tope $450</td></tr>
+        <tr>
+          <td>Bancos</td><td>…/firma-biometrica/bancos</td><td class="num">10</td>
+          <td>firma biométrica bancos · firma digital entidades financieras</td>
+        </tr>
+        <tr>
+          <td>Aseguradoras</td><td>…/firma-biometrica/seguros</td><td class="num">10</td>
+          <td>firma digital pólizas · firma electrónica seguros</td>
+        </tr>
+        <tr>
+          <td>Estudios jurídicos</td><td>…/firma-biometrica/juridicos</td><td class="num">10</td>
+          <td>firma digital estudios jurídicos · Ley 25.506 firma digital</td>
+        </tr>
+        <tr>
+          <td>Laboratorios y salud</td><td>…/firma-biometrica/laboratorios</td><td class="num">10</td>
+          <td>firma digital consentimiento informado · firma electrónica salud</td>
+        </tr>
+        <tr>
+          <td>Logística</td><td>…/firma-biometrica/logistica</td><td class="num">10</td>
+          <td>firma digital remitos · conformidad de entrega electrónica</td>
+        </tr>
+        <tr>
+          <td>Retail</td><td>…/firma-biometrica/retail</td><td class="num">10</td>
+          <td>firma digital retail · firma electrónica punto de venta</td>
+        </tr>
+        <tr class="total">
+          <td>Total listo para importar</td><td>7 landings</td><td class="num">70</td>
+          <td>7 anuncios responsivos · 78 negativas por campaña</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="tiny" style="margin-top:2mm">Cada keyword entra en concordancia de frase y exacta.
+    Amplia no se usa en ningún grupo: es la que dejó entrar a <code>gde</code>.
+    Todo se importa <strong>en pausa</strong> y se prende a mano después de revisar.</p>
+
+    <div class="callout">
+      <p><strong>Faltan dos campañas por escribir:</strong> Gestión Documental (2 grupos) y
+      Conectividad Crítica (1 grupo, sólo exacta). No están generadas porque les falta el copy
+      de los anuncios. Son unas dos horas de trabajo y no bloquean el arranque — Firma es el 60%
+      del presupuesto y puede salir sola.</p>
+    </div>
+  </section>
+</div>
+
+<div class="page">
+  <section style="margin-bottom:2mm">
+    <div class="sec-head"><span class="n">16</span><h2>Anexo · La lista de ejecución</h2></div>
+
+    <p>En este orden. Los tres bloques del día 1 son los que frenan la pérdida y no dependen
+    de nada más.</p>
+
+    <table>
+      <thead>
+        <tr><th class="num">#</th><th>Cambio</th><th>Dónde</th><th>Efecto</th></tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="4" style="background:var(--bad-soft);font-weight:700;font-size:8pt">
+            DÍA 1 — FRENAR LA PÉRDIDA (~40 minutos)</td></tr>
+        <tr><td class="num">1</td>
+            <td>Cargar las negativas: <code>gde</code>, <code>gedo</code>, expediente,
+                san antonio, encustody, contractia + el bloque de cableado de consumo</td>
+            <td>Ambas campañas activas</td>
+            <td>Corta $242.666 anuales de fuga</td></tr>
+        <tr><td class="num">2</td>
+            <td>Cambiar todas las keywords de amplia a frase y exacta</td>
+            <td>Ambas campañas activas</td>
+            <td>Es la causa raíz, no el síntoma</td></tr>
+        <tr><td class="num">3</td>
+            <td>Poner tope de CPC en $450</td>
+            <td>Ambas campañas activas</td>
+            <td>Ningún término puede volver a comerse el presupuesto sin que se note</td></tr>
+        <tr><td class="num">4</td>
+            <td>Pausar Cableado Estructurado</td>
+            <td>Campaña</td>
+            <td>Libera ~$18.700/mes</td></tr>
+        <tr><td class="num">5</td>
+            <td>Reapuntar los 3 anuncios activos a las URLs nuevas con HTTPS</td>
+            <td>Anuncios</td>
+            <td>Saca dos redirecciones y el <code>http://</code> sin cifrar</td></tr>
+
+        <tr><td colspan="4" style="background:var(--warn-soft);font-weight:700;font-size:8pt">
+            SEMANA 1 — RECONSTRUIR LA MEDICIÓN</td></tr>
+        <tr><td class="num">6</td>
+            <td>Crear la acción de conversión <em>Consulta calificada</em> como
+                «Importar → conversiones sin conexión desde clics»</td>
+            <td>Objetivos</td>
+            <td>Sin esto no hay forma de saber qué funcionó</td></tr>
+        <tr><td class="num">7</td>
+            <td>Cambiar <em>Recuento</em> de «Todas» a «Una» en Accedra Conversion</td>
+            <td>Objetivos</td>
+            <td>«Todas» cuenta cada reenvío del mismo formulario e infla el número</td></tr>
+        <tr><td class="num">8</td>
+            <td>Reclasificar la acción «Otro» como «Enviar formulario de cliente potencial»</td>
+            <td>Objetivos</td>
+            <td>Lo pide la propia cuenta; mejora cómo Google entiende el objetivo</td></tr>
+
+        <tr><td colspan="4" style="background:var(--brand-soft);font-weight:700;font-size:8pt">
+            SEMANA 2 — LAS CAMPAÑAS NUEVAS</td></tr>
+        <tr><td class="num">9</td>
+            <td>Importar el CSV generado en Google Ads Editor — <strong>en pausa</strong></td>
+            <td>Editor</td>
+            <td>2 campañas, 7 grupos, 70 keywords, 7 anuncios</td></tr>
+        <tr><td class="num">10</td>
+            <td>Cargar segmentación geográfica y presupuestos reales</td>
+            <td>Campañas nuevas</td>
+            <td>El CSV trae placeholders a propósito</td></tr>
+        <tr><td class="num">11</td>
+            <td>Prender las nuevas y pausar Firma Digital Biometrica el mismo día</td>
+            <td>Campañas</td>
+            <td>El traspaso va junto para no duplicar pujas sobre los mismos términos</td></tr>
+
+        <tr><td colspan="4" style="background:var(--ok-soft);font-weight:700;font-size:8pt">
+            SEMANA 3 — EL SITIO</td></tr>
+        <tr><td class="num">12</td><td>Mensaje del formulario pasa a opcional</td>
+            <td>Repo accedra</td><td>Menos fricción en el paso donde se abandona</td></tr>
+        <tr><td class="num">13</td><td>Oferta concreta en vez de «Contactanos»</td>
+            <td>Repo accedra</td><td>La persona sabe qué pasa después del clic</td></tr>
+        <tr><td class="num">14</td><td>Mapfre, Andreani y Finning arriba del formulario</td>
+            <td>Repo accedra</td><td>Es el activo de marca más fuerte y está enterrado</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout bad">
+      <p><strong>Nada de esto está ejecutado al 21 de agosto de 2026.</strong> La cuenta está
+      exactamente como se describe en la sección 05. Este anexo es la lista de trabajo, no un
+      registro de lo hecho.</p>
+    </div>
+  </section>
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">17</span><h2>Anexo · Todos los accionables</h2></div>
+
+    <p>La lista completa, por área. La columna de la derecha es el dato que justifica cada uno —
+    si una fila no tiene justificación, no debería estar en la lista.</p>
+
+    <table>
+      <thead>
+        <tr><th class="num">#</th><th>Acción</th><th class="num">Cuándo</th><th>Por qué — el dato</th></tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="4" style="background:var(--bad-soft);font-weight:700;font-size:8pt">
+            A · GOOGLE ADS — CUENTA Y ESTRUCTURA</td></tr>
+        <tr><td class="num">1</td>
+            <td>Cargar negativas: <code>gde</code>, <code>gedo</code>, expediente, san antonio,
+                encustody, contractia, + bloque de cableado de consumo</td>
+            <td class="num">Día 1</td>
+            <td>$242.666 al año, el 34% del gasto, en cinco líneas con cero consultas</td></tr>
+        <tr><td class="num">2</td>
+            <td>Pasar todas las keywords de concordancia amplia a frase y exacta</td>
+            <td class="num">Día 1</td>
+            <td>Es por donde entró <code>gde</code>: $171.306 en 641 clics</td></tr>
+        <tr><td class="num">3</td>
+            <td>Tope de CPC en $450</td>
+            <td class="num">Día 1</td>
+            <td>El clic de <code>gde</code> costaba $267 y nadie lo vio hasta que fueron $171.306</td></tr>
+        <tr><td class="num">4</td>
+            <td>Pausar «Cableado Estructurado»</td>
+            <td class="num">Día 1</td>
+            <td>$110.595 por conversión, contra $11.112 de Firma</td></tr>
+        <tr><td class="num">5</td>
+            <td>Archivar Cisco, Sharepoint, Display, Palo Alto e Hiperconvergencia</td>
+            <td class="num">Sem. 1</td>
+            <td>$119.859 gastados entre las cinco, 3 conversiones. Se archivan, no se borran:
+                el historial sirve para comparar</td></tr>
+        <tr><td class="num">6</td>
+            <td>Separar la campaña de Marca</td>
+            <td class="num">Sem. 2</td>
+            <td>$17.473/año por «accedra» mezclado adentro de la captación, inflando sus resultados</td></tr>
+        <tr><td class="num">7</td>
+            <td>Importar el CSV generado en Ads Editor, <strong>en pausa</strong></td>
+            <td class="num">Sem. 2</td>
+            <td>Ya está generado: 2 campañas, 7 grupos, 70 keywords, 78 negativas, 7 anuncios</td></tr>
+        <tr><td class="num">8</td>
+            <td>Escribir el copy de Gestión Documental y Conectividad Crítica en
+                <code>copy.mjs</code> y regenerar</td>
+            <td class="num">Sem. 2</td>
+            <td>Son $13.000/mes de presupuesto que hoy no tienen campaña donde gastarse</td></tr>
+        <tr><td class="num">9</td>
+            <td>Prender las nuevas y pausar «Firma Digital Biometrica» el mismo día</td>
+            <td class="num">Sem. 2</td>
+            <td>Si conviven, las dos pujan por los mismos términos y se encarecen entre ellas</td></tr>
+
+        <tr><td colspan="4" style="background:var(--warn-soft);font-weight:700;font-size:8pt">
+            B · SEGMENTACIÓN GEOGRÁFICA</td></tr>
+        <tr><td class="num">10</td>
+            <td>Cambiar el ajuste de ubicación a <strong>«Presencia»</strong> en vez de
+                «Presencia o interés» (el valor por defecto)</td>
+            <td class="num">Día 1</td>
+            <td>El default muestra anuncios a gente fuera del país que <em>busca sobre</em>
+                Argentina. Se paga por clics que nunca van a comprar</td></tr>
+        <tr><td class="num">11</td>
+            <td>Firma y Gestión Documental: CABA + GBA + Córdoba + Rosario + Mendoza</td>
+            <td class="num">Sem. 2</td>
+            <td>Bancos, aseguradoras y estudios jurídicos deciden en la casa central, y las casas
+                centrales están ahí</td></tr>
+        <tr><td class="num">12</td>
+            <td>Minería: <strong>CABA</strong> + San Juan, Catamarca, Salta, Jujuy y Santa Cruz</td>
+            <td class="num">Sem. 3</td>
+            <td>Las operaciones están en las provincias pero la decisión de compra suele estar en
+                la casa central porteña. Excluir CABA sería perder al que firma</td></tr>
+        <tr><td class="num">13</td>
+            <td>Excluir el resto del país en las campañas de búsqueda</td>
+            <td class="num">Sem. 2</td>
+            <td>Con 6.100 búsquedas útiles al mes no sobra presupuesto para geografías sin operación</td></tr>
+
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">18</span><h2>Anexo · Accionables · sitio, posicionamiento y SEO</h2></div>
+
+    <table>
+      <thead>
+        <tr><th class="num">#</th><th>Acción</th><th class="num">Cuándo</th><th>Por qué — el dato</th></tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="4" style="background:var(--brand-soft);font-weight:700;font-size:8pt">
+            C · SITIO Y LANDINGS</td></tr>
+        <tr><td class="num">14</td>
+            <td>El campo «mensaje» del formulario pasa a <strong>opcional</strong></td>
+            <td class="num">Sem. 1</td>
+            <td>Hoy son 4 campos obligatorios, uno de texto libre. 73 clics pagos en 17 días
+                produjeron 0 consultas</td></tr>
+        <tr><td class="num">15</td>
+            <td>Reemplazar «Contactanos» por una oferta concreta y acotada</td>
+            <td class="num">Sem. 1</td>
+            <td>«Contactanos» no dice qué pasa después del clic. En B2B el primer paso tiene que
+                costar 20 segundos</td></tr>
+        <tr><td class="num">16</td>
+            <td>Subir Mapfre, Andreani y Finning arriba del formulario</td>
+            <td class="num">Sem. 1</td>
+            <td>Es el activo de marca más fuerte de una PyME de 40 personas y hoy está abajo de todo</td></tr>
+        <tr><td class="num">17</td>
+            <td>Reapuntar los 3 anuncios activos a las URLs nuevas con HTTPS</td>
+            <td class="num">Día 1</td>
+            <td>$224.498 al año pasan hoy por <code>http://</code> sin cifrar y con dos redirecciones</td></tr>
+        <tr><td colspan="4" style="background:var(--ok-soft);font-weight:700;font-size:8pt">
+            D · REPOSICIONAMIENTO DE LA LÍNEA</td></tr>
+        <tr><td class="num">18</td>
+            <td>Renombrar «Networking» → <strong>«Conectividad Crítica»</strong> en menú,
+                propuestas e inscripciones</td>
+            <td class="num">Sem. 2</td>
+            <td>En castellano «networking» colisiona con networking de contactos. Y la categoría
+                actual la puede firmar cualquier competidor</td></tr>
+        <tr><td class="num">19</td>
+            <td>Titular nuevo, orientado al resultado y no a la categoría</td>
+            <td class="num">Sem. 2</td>
+            <td>Hoy dice «Networking de alta disponibilidad», que es una etiqueta de catálogo</td></tr>
+        <tr><td class="num">20</td>
+            <td>Reordenar las 6 capacidades: satelital + SD-WAN primero,
+                <strong>cableado estructurado último</strong></td>
+            <td class="num">Sem. 2</td>
+            <td>La primera capacidad define la categoría en la cabeza del lector. Hoy la primera
+                es la commodity</td></tr>
+        <tr><td class="num">21</td>
+            <td>Página propia para el caso Finning</td>
+            <td class="num">Sem. 2</td>
+            <td>+4 provincias, 100% de sitios, Starlink + SD-WAN, certificado según normas de
+                Seguridad e Higiene minera. Hoy es el caso #2 de una página</td></tr>
+
+        <tr><td colspan="4" style="background:var(--brand-soft);font-weight:700;font-size:8pt">
+            E · INDUSTRIA MINERÍA · SEO</td></tr>
+        <tr><td class="num">22</td>
+            <td>Agregar <code>mineria</code> a <code>industriesData.ts</code></td>
+            <td class="num">Sem. 3</td>
+            <td><strong>Propaga solo</strong> a sitemap, <code>llms.txt</code> y JSON-LD: los tres
+                se generan de la misma fuente</td></tr>
+        <tr><td class="num">23</td>
+            <td>Escribir <code>INDUSTRY_SEO</code> para las 5 soluciones × minería</td>
+            <td class="num">Sem. 3</td>
+            <td>Sin bloque SEO propio la página queda fuera del índice a propósito — el código ya
+                lo maneja así para no generar <em>doorway pages</em></td></tr>
+        <tr><td class="num">24</td>
+            <td><code>/soluciones/networking/mineria</code> como pieza central, con Finning de héroe</td>
+            <td class="num">Sem. 3</td>
+            <td>Es lo que desbloquea los $12.000 de ABM. Sin esta página el presupuesto minero no
+                puede gastarse bien</td></tr>
+        <tr><td class="num">25</td>
+            <td>Title SEO de la línea con los términos que sí se escriben:
+                cableado estructurado, redes Cisco, conectividad satelital</td>
+            <td class="num">Sem. 3</td>
+            <td>Nadie busca la categoría de un integrador; se busca el componente. El nombre
+                posiciona, el title capta</td></tr>
+        <tr><td class="num">26</td>
+            <td>FAQPage con las preguntas reales del sector minero</td>
+            <td class="num">Sem. 4</td>
+            <td>El esquema <code>FAQPage</code> ya está implementado en el sitio: es sumar
+                contenido, no construir nada</td></tr>
+
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">19</span><h2>Anexo · Accionables · GEO, medición y minería</h2></div>
+
+    <table>
+      <thead>
+        <tr><th class="num">#</th><th>Acción</th><th class="num">Cuándo</th><th>Por qué — el dato</th></tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="4" style="background:var(--warn-soft);font-weight:700;font-size:8pt">
+            F · GEO — OPTIMIZACIÓN PARA MOTORES GENERATIVOS</td></tr>
+        <tr><td class="num">27</td>
+            <td>Verificar que minería aparezca en <code>/llms.txt</code> tras el punto 22</td>
+            <td class="num">Sem. 3</td>
+            <td>Ya existe y se genera solo desde la misma fuente. Es verificación, no desarrollo</td></tr>
+        <tr><td class="num">28</td>
+            <td>Sumar los casos —Finning, Andreani, Banco Provincia— al <code>llms.txt</code></td>
+            <td class="num">Sem. 4</td>
+            <td>Hoy lista soluciones e industrias pero <strong>no los casos</strong>, que son
+                justamente la prueba que un modelo cita al recomendar un proveedor</td></tr>
+        <tr><td class="num">29</td>
+            <td>JSON-LD del caso Finning en su página nueva</td>
+            <td class="num">Sem. 4</td>
+            <td>El sitio ya emite ProfessionalService, Service y FAQPage: falta el caso</td></tr>
+
+        <tr><td colspan="4" style="background:var(--bad-soft);font-weight:700;font-size:8pt">
+            G · MEDICIÓN</td></tr>
+        <tr><td class="num">30</td>
+            <td>Crear la acción «Consulta calificada» como
+                «Importar → conversiones sin conexión desde clics»</td>
+            <td class="num">Sem. 1</td>
+            <td>La acción del sitio figura «Requiere atención» con 0 registros en 12 meses</td></tr>
+        <tr><td class="num">31</td>
+            <td>Cambiar <em>Recuento</em> de «Todas» a «Una»</td>
+            <td class="num">Sem. 1</td>
+            <td>«Todas» cuenta cada reenvío del mismo formulario e infla el número</td></tr>
+        <tr><td class="num">32</td>
+            <td>Reclasificar la acción «Otro» como «Enviar formulario de cliente potencial»</td>
+            <td class="num">Sem. 1</td>
+            <td>Lo pide la propia cuenta en pantalla</td></tr>
+        <tr><td class="num">33</td>
+            <td>Correr <code>conversiones-offline.mjs</code> y subir el CSV el día 1 de cada mes</td>
+            <td class="num">Mensual</td>
+            <td>Ya está escrito y probado. Hoy devuelve vacío porque no hay leads con
+                <code>gclid</code> todavía</td></tr>
+
+        <tr><td colspan="4" style="background:var(--ok-soft);font-weight:700;font-size:8pt">
+            H · MINERÍA FUERA DEL BUSCADOR</td></tr>
+        <tr><td class="num">34</td>
+            <td>Inscribir a Accedra en el <strong>Registro Federal de Proveedores Mineros</strong>,
+                en la categoría de conectividad para operaciones remotas</td>
+            <td class="num">Sem. 1</td>
+            <td>Es gratis, y la categoría elegida determina a qué licitaciones te convocan</td></tr>
+        <tr><td class="num">35</td>
+            <td>Audiencia de LinkedIn: Gerentes de Sistemas, Compras y Superintendentes de las
+                empresas del pipeline RIGI</td>
+            <td class="num">Sem. 3</td>
+            <td>US$ 7.510 M de inversión minera en 2026, 5,4× la de 2025, y cero volumen de búsqueda</td></tr>
+        <tr><td class="num">36</td>
+            <td>One-pager de licitaciones con el caso Finning</td>
+            <td class="num">Sem. 4</td>
+            <td>Las compras del sector salen de licitaciones y registros, no de una búsqueda</td></tr>
+        <tr><td class="num">37</td>
+            <td>Agenda de Arminera y encuentros provinciales de San Juan, Salta y Catamarca</td>
+            <td class="num">Sem. 4</td>
+            <td>Mismo motivo: el canal es la relación, no el clic</td></tr>
+
+        <tr><td colspan="4" style="background:var(--line-2);font-weight:700;font-size:8pt">
+            I · PENDIENTES DE DATO — BLOQUEAN DECISIONES</td></tr>
+        <tr><td class="num">38</td>
+            <td><strong>Valor promedio de contrato por solución</strong>, aunque sea estimado</td>
+            <td class="num">Sem. 1</td>
+            <td>Sin esto no se puede comparar una consulta de firma contra una minera, y es
+                justamente el reparto que hay que decidir</td></tr>
+        <tr><td class="num">39</td>
+            <td>Medir <code>conectividad satelital</code>, <code>starlink empresas</code>,
+                <code>enlace entre sucursales</code> e <code>integrador de redes</code></td>
+            <td class="num">Sem. 1</td>
+            <td>Quedó pendiente: la interfaz del Planificador no aceptó la carga. Si alguno tiene
+                volumen real, cambia qué va primero en el subtítulo de la línea</td></tr>
+        <tr><td class="num">40</td>
+            <td>Confirmar el uso público del nombre Finning en campañas dirigidas</td>
+            <td class="num">Sem. 1</td>
+            <td>Está publicado en el sitio, pero una campaña de LinkedIn dirigida es otro contexto</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout bad">
+      <p><strong>Nada de esta lista está ejecutado al 21 de agosto de 2026.</strong> La cuenta
+      está exactamente como se describe en la sección 05. Con la producción a cargo del equipo
+      interno, el camino crítico son las semanas de trabajo: los puntos 22, 23 y 24 son los que
+      liberan el presupuesto de minería, así que son los que no pueden atrasarse.</p>
+    </div>
+  </section>
+</div>
+
+</body>
+</html>

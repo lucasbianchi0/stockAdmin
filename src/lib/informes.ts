@@ -18,7 +18,12 @@ export type Semaforo = "verde" | "amarillo" | "rojo"
 export type Informe = {
   /** Identificador y nombre del archivo en /public/informes. */
   slug: string
-  tipo: "historico" | "mensual"
+  /**
+   * `plan` no es un informe: no mira hacia atrás sino hacia adelante, y no sale
+   * de la rúbrica. Se lista igual porque es el documento contra el que se van a
+   * evaluar los informes mensuales que vengan.
+   */
+  tipo: "historico" | "mensual" | "plan"
   /** Etiqueta visible: "Agosto 2026" o "2017 – 2026". */
   periodo: string
   /** Año al que pertenece, para agrupar el listado. */
@@ -30,11 +35,21 @@ export type Informe = {
   semaforo: Semaforo
   /** El titular del propio informe, copiado tal cual. */
   titular: string
-  /** Versión del prompt con la que se generó. */
-  promptVersion: string
+  /** Versión del prompt con la que se generó. Los planes no la tienen. */
+  promptVersion?: string
 }
 
 export const INFORMES: Informe[] = [
+  {
+    slug: "plan-campanas-2026-09",
+    tipo: "plan",
+    periodo: "Septiembre – noviembre 2026",
+    anio: 2026,
+    emitido: "2026-08-21",
+    semaforo: "rojo",
+    titular:
+      "La demanda de firma digital creció 173% y capturamos menos del 1%. Minería no se busca en Google: se gana con el caso Finning.",
+  },
   {
     slug: "historico-2017-2026",
     tipo: "historico",

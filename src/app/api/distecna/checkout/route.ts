@@ -48,6 +48,20 @@ export async function GET() {
     console.error("[/api/distecna/checkout GET]", err)
     const message =
       err instanceof DistecnaError ? err.message : "No se pudo contactar a Distecna"
-    return Response.json({ error: message }, { status: 502 })
+
+    // Distecna esta configurado; lo que fallo fue la lectura del contexto. Son
+    // dos cosas distintas y hay que decirlas distinto: condicion de pago y
+    // direccion son opcionales en POST /v2/Order, asi que el pedido se puede
+    // mandar igual con los defaults de la cuenta. Devolver un 502 pelado tiraba
+    // ese dato a la basura y el front terminaba mostrando "no esta configurado"
+    // ante cualquier timeout del servidor de Distecna, que es lento y corta
+    // seguido.
+    return Response.json({
+      configured: true,
+      environment: process.env.DISTECNA_ENV ?? "qa",
+      paymentTerm: null,
+      addresses: [],
+      warning: message,
+    })
   }
 }

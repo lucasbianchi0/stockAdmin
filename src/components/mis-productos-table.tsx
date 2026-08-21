@@ -226,7 +226,11 @@ export function MisProductosTable() {
     environment: string | null
     paymentTerm: PaymentTerm | null
     addresses: DeliveryAddress[]
+    warning: string | null
   } | null>(null)
+  // Que la lectura del contexto haya fallado no es lo mismo que Distecna no
+  // estar configurado, y hasta ahora los dos casos mostraban el mismo cartel.
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -261,15 +265,19 @@ export function MisProductosTable() {
     fetch("/api/distecna/checkout")
       .then((r) => r.json())
       .then((d) => {
-        if (d.error) return
+        if (d.error) {
+          setCheckoutError(String(d.error))
+          return
+        }
         setCheckout({
           configured: Boolean(d.configured),
           environment: d.environment ?? null,
           paymentTerm: d.paymentTerm ?? null,
           addresses: d.addresses ?? [],
+          warning: d.warning ?? null,
         })
       })
-      .catch(() => {})
+      .catch(() => setCheckoutError("No se pudo consultar a Distecna."))
   }, [])
 
   const toggleSelect = useCallback((code: string) => {
@@ -361,6 +369,15 @@ export function MisProductosTable() {
     }))
   const orderUnits = orderItems.reduce((acc, i) => acc + i.quantity, 0)
   const orderTotal = orderItems.reduce((acc, i) => acc + i.price * i.quantity, 0)
+
+  // Tres situaciones distintas, tres carteles distintos:
+  //  - todavia no volvio la respuesta: no decimos nada, solo el boton apagado;
+  //  - Distecna no esta configurado: no se puede pedir y punto;
+  //  - la lectura fallo (timeout, 403, red): se puede pedir igual, porque
+  //    condicion de pago y direccion son opcionales y el POST valida solo.
+  const checkoutCargando = checkout === null && checkoutError === null
+  const pedidosDeshabilitados = checkout !== null && !checkout.configured
+  const avisoCheckout = checkoutError ?? checkout?.warning ?? null
 
   if (loading) return <LoadingState label="Cargando productos y cotización…" />
 
@@ -829,17 +846,24 @@ export function MisProductosTable() {
               <Button
                 size="lg"
                 className="w-full shrink-0 sm:w-auto"
-                disabled={!checkout?.configured}
+                disabled={checkoutCargando || pedidosDeshabilitados}
                 onClick={() => setShowOrderDialog(true)}
               >
                 <ShoppingCart />
                 Generar pedido
               </Button>
             </div>
-            {!checkout?.configured && (
+            {pedidosDeshabilitados && (
               <p className="px-5 pb-3 text-[11px] text-warning-text sm:px-8">
                 Distecna V2 no está configurado en este entorno, así que no se pueden generar
                 pedidos todavía.
+              </p>
+            )}
+            {!pedidosDeshabilitados && avisoCheckout && (
+              <p className="px-5 pb-3 text-[11px] text-warning-text sm:px-8">
+                No se pudo leer la condición de pago ni las direcciones de Distecna (
+                {avisoCheckout}). Podés generar el pedido igual: sale con los datos por
+                defecto de la cuenta.
               </p>
             )}
           </div>

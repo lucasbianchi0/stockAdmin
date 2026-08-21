@@ -1,4 +1,5 @@
-import { ArrowRight, FileText, Archive, Clock } from "lucide-react"
+import { ArrowRight, FileText, Archive, Clock, Target } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import {
   INFORMES,
   MESES,
@@ -27,6 +28,7 @@ const ANIO_ACTUAL = HOY.getFullYear()
 const MES_ACTUAL = HOY.getMonth() + 1
 
 export default function InformesPage() {
+  const planes = INFORMES.filter((i) => i.tipo === "plan")
   const historico = INFORMES.filter((i) => i.tipo === "historico")
   const mensuales = INFORMES.filter((i) => i.tipo === "mensual" && i.anio === ANIO_ACTUAL)
   const pendientes = mesesPendientes(ANIO_ACTUAL, MES_ACTUAL)
@@ -41,11 +43,32 @@ export default function InformesPage() {
       />
 
       <PageBody width="narrow">
+        {/* El plan va primero: es lo único de esta pantalla que se ejecuta.
+            El resto mira hacia atrás. */}
+        {planes.length > 0 && (
+          <section className="mb-9">
+            <h2 className="eyebrow mb-3">Plan vigente</h2>
+            {planes.map((inf) => (
+              <CardDestacado
+                key={inf.slug}
+                informe={inf}
+                titulo="Plan de campañas"
+                Icono={Target}
+              />
+            ))}
+          </section>
+        )}
+
         {historico.length > 0 && (
           <section className="mb-9">
             <h2 className="eyebrow mb-3">Línea de base</h2>
             {historico.map((inf) => (
-              <CardHistorico key={inf.slug} informe={inf} />
+              <CardDestacado
+                key={inf.slug}
+                informe={inf}
+                titulo="Diagnóstico histórico"
+                Icono={Archive}
+              />
             ))}
           </section>
         )}
@@ -77,7 +100,20 @@ export default function InformesPage() {
   )
 }
 
-function CardHistorico({ informe }: { informe: Informe }) {
+/**
+ * Tarjeta grande de los documentos que no son mensuales: el plan y la línea de
+ * base. Comparten layout pero no encabezado, así que el título y el ícono
+ * vienen por props en vez de duplicar el componente.
+ */
+function CardDestacado({
+  informe,
+  titulo,
+  Icono,
+}: {
+  informe: Informe
+  titulo: string
+  Icono: LucideIcon
+}) {
   return (
     <a
       href={urlPdf(informe.slug)}
@@ -86,14 +122,12 @@ function CardHistorico({ informe }: { informe: Informe }) {
       className="group flex flex-col gap-5 rounded-xl border border-line bg-surface p-5 shadow-e1 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-e2 sm:flex-row sm:items-start sm:gap-6"
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] border border-brand-100 bg-brand-50 text-brand-600">
-        <Archive className="h-[17px] w-[17px]" strokeWidth={1.8} />
+        <Icono className="h-[17px] w-[17px]" strokeWidth={1.8} />
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2.5">
-          <h3 className="text-[15.5px] font-semibold tracking-[-0.02em] text-ink">
-            Diagnóstico histórico
-          </h3>
+          <h3 className="text-[15.5px] font-semibold tracking-[-0.02em] text-ink">{titulo}</h3>
           <Semaforo color={COLOR_SEMAFORO[informe.semaforo]} />
         </div>
         <p className="mt-0.5 text-[11.5px] text-ink-muted">{informe.periodo}</p>
@@ -109,7 +143,7 @@ function CardHistorico({ informe }: { informe: Informe }) {
             <ArrowRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
           </span>
           <span>Emitido {formatearFecha(informe.emitido)}</span>
-          <span>Rúbrica v{informe.promptVersion}</span>
+          {informe.promptVersion && <span>Rúbrica v{informe.promptVersion}</span>}
         </div>
       </div>
     </a>
