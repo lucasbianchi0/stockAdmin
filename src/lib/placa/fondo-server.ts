@@ -39,6 +39,28 @@ const GEMINI_MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-3-pro-image"
 
 export type Proporcion = "square" | "portrait"
 
+/**
+ * Con qué composición se está trabajando. Decide si va la placa de referencia.
+ *
+ * La referencia es un tablero con las piezas OSCURAS terminadas, y lo que se le
+ * pide copiar es "the level of darkness, the cold navy grade, and the way the
+ * image is drowned in shadow ON THE SIDE WHERE TYPE GOES". Para el tema claro
+ * eso es exactamente lo contrario de lo que hace falta: pide sombra donde la
+ * pieza clara necesita luz, y una imagen de referencia le gana a cualquier
+ * instrucción de texto que diga lo contrario.
+ *
+ * ESTO NO ERA LA CAUSA DEL PARTIDO AL MEDIO. Durante un rato se creyó que sí
+ * —las piezas claras salían con media hueso plana y media foto— y se sacó la
+ * referencia buscando arreglarlo. No lo arregló: el corte venía del renderer,
+ * de un Fragment dentro del contenedor `column` de `PlacaClara`. Queda anotado
+ * porque la explicación equivocada sonaba razonable y puede volver a sonarlo.
+ *
+ * Igual va sin referencia, por el motivo de arriba, que es el bueno. Hasta que
+ * exista un tablero claro el texto solo describe peor la atmósfera, pero
+ * describe la correcta.
+ */
+export type TemaFondo = "oscuro" | "claro"
+
 const ASPECTO: Record<Proporcion, string> = { square: "1:1", portrait: "4:5" }
 
 async function referencia(): Promise<string | null> {
@@ -56,8 +78,14 @@ export function hayMotor(): boolean {
   return Boolean(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY)
 }
 
-export async function generarFondo(prompt: string, proporcion: Proporcion): Promise<string> {
-  const marca = await referencia()
+export async function generarFondo(
+  prompt: string,
+  proporcion: Proporcion,
+  tema: TemaFondo = "oscuro"
+): Promise<string> {
+  // Ver `TemaFondo`: la referencia es un tablero del sistema oscuro y le pide a
+  // la foto sombra justo donde la pieza clara necesita luz.
+  const marca = tema === "claro" ? null : await referencia()
   const texto = marca ? COPIA_LA_MARCA + prompt : prompt
 
   return process.env.OPENROUTER_API_KEY

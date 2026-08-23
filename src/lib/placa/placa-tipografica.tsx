@@ -509,43 +509,60 @@ function PlacaClara({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: nu
         backgroundColor: paleta.fondo,
       }}
     >
+      {/*
+        LA FOTO, COMO HIJO DIRECTO. Sin Fragment.
+
+        La maqueta que se aprobó tenía la imagen suelta acá y salía perfecta. Al
+        portarla al sistema la envolví junto con el velo en un `<>…</>`, y la
+        pieza empezó a salir partida al medio: media hueso plana y media foto,
+        con un canto recto exactamente al 50%.
+
+        Satori no trata un Fragment como React: dentro de un contenedor
+        `flexDirection: column` lo cuenta como un nodo y el `position: absolute`
+        de sus hijos deja de resolverse contra la pieza. El síntoma engaña
+        —parece que el generador reservó una columna— y por eso costó cinco
+        generaciones descartar el prompt, la referencia de marca y la dirección
+        de arte antes de mirar acá.
+
+        Los dos van sueltos y en orden. No hay Fragment.
+      */}
       {placa.fondo ? (
-        <>
-          {/* eslint-disable-next-line @next/next/no-img-element -- Satori no usa next/image */}
-          <img
-            src={placa.fondo}
-            width={ancho}
-            height={alto}
-            style={{ position: "absolute", left: 0, top: bajar, objectFit: "cover" }}
-            alt=""
-          />
+        // eslint-disable-next-line @next/next/no-img-element -- Satori no usa next/image
+        <img
+          src={placa.fondo}
+          width={ancho}
+          height={alto}
+          style={{ position: "absolute", left: 0, top: bajar }}
+          alt=""
+        />
+      ) : null}
 
-          {/*
-            EL VELO DE LA BANDA DE ARRIBA. La red, no el efecto.
+      {/*
+        EL VELO DE LA BANDA DE ARRIBA. La red, no el efecto.
 
-            El prompt reserva el 40% superior vacío y el generador lo cumple casi
-            siempre. "Casi" no alcanza para un texto que se publica: en una de
-            las pruebas el sujeto subió a la banda y la bajada quedó ilegible
-            sobre la pantalla de un laptop.
+        El prompt reserva el 40% superior vacío y el generador lo cumple casi
+        siempre. "Casi" no alcanza para un texto que se publica: en una de las
+        pruebas el sujeto subió a la banda y la bajada quedó ilegible sobre la
+        pantalla de un laptop.
 
-            Es el mismo razonamiento que el velo del tema oscuro —allá el fondo
-            trae su propio degradado pedido en el prompt y el velo del código es
-            la garantía— traído al lado de la luz. Muy suave y desvanecido antes
-            de la mitad: donde el generador cumplió no se nota, y donde no
-            cumplió salva la pieza.
-          */}
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: 0,
-              height: CLARO.velo.alto,
-              display: "flex",
-              backgroundImage: `linear-gradient(180deg, rgba(245,242,236,0.92) 0%, rgba(245,242,236,0.86) 42%, rgba(245,242,236,0.55) 72%, rgba(245,242,236,0) 100%)`,
-            }}
-          />
-        </>
+        Es el mismo razonamiento que el velo del tema oscuro —allá el fondo trae
+        su propio degradado pedido en el prompt y el velo del código es la
+        garantía— traído al lado de la luz. Muy suave y desvanecido antes de la
+        mitad: donde el generador cumplió no se nota, y donde no cumplió salva
+        la pieza.
+      */}
+      {placa.fondo ? (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: 0,
+            height: CLARO.velo.alto,
+            display: "flex",
+            backgroundImage: `linear-gradient(180deg, rgba(245,242,236,0.92) 0%, rgba(245,242,236,0.86) 42%, rgba(245,242,236,0.55) 72%, rgba(245,242,236,0) 100%)`,
+          }}
+        />
       ) : null}
 
       {/* El lugar del logo, que compone `soloLogo` después. */}

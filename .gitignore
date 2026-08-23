@@ -46,3 +46,8 @@ docs/*.pdf
 
 # exportaciones de Google Ads (datos de cuenta, no commitear)
 /datos-ads/
+
+# Fondos de prueba para `?fondo=2` de la ruta de muestra. Son generaciones
+# guardadas a mano para poder depurar la COMPOSICION sin pagar una llamada por
+# intento; pesan ~1 MB y no son parte del sistema, asi que no viajan en el repo.
+fixtures/

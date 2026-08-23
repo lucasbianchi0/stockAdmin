@@ -82,7 +82,15 @@ PALETTE: near-black navy #0A1424 through #111827, with restrained electric blue 
  * ocupa el 48% del alto, y el margen de más es lo que evita tener que correr la
  * foto pieza por pieza cuando el generador deja el sujeto alto.
  */
-const sistemaFondoClaro = () => `THIS IS THE ENTIRE CANVAS, not a photo to be placed inside a layout. It fills the square edge to edge, one continuous surface with no seam, no panel, no border and no visible edge anywhere.
+const sistemaFondoClaro = () => `THIS IS THE ENTIRE CANVAS, not a photo to be placed inside a layout. It fills the square edge to edge.
+
+THE GRADIENT RUNS VERTICALLY. TOP TO BOTTOM. This is the single most important rule of the whole plate and the one that keeps being broken.
+
+Read this as a test you must pass: take ANY horizontal line across the picture — near the top, through the middle, near the bottom — and every pixel along it, from the left edge to the right edge, is the SAME colour and the SAME brightness. The background changes only as you move DOWN the frame. It never changes as you move ACROSS it.
+
+That means: no left half and right half. No pale side and coloured side. No flat panel of colour beside a photograph. No vertical seam, edge, border or division anywhere. The colour has no idea where left and right are.
+
+If the picture can be cut down the middle into two areas that look different, the plate is unusable and has to be thrown away.
 
 ABSOLUTELY NO TEXT of any kind: no letters, numbers, labels, logos, wordmarks, watermarks, brand names, markings, screen text or fake UI anywhere in the frame, on any surface or screen. Every word of the finished piece and the official logo are composited on top afterwards. If you draw text, the plate is unusable.
 
@@ -90,7 +98,7 @@ THE COLOUR ENVIRONMENT — the most important instruction. The frame is a gradie
 
 THE TOP BAND IS EMPTY. The top 46% of the frame is nothing but the calm bone-white part of the gradient — no subject, no object, no detail, no texture, no horizon line, no shadow. Large dark type is laid over it, so it must stay completely quiet and even. The subject NEVER rises into it.
 
-THE SUBJECT is the HERO: large, centred horizontally, complete and unclipped, occupying most of the lower half and commanding the frame. It has real presence — strong form, crisp edges, visible material. A soft contact shadow anchors it so it does not float. A luminous glow radiates from BEHIND it, brightest immediately around it and falling off outward, so it separates from the environment.
+THE SUBJECT is the HERO: large, complete, unclipped, occupying most of the lower half and commanding the frame. It is CENTRED ON THE HORIZONTAL AXIS — the empty background to its left and the empty background to its right are the same width. It never sits against one side, and it never touches the left or right edge. It has real presence — strong form, crisp edges, visible material. A soft contact shadow anchors it so it does not float. A luminous glow radiates from BEHIND it, brightest immediately around it and falling off outward, so it separates from the environment.
 
 LIGHT — bright and soft, with real modelling: gentle highlights along the top edges of the subject and open, coloured shadows underneath. High-key but NEVER washed out; the texture survives everywhere. A blown-out frame with no material in it is the single worst outcome.
 
@@ -141,12 +149,6 @@ const REGLA_FAMILIA: Record<FamiliaFeed, string> = {
   "foto-real": `The subject is a PERSON at work. Real posture, realistic clothing, believable equipment, an ordinary workday — an Argentine/Latin American professional, not a model. Never a silhouette.`,
   tecnologia: `The subject is INFRASTRUCTURE or a real place. Precise composition, real hardware, no props that do not exist.`,
   editorial: `Typography carries this piece, so the plate stays quiet: generous empty dark background and at most one restrained graphic element.`,
-}
-
-/** La misma regla, para las piezas claras. Solo cambia de qué color es el vacío. */
-const REGLA_FAMILIA_CLARO: Record<FamiliaFeed, string> = {
-  ...REGLA_FAMILIA,
-  editorial: `Typography carries this piece, so the plate stays quiet: generous empty pale background and at most one restrained graphic element.`,
 }
 
 /**
@@ -217,9 +219,60 @@ export function promptDeFondo(
    * dirección de arte y el sistema de abajo, no qué se fotografía. Traducir cada
    * escena a una versión clara sería mantener dos catálogos que van a divergir.
    */
+  /*
+   * En el tema claro la escena se SUBORDINA, y no es un detalle de redacción.
+   *
+   * El brief lo escribe el modelo al inventar la idea y describe la pieza como
+   * la conoce: "placa de fondo oscuro con el titular en blanco y azul", "plano
+   * de piso al costado". Eso es la convención del tema oscuro —sujeto a un lado
+   * para dejar libre la columna del texto— y va PRIMERO en el prompt, así que le
+   * gana a las reglas de abajo: salieron piezas partidas al medio, media hueso y
+   * media foto.
+   *
+   * Los briefs nuevos ya se piden distinto (ver el campo "imagen" en la ruta del
+   * lote), pero los que ya están guardados no se pueden reescribir, y un brief
+   * viejo tiene que poder componerse igual. Por eso acá se dice en voz alta que
+   * de esa descripción se toma SOLO el sujeto.
+   */
+  /*
+   * LA FAMILIA NO ENTRA ACÁ, y esa es la corrección que más costó ver.
+   *
+   * `REGLA_FAMILIA` reparte los quince templates en tres formas de resolver la
+   * imagen —una persona trabajando, infraestructura, o tipografía sola— y esas
+   * tres existen porque en el tema oscuro el sujeto vive a la DERECHA y hay que
+   * decirle al generador qué poner ahí.
+   *
+   * En claro hay una sola composición: un objeto solo, centrado, sobre barrido
+   * claro. Heredar la familia significaba mandarle "the subject is a PERSON at
+   * work" a una pieza que pide un objeto sin gente, y el resultado fue una
+   * fotografía partida al medio: media hueso y media persona.
+   */
+  if (tema === "claro") {
+    /*
+     * EL ORDEN IMPORTA, y esto costó tres generaciones descubrirlo.
+     *
+     * Con la escena primero —"SCENE — un técnico en sitio, ubicado en la MITAD
+     * DERECHA del cuadro"— el generador construía eso y las reglas de abajo no
+     * alcanzaban a corregirlo: la pieza salía partida al medio, media hueso
+     * plana y media foto. Poner "ignorá lo que dice sobre la ubicación" tampoco
+     * bastó: una descripción concreta le gana a una negación.
+     *
+     * Acá la composición va PRIMERO y completa, y el sujeto entra al final
+     * reducido a una cosa: qué se fotografía. Es lo mismo que hace el tema
+     * oscuro al revés —allá la escena manda porque la composición es la de
+     * siempre— pero acá la composición es lo único que no se negocia.
+     */
+    return [
+      sistemaFondoClaro(),
+      DIRECCION_CLARO,
+      `WHAT IS BEING PHOTOGRAPHED — ${brief}`,
+      `FROM THE LINE ABOVE, TAKE ONLY THE OBJECT. It was written for a different layout, so everything else in it is wrong here: ignore any mention of which side of the frame, of left or right halves, of dark or light backgrounds, of shadow, of headlines, of typography, of colours, of placas or plates. If it names a person or hands, drop them — photograph the equipment alone. Keep only the noun: the hardware, the device, the object. Then compose it exactly as described at the top: one single object, CENTRED, with the same amount of empty background to its left as to its right, standing in the lower half of one continuous gradient.`,
+    ].join("\n\n")
+  }
+
   return [
     `SCENE — ${brief}`,
-    (tema === "claro" ? REGLA_FAMILIA_CLARO : REGLA_FAMILIA)[familia],
+    REGLA_FAMILIA[familia],
     DIRECCION[tema],
     sistemaFondo(familia, layout, tema),
   ].join("\n\n")

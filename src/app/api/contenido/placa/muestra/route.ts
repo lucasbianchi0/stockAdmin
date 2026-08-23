@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises"
+import { join } from "node:path"
+
 import { NextResponse } from "next/server"
 
 import { normalizarVariables } from "@/lib/feed-variables"
@@ -123,7 +126,32 @@ export async function GET(req: Request) {
    * evaluar sobre un color liso.
    */
   let fondo: string | undefined
-  if (new URL(req.url).searchParams.get("fondo") === "1") {
+
+  /*
+   * `?fondo=2` compone una imagen guardada en disco, sin generar nada.
+   *
+   * Es la herramienta que resolvió el partido al medio de las piezas claras.
+   * Mientras el fondo se generaba en cada intento no había forma de saber si el
+   * corte lo traía la foto o lo hacía el renderer, y cada prueba costaba una
+   * llamada paga y veintitantos segundos. Con un archivo fijo la respuesta salió
+   * en una: la misma foto entera salía partida al componerla, así que el
+   * problema no estaba en el generador.
+   *
+   * El archivo NO viaja en el repo —está en `.gitignore`—: es una generación
+   * cualquiera guardada a mano y pesa un mega. Se deja una y sirve para siempre.
+   */
+  const q = new URL(req.url).searchParams
+  if (q.get("fondo") === "2") {
+    const ruta = join(process.cwd(), "fixtures/fondo-claro.png")
+    const local = await readFile(ruta).catch(() => null)
+    if (!local) {
+      return NextResponse.json(
+        { error: `Falta ${ruta}. Guardá ahí cualquier fondo generado y volvé a pedir.` },
+        { status: 404 }
+      )
+    }
+    fondo = `data:image/png;base64,${local.toString("base64")}`
+  } else if (q.get("fondo") === "1") {
     if (!hayMotor()) {
       return NextResponse.json(
         { error: "Falta OPENROUTER_API_KEY o GEMINI_API_KEY" },
@@ -131,7 +159,7 @@ export async function GET(req: Request) {
       )
     }
     const prompt = promptDeFondo(null, template.familia, template.id, placa.layout, tema)
-    if (prompt) fondo = await generarFondo(prompt, "square")
+    if (prompt) fondo = await generarFondo(prompt, "square", tema)
   }
 
   const fallas = revisarPlaca(placa)

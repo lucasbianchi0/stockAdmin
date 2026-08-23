@@ -520,7 +520,11 @@ CÓMO ES ESTE LOTE — no es un calendario:
 - LOS ÁNGULOS DE ESTA TANDA. Una pieza por ángulo, en este orden, y desde ese ángulo y no otro:
 ${tanda.ejes.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}
   El ángulo NO es el tema: es desde dónde se lo mira. Una pieza de "Networking" con el ángulo "El error que comete el mercado" habla del error, no de que vendemos redes.
-- NO ESCRIBAS FOLLETO. Estas piezas no anuncian lo que Accedra hace: hablan del problema, de la tecnología y del oficio, para alguien que decide sobre eso. El catálogo de arriba es la ÚNICA fuente de cifras, clientes, servicios y tecnologías —de ahí no se sale— pero la pieza no tiene por qué mencionar a Accedra ni a lo que vende. Se nota que sabemos por lo que decimos del tema, no por lo que decimos de nosotros.
+${
+    tema === "claro"
+      ? `- LA IMAGEN DE ESTAS PIEZAS ES UN OBJETO SOLO, centrado sobre un fondo claro de estudio. En el campo "imagen" nombrás QUÉ objeto y nada más — ni el encuadre, ni el fondo, ni los colores, ni la tipografía, que los pone el sistema. Nunca personas ni manos.\n`
+      : ""
+  }- NO ESCRIBAS FOLLETO. Estas piezas no anuncian lo que Accedra hace: hablan del problema, de la tecnología y del oficio, para alguien que decide sobre eso. El catálogo de arriba es la ÚNICA fuente de cifras, clientes, servicios y tecnologías —de ahí no se sale— pero la pieza no tiene por qué mencionar a Accedra ni a lo que vende. Se nota que sabemos por lo que decimos del tema, no por lo que decimos de nosotros.
 - Reparto de objetivos, exacto: ${objetivos}.
 - Audiencias: la mayoría a decisores técnicos o de negocio, y una o dos a corporativo/RH. Las etiquetas válidas son ${Object.entries(AUDIENCIA_LABEL).filter(([k]) => k !== "todos").map(([k, v]) => `"${k}" (${v})`).join(", ")}.
 - Como máximo DOS piezas pueden usar el mismo "patron" de titular. Ocho titulares con la misma fórmula se leen como ocho veces el mismo posteo.
@@ -575,7 +579,11 @@ Devolvé SOLO un JSON válido, sin markdown ni texto fuera del objeto:
       "objetivo": "awareness | educacion | conversion",
       "audiencia": "decisores | negocio | corporativo",
       "angulo": "De qué trata el posteo: qué se cuenta, con qué estructura y para qué sirve. 2 frases concretas",
-      "imagen": "Qué se va a VER en la pieza: encuadre, sujeto, si es foto propia o placa. 2 frases",
+      ${
+        tema === "claro"
+          ? `"imagen": "EL SUJETO Y NADA MÁS. Un solo objeto físico, concreto y fotografiable, con el que se ilustra esta pieza: un switch con sus cables, una tableta de firma con su lápiz, un patchera de fibra, una notebook cerrada. Una frase.\n        NO describas la composición, ni el encuadre, ni dónde va ubicado, ni el fondo, ni los colores, ni la tipografía: de eso se encarga el sistema, que lo va a poner centrado sobre un barrido claro. Vos elegís QUÉ se fotografía.\n        SIN PERSONAS y sin manos: el objeto solo. Sin pantallas encendidas ni nada que muestre texto."`
+          : `"imagen": "Qué se va a VER en la pieza: encuadre, sujeto, si es foto propia o placa. 2 frases"`
+      },
       "porQue": "Por qué esta idea, en 1 frase: qué busca y a quién le habla"
     }
   ]

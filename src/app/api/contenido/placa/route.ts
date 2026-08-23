@@ -118,7 +118,7 @@ export async function POST(req: Request) {
 
 
   try {
-    const fondo = await generarFondo(prompt, formato)
+    const fondo = await generarFondo(prompt, formato, tema)
     const placa = placaDeVariables(variables, template, formato, undefined, tema)
 
     /*
