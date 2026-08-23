@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react"
 
-import { fechaLarga, type Canal, type Slot } from "@/lib/calendario-context"
+import { fechaLarga, type Canal, type Contenido, type Opcion } from "@/lib/calendario-context"
 import { ordenDeLectura } from "@/lib/secuencia"
 
 /**
@@ -38,15 +38,42 @@ const PERFIL = {
   linkedin: { nombre: "ACCEDRA S.A.", meta: "526 seguidores" },
 }
 
+/**
+ * Lo mínimo que una pieza necesita para dibujarse en el feed.
+ *
+ * No es `Slot` a propósito. El panel nació para el calendario, pero lo que
+ * juzga —el ritmo de la grilla, cómo respira el conjunto— vale igual para el
+ * banco, donde las piezas todavía no tienen fecha ni plan al que pertenecer.
+ * Pedir un `Slot` entero obligaría a inventarle campos a la pieza del banco sólo
+ * para poder mirarla, y campos inventados es lo que después alguien lee como
+ * verdaderos.
+ *
+ * `Slot` cumple esta forma tal cual, así que el calendario no cambia una línea.
+ */
+export type SlotFeed = {
+  id: string
+  /** Null mientras la pieza no está programada. */
+  fecha: string | null
+  contenido: Contenido | null
+  opciones: Opcion[]
+  elegida: string | null
+}
+
 /** Qué se dibuja en una celda. */
 type Celda = {
-  slot: Slot
+  slot: SlotFeed
   /** La imagen real de la pieza, si ya se generó. */
   imagen: string | null
   nombreTemplate: string | null
 }
 
-export function FeedPrevia({
+/**
+ * Genérico en `T` y no fijo en `SlotFeed`: `imagenDe` y `nombreTemplate` los
+ * escribe quien llama, sobre SUS piezas. Con la prop fijada en `SlotFeed`,
+ * TypeScript rechazaría —con razón— una función que espera un `Slot` completo,
+ * y el calendario tendría que envolver las suyas para nada.
+ */
+export function FeedPrevia<T extends SlotFeed>({
   canal,
   slots,
   imagenDe,
@@ -54,10 +81,10 @@ export function FeedPrevia({
   onCerrar,
 }: {
   canal: Canal
-  slots: Slot[]
-  imagenDe: (slot: Slot) => string | null
+  slots: T[]
+  imagenDe: (slot: T) => string | null
   /** El nombre del template del feed que le tocó a cada slot. */
-  nombreTemplate: (slot: Slot) => string | null
+  nombreTemplate: (slot: T) => string | null
   onCerrar: () => void
 }) {
   const [detalle, setDetalle] = useState<Celda | null>(null)
@@ -231,7 +258,7 @@ function DetalleInstagram({ celda, onVolver }: { celda: Celda; onVolver: () => v
           <ArrowLeft className="h-5 w-5" />
         </button>
         <p className="text-[13px] font-semibold">Publicación</p>
-        <span className="ml-auto text-[11px] text-white/50">{fechaLarga(celda.slot.fecha)}</span>
+        <span className="ml-auto text-[11px] text-white/50">{etiquetaFecha(celda.slot.fecha)}</span>
       </div>
 
       <div className="flex items-center gap-2.5 px-3 py-2.5">
@@ -295,7 +322,7 @@ function PostLinkedIn({ celda }: { celda: Celda }) {
         <div className="min-w-0 flex-1 leading-tight">
           <p className="truncate text-[14px] font-semibold">{PERFIL.linkedin.nombre}</p>
           <p className="truncate text-[12px] text-[#00000099]">{PERFIL.linkedin.meta}</p>
-          <p className="text-[12px] text-[#00000099]">{fechaLarga(celda.slot.fecha)} · 🌐</p>
+          <p className="text-[12px] text-[#00000099]">{etiquetaFecha(celda.slot.fecha)} · 🌐</p>
         </div>
         <MoreHorizontal className="h-5 w-5 shrink-0 text-[#00000099]" />
       </div>
@@ -327,12 +354,23 @@ function PostLinkedIn({ celda }: { celda: Celda }) {
 /* ── Compartido ───────────────────────────────────────────────────────────── */
 
 /**
+ * La fecha del post, o el hueco donde iría.
+ *
+ * Una pieza del banco no tiene fecha todavía, y el post simulado necesita algo
+ * en ese renglón: dejarlo vacío corre el encabezado y descoloca la maqueta justo
+ * en la pantalla que existe para juzgar cómo se ve.
+ */
+function etiquetaFecha(fecha: string | null): string {
+  return fecha ? fechaLarga(fecha) : "Sin programar"
+}
+
+/**
  * Qué texto mostrar. Con contenido generado, el de verdad; sin él, el título y
  * el hook de la opción elegida — que es lo que se va a terminar escribiendo.
  * Una celda vacía no dejaría juzgar el ritmo del feed, que es para lo que se
  * abre esta pantalla antes de generar nada.
  */
-function textoDe(slot: Slot): string {
+function textoDe(slot: SlotFeed): string {
   const c = slot.contenido
   if (c) return [c.caption, c.cta, c.hashtags].filter(Boolean).join("\n\n")
 
