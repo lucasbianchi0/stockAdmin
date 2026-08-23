@@ -17,12 +17,17 @@
 import type { PiezaBanco } from "@/lib/banco-context"
 import type { Contenido, Slot } from "@/lib/calendario-context"
 import { pedirPlaca, pedirPromptFeed, proporcionDe } from "@/lib/sistema-visual"
+import { ESPERA, fetchConEspera } from "@/lib/red"
 
 /** En qué anda una pieza mientras se produce. Lo dibuja la tarjeta. */
 export type PasoPieza = "texto" | "imagen"
 
-async function pedir(url: string, init: RequestInit): Promise<Record<string, unknown>> {
-  const res = await fetch(url, init)
+async function pedir(
+  url: string,
+  init: RequestInit,
+  espera: number
+): Promise<Record<string, unknown>> {
+  const res = await fetchConEspera(url, init, espera)
   const data = await res.json()
   if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "Falló el pedido")
   return data as Record<string, unknown>
@@ -36,11 +41,15 @@ async function pedir(url: string, init: RequestInit): Promise<Record<string, unk
  * existe otro flujo.
  */
 export async function generarCopy(piezaId: string): Promise<Contenido> {
-  const data = await pedir("/api/contenido/calendario/slot", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ slotId: piezaId, ajuste: "" }),
-  })
+  const data = await pedir(
+    "/api/contenido/calendario/slot",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slotId: piezaId, ajuste: "" }),
+    },
+    ESPERA.texto
+  )
 
   const slot = data.slot as Slot | undefined
   if (!slot?.contenido) throw new Error("El copy volvió vacío")
@@ -76,11 +85,15 @@ export async function guardarImagen(
   piezaId: string,
   imagen: string
 ): Promise<{ imagenPath: string | null; imagenUrl: string | null }> {
-  const data = await pedir("/api/contenido/calendario/slot/imagen", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ slotId: piezaId, imagen }),
-  })
+  const data = await pedir(
+    "/api/contenido/calendario/slot/imagen",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slotId: piezaId, imagen }),
+    },
+    ESPERA.subida
+  )
 
   const slot = data.slot as Slot | undefined
   return { imagenPath: slot?.imagenPath ?? null, imagenUrl: slot?.imagenUrl ?? null }

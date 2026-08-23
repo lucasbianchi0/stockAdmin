@@ -33,6 +33,7 @@ import {
   type TemaBanco,
 } from "@/lib/banco-context"
 import { producirPieza, type PasoPieza } from "@/lib/banco-cliente"
+import { ESPERA, fetchConEspera } from "@/lib/red"
 import { OBJETIVO_LABEL, type Canal } from "@/lib/calendario-context"
 import { templateFeedPorId } from "@/lib/templates-feed"
 import { cn } from "@/lib/utils"
@@ -317,11 +318,15 @@ export function BancoClient() {
 
       let nuevas: PiezaBanco[]
       try {
-        const res = await fetch("/api/contenido/banco/lote", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ canal: c, tema }),
-        })
+        const res = await fetchConEspera(
+          "/api/contenido/banco/lote",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ canal: c, tema }),
+          },
+          ESPERA.lote
+        )
         const data = await res.json()
         if (!res.ok) throw new Error(data.error)
         nuevas = (data.piezas ?? []) as PiezaBanco[]

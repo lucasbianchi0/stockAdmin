@@ -8,6 +8,7 @@
  */
 
 import type { Canal, Slot } from "@/lib/calendario-context"
+import { ESPERA, fetchConEspera } from "@/lib/red"
 import { secuenciaRecomendada } from "@/lib/secuencia"
 import { TEMPLATES_FEED } from "@/lib/templates-feed"
 
@@ -87,11 +88,15 @@ export async function pedirPromptFeed(
   slotId: string,
   templateFeedId: string
 ): Promise<{ prompt: string; variables: Record<string, unknown> }> {
-  const res = await fetch("/api/contenido/calendario/slot/prompt-feed", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ slotId, templateFeedId }),
-  })
+  const res = await fetchConEspera(
+    "/api/contenido/calendario/slot/prompt-feed",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slotId, templateFeedId }),
+    },
+    ESPERA.texto
+  )
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? "No se pudo armar el prompt")
   return { prompt: data.prompt as string, variables: data.variables ?? {} }
@@ -110,11 +115,15 @@ export async function pedirPlaca(
   variables: Record<string, unknown>,
   size: "square" | "portrait"
 ): Promise<{ imagen: string; fallas: string[] }> {
-  const res = await fetch("/api/contenido/placa", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ slotId, templateFeedId, variables, size }),
-  })
+  const res = await fetchConEspera(
+    "/api/contenido/placa",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slotId, templateFeedId, variables, size }),
+    },
+    ESPERA.imagen
+  )
   const data = await res.json()
   if (!res.ok || !data.image) throw new Error(data.error ?? "No se pudo componer la pieza")
 
