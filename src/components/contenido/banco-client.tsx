@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { CalendarDays, ImageIcon, Images, LayoutGrid, Loader2, Sparkles } from "lucide-react"
+import {
+  CalendarDays,
+  ImageIcon,
+  Images,
+  LayoutGrid,
+  Loader2,
+  Sparkles,
+  Trash2,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -134,6 +142,32 @@ export function BancoClient() {
       [c]: { ...prev[c], piezas: prev[c].piezas.filter((x) => x.id !== id) },
     }))
   }, [])
+
+  /**
+   * Borra una pieza de verdad: la fila y su imagen del bucket.
+   *
+   * Vive acá arriba y no en la tarjeta porque lo usan los dos caminos —el tacho
+   * de la grilla y el "Descartar" del diálogo— y dos llamadas al mismo endpoint
+   * escritas por separado es cómo una de las dos se olvida de sacar la pieza de
+   * la lista.
+   */
+  const descartar = useCallback(
+    async (c: Canal, id: string) => {
+      try {
+        const res = await fetch("/api/contenido/banco/pieza", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ piezaId: id }),
+        })
+        if (!res.ok) throw new Error((await res.json()).error)
+        sacar(c, id)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "No se pudo borrar")
+      }
+    },
+    [sacar]
+  )
+
 
   /**
    * El banco de la pestaña que se abre, una sola vez.
@@ -341,6 +375,7 @@ export function BancoClient() {
             onCompletar={(pendientes) => producir(c, pendientes)}
             onAplicar={(p) => aplicar(c, p)}
             onSacar={(id) => sacar(c, id)}
+            onDescartar={(id) => descartar(c, id)}
           />
         </TabsContent>
       ))}
@@ -361,6 +396,7 @@ function BancoDeCanal({
   onCompletar,
   onAplicar,
   onSacar,
+  onDescartar,
 }: {
   canal: Canal
   estado: EstadoCanal
@@ -368,6 +404,8 @@ function BancoDeCanal({
   onCompletar: (pendientes: PiezaBanco[]) => void
   onAplicar: (p: PiezaBanco) => void
   onSacar: (id: string) => void
+  /** Borra de verdad: la fila y su imagen. `onSacar` solo la saca de la lista. */
+  onDescartar: (id: string) => Promise<void>
 }) {
   const [abierta, setAbierta] = useState<string | null>(null)
   const [verFeed, setVerFeed] = useState(false)
@@ -477,6 +515,7 @@ function BancoDeCanal({
               pieza={p}
               paso={progreso?.piezaId === p.id ? progreso.paso : null}
               onAbrir={() => setAbierta(p.id)}
+              onDescartar={() => onDescartar(p.id)}
             />
           ))}
         </div>
@@ -514,19 +553,57 @@ function TarjetaPieza({
   pieza,
   paso,
   onAbrir,
+  onDescartar,
 }: {
   pieza: PiezaBanco
   /** El paso en curso, si es la que se está produciendo ahora. */
   paso: PasoPieza | null
   onAbrir: () => void
+  onDescartar: () => Promise<void>
 }) {
   const completa = piezaCompleta(pieza)
 
+  /**
+   * El tacho pide DOS clicks, y no es fricción de más.
+   *
+   * Borrar una pieza no se deshace, y cada una costó una generación de imagen
+   * paga. Un tacho de un solo click en la esquina de una grilla de veinte
+   * tarjetas se aprieta sin querer, y lo que se pierde no vuelve.
+   *
+   * Dos clicks en el mismo botón —no un diálogo— porque el que quiere borrar
+   * varias no debería tener que cerrar una ventana por cada una. Se desarma
+   * solo a los cuatro segundos, así que un click accidental se olvida.
+   */
+  const [armado, setArmado] = useState(false)
+  const [borrando, setBorrando] = useState(false)
+
+  useEffect(() => {
+    if (!armado) return
+    const t = setTimeout(() => setArmado(false), 4000)
+    return () => clearTimeout(t)
+  }, [armado])
+
+  /*
+   * La tarjeta es un `div` y no un `button`.
+   *
+   * El tacho vive adentro, y un botón dentro de otro botón es HTML inválido: el
+   * navegador rompe el anidado y el click del chico termina disparando al padre.
+   * Con `div` + `role="button"` la tarjeta sigue siendo enfocable y se activa
+   * con Enter, y el tacho es un botón de verdad.
+   */
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onAbrir}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onAbrir()
+        }
+      }}
       className={cn(
-        "group flex flex-col overflow-hidden rounded-xl border border-line bg-surface text-left shadow-e1",
+        "group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-line bg-surface text-left shadow-e1",
         "transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-e2",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
       )}
@@ -558,12 +635,52 @@ function TarjetaPieza({
         )}
 
         {!completa && pieza.imagenUrl && (
-          <span className="absolute right-2 top-2">
+          <span className="absolute left-2 top-2">
             <Badge tone="warning" size="sm">
               Falta el copy
             </Badge>
           </span>
         )}
+
+        {/* El tacho, arriba a la derecha. Siempre visible y no solo al pasar el
+            mouse: en una grilla táctil un control que aparece con hover no
+            existe. */}
+        <button
+          type="button"
+          aria-label={armado ? `Confirmar borrado de ${pieza.idea.titulo}` : `Borrar ${pieza.idea.titulo}`}
+          disabled={borrando || Boolean(paso)}
+          onClick={async (e) => {
+            // Sin esto, borrar abre además el diálogo de la pieza.
+            e.stopPropagation()
+            if (!armado) {
+              setArmado(true)
+              return
+            }
+            setBorrando(true)
+            try {
+              await onDescartar()
+            } finally {
+              setBorrando(false)
+              setArmado(false)
+            }
+          }}
+          className={cn(
+            "absolute right-2 top-2 flex items-center gap-1 rounded-md px-1.5 py-1.5 text-[11px] font-semibold",
+            "shadow-e1 backdrop-blur-sm transition-colors duration-150",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger-line",
+            "disabled:pointer-events-none disabled:opacity-40",
+            armado
+              ? "bg-destructive text-destructive-foreground"
+              : "bg-surface/85 text-danger-text hover:bg-destructive hover:text-destructive-foreground"
+          )}
+        >
+          {borrando ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+          )}
+          {armado && !borrando && <span className="pr-0.5">Borrar</span>}
+        </button>
       </div>
 
       <div className="flex-1 space-y-1.5 p-3.5">
@@ -577,7 +694,7 @@ function TarjetaPieza({
           <Badge size="sm">{OBJETIVO_LABEL[pieza.idea.objetivo]}</Badge>
         </div>
       </div>
-    </button>
+    </div>
   )
 }
 
