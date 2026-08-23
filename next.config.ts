@@ -18,6 +18,20 @@ const nextConfig: NextConfig = {
       "./public/brand/referencia-feed.png",
       "./public/brand/accedra-logo-blanco.svg",
     ],
+    /*
+     * La placa compone el logo leyéndolo del disco, igual que la ruta de arriba
+     * y por el mismo motivo: `soloLogo` arma la ruta con un `join()`, así que el
+     * rastreo automático no la ve y el archivo no viaja dentro de la función.
+     * Los dos logos, porque el tema claro usa el navy.
+     */
+    "/api/contenido/placa": [
+      "./public/brand/accedra-logo-blanco.svg",
+      "./public/brand/accedra-logo-navy.svg",
+    ],
+    "/api/contenido/placa/muestra": [
+      "./public/brand/accedra-logo-blanco.svg",
+      "./public/brand/accedra-logo-navy.svg",
+    ],
   },
 };
 

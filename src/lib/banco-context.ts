@@ -70,6 +70,13 @@ export type PiezaBanco = {
   idea: Opcion
   /** El copy publicable. Null hasta que se genera. */
   contenido: Contenido | null
+  /**
+   * Con qué composición se hizo. No es una preferencia de quien mira: el copy se
+   * escribió con las reglas de ESTE tema —el titular claro son dos líneas de
+   * hasta 21 caracteres cada una, el oscuro una columna de hasta 50 en total— y
+   * componerlo con el otro da una pieza que no entra o que sobra.
+   */
+  tema: "oscuro" | "claro"
   templateSlug: string | null
   imagenPath: string | null
   /** URL firmada de `imagenPath`. Temporal: se pide en cada lectura. */
@@ -155,4 +162,32 @@ export function textoParaPublicar(contenido: Contenido | null): string {
     .map((t) => (t ?? "").trim())
     .filter(Boolean)
     .join("\n\n")
+}
+
+
+/* ── El tema de la pieza ──────────────────────────────────────────────────── */
+
+export const TEMAS_BANCO = ["oscuro", "claro"] as const
+export type TemaBanco = (typeof TEMAS_BANCO)[number]
+
+/**
+ * Cómo se llama cada tema en pantalla, y qué es cada uno.
+ *
+ * Se elige POR LOTE y no una vez para todo: es la única forma de probar el claro
+ * sin comprometer el feed entero, y de mezclar los dos a propósito si el
+ * resultado gusta. La pieza guarda con cuál se hizo, así que regenerarla la
+ * devuelve igual.
+ *
+ * Y no es una preferencia de color: son dos composiciones distintas y el copy se
+ * escribe con las reglas de una de ellas. El titular claro son dos líneas cortas
+ * y parejas; el oscuro, una frase para una columna angosta.
+ */
+export const TEMA_LABEL: Record<TemaBanco, string> = {
+  oscuro: "Oscuro",
+  claro: "Claro",
+}
+
+export const TEMA_NOTA: Record<TemaBanco, string> = {
+  oscuro: "Foto a sangre con el texto encima. El de siempre",
+  claro: "Fondo hueso, titular centrado y el objeto abajo",
 }

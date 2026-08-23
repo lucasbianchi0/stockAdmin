@@ -130,7 +130,9 @@ export async function historialDelOtroCanal(canal: Canal): Promise<string[]> {
 export async function anotarEnHistorial(
   canal: Canal,
   ideas: Opcion[],
-  contexto?: Map<string, { linea?: string; eje?: string }>
+  contexto?: Map<string, { linea?: string; eje?: string }>,
+  /** Con qué composición se escribió. Ver la migración `tema_pieza`. */
+  tema: "oscuro" | "claro" = "oscuro"
 ): Promise<void> {
   const filas = ideas
     .filter((o) => o.headline.trim())
@@ -138,6 +140,7 @@ export async function anotarEnHistorial(
       const extra = contexto?.get(o.headline) ?? {}
       return {
         canal,
+        tema,
         clave: claveTitular(o.headline),
         headline: o.headline,
         titulo: o.titulo,

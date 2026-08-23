@@ -3,6 +3,9 @@ import { NextResponse } from "next/server"
 import { normalizarVariables } from "@/lib/feed-variables"
 import { placaDeVariables } from "@/lib/placa/de-variables"
 import { revisarPlaca } from "@/lib/placa/invariantes"
+import { esTema, type Tema } from "@/lib/placa/sistema"
+import { promptDeFondo } from "@/lib/placa/fondos"
+import { generarFondo, hayMotor } from "@/lib/placa/fondo-server"
 import { renderizarPlaca } from "@/lib/placa/placa-tipografica"
 import { templateFeedPorId } from "@/lib/templates-feed"
 
@@ -25,11 +28,15 @@ import { templateFeedPorId } from "@/lib/templates-feed"
  *   /api/contenido/placa/muestra?v=centrado  · titular centrado arriba, foto abajo
  *   /api/contenido/placa/muestra?v=defecto   · la pieza rota que motivó las garantías
  *
- * Con `?t=feed-05-reunion` se cambia el template, que es lo que decide la familia
+ * Con `?tema=claro` se ve la misma pieza en el tema claro, con `?fondo=1` se
+ * genera el fondo de verdad —lo demás sale sobre el color plano— y con
+ * `?t=feed-05-reunion` se cambia el template, que es lo que decide la familia
  * y —desde que el rótulo dejó de ser opcional— el rubro con el que se rellena.
  * La revisión de la placa viaja en la cabecera `X-Placa-Fallas`: vacía quiere
  * decir que la pieza está en sistema.
  */
+
+export const maxDuration = 60
 
 const MUESTRAS = {
   solo: {
@@ -43,6 +50,9 @@ const MUESTRAS = {
     destacado: "al que ya está adentro.",
     bajada:
       "El perímetro asume que el atacante viene de afuera. La mayoría entra con credenciales que alguien le dio.",
+    // El botón solo lo dibuja el tema claro; en oscuro el CTA no se usa en
+    // ninguno de los cuatro layouts.
+    cta: "AUDITÁ TU RED",
   },
   centrado: {
     headline: ["¿Qué hacen diferente", "las organizaciones que", "obtienen resultados con IA?"],
@@ -89,15 +99,43 @@ export async function GET(req: Request) {
     templateFeedPorId(new URL(req.url).searchParams.get("t")) ??
     templateFeedPorId("feed-01-infraestructura")!
   const variables = normalizarVariables(MUESTRAS[pedida as Variante])
-  const placa = placaDeVariables(
-    variables,
-    template,
-    "square",
-    pedida === "centrado" ? "centrado" : undefined
-  )
+  const pedidoTema = new URL(req.url).searchParams.get("tema")
+  const tema: Tema = esTema(pedidoTema) ? pedidoTema : "oscuro"
+
+  const placa = {
+    ...placaDeVariables(
+      variables,
+      template,
+      "square",
+      pedida === "centrado" ? "centrado" : undefined
+    ),
+    tema,
+  }
+
+  /*
+   * El fondo generado, solo si se pide.
+   *
+   * Por defecto la muestra sale sobre el color plano: lo que se revisa acá es la
+   * tipografía —dónde cae el titular, si el bloque cierra, cuánto aire queda— y
+   * eso se ve mejor sin una foto atrás. Con `?fondo=1` se paga la generación y
+   * se ve la pieza como sale de verdad, que es lo que hace falta para juzgar un
+   * tema nuevo: el velo y el contraste del texto sobre la foto no se pueden
+   * evaluar sobre un color liso.
+   */
+  let fondo: string | undefined
+  if (new URL(req.url).searchParams.get("fondo") === "1") {
+    if (!hayMotor()) {
+      return NextResponse.json(
+        { error: "Falta OPENROUTER_API_KEY o GEMINI_API_KEY" },
+        { status: 500 }
+      )
+    }
+    const prompt = promptDeFondo(null, template.familia, template.id, placa.layout, tema)
+    if (prompt) fondo = await generarFondo(prompt, "square")
+  }
 
   const fallas = revisarPlaca(placa)
-  const jpeg = await renderizarPlaca(placa)
+  const jpeg = await renderizarPlaca({ ...placa, fondo })
 
   return new NextResponse(new Uint8Array(jpeg), {
     headers: {
@@ -107,6 +145,7 @@ export async function GET(req: Request) {
       "X-Placa-Eyebrow": placa.eyebrow ?? "",
       "X-Placa-Destacado": placa.destacado ?? "",
       "X-Placa-Titular": placa.titular.join(" "),
+      "X-Placa-Tema": tema,
     },
   })
 }

@@ -9,6 +9,7 @@ import { revisarPlaca } from "@/lib/placa/invariantes"
 import { promptDeFondo } from "@/lib/placa/fondos"
 import { generarFondo, hayMotor } from "@/lib/placa/fondo-server"
 import { renderizarPlaca } from "@/lib/placa/placa-tipografica"
+import { esTema, type Tema } from "@/lib/placa/sistema"
 import { templateFeedPorId } from "@/lib/templates-feed"
 
 /**
@@ -53,6 +54,8 @@ export async function POST(req: Request) {
   )
   if (!template) return NextResponse.json({ error: "Ese template no existe" }, { status: 400 })
 
+
+
   /*
    * La escena sale del posteo, no de una tabla.
    *
@@ -63,11 +66,12 @@ export async function POST(req: Request) {
    */
   const slotId = typeof raw.slotId === "string" ? raw.slotId : null
   let escena: string | null = null
+  let temaGuardado: Tema | null = null
 
   if (slotId) {
     const { data: slot } = await supabase
       .from("content_slots")
-      .select("opciones, elegida")
+      .select("opciones, elegida, tema")
       .eq("id", slotId)
       .maybeSingle()
 
@@ -75,12 +79,26 @@ export async function POST(req: Request) {
       const opciones = (slot.opciones ?? []) as Opcion[]
       const opcion = opciones.find((o) => o.id === slot.elegida) ?? opciones[0] ?? null
       escena = opcion?.imagen?.trim() || null
+      if (esTema(slot.tema)) temaGuardado = slot.tema
     }
   }
 
+  /*
+   * El tema sale de la PIEZA, no del cliente.
+   *
+   * Es el mismo criterio que la escena: el cliente puede pedir la composición,
+   * pero lo que decide con qué reglas se escribió el copy está guardado. Si el
+   * cliente mandara otro tema, estaría componiendo un titular pensado para dos
+   * líneas cortas dentro de una columna angosta, o al revés.
+   *
+   * El body queda como respaldo para la pieza que todavía no se guardó y para
+   * las pruebas.
+   */
+  const tema: Tema = temaGuardado ?? (esTema(raw.tema) ? raw.tema : "oscuro")
+
   // `template.id` va como respaldo: los planes viejos no tienen brief de escena
   // guardado y siguen saliendo con la que les tocaba.
-  const prompt = promptDeFondo(escena, template.familia, template.id)
+  const prompt = promptDeFondo(escena, template.familia, template.id, undefined, tema)
   if (!prompt) {
     // Falla explícito y no con una escena genérica: una pieza sin brief de arte se
     // arregla escribiéndolo, y un fondo inventado se publica sin que nadie note
@@ -98,9 +116,10 @@ export async function POST(req: Request) {
 
   const formato = raw.size === "portrait" ? "portrait" : "square"
 
+
   try {
     const fondo = await generarFondo(prompt, formato)
-    const placa = placaDeVariables(variables, template, formato)
+    const placa = placaDeVariables(variables, template, formato, undefined, tema)
 
     /*
      * La revisión va ANTES de rasterizar y viaja con la respuesta.

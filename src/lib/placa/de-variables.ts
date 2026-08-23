@@ -51,7 +51,12 @@ export function placaDeVariables(
    * consecuencia de si hay ítems o bajada, es una decisión de composición de la
    * pieza. Viene de arriba o no viene.
    */
-  layoutFijo?: PlacaTipografica["layout"]
+  layoutFijo?: PlacaTipografica["layout"],
+  /**
+   * Claro u oscuro. No es una variante de color: son dos composiciones, y el
+   * copy se escribió con las reglas de una de ellas. Ver `PlacaClara`.
+   */
+  tema: PlacaTipografica["tema"] = "oscuro"
 ): Omit<PlacaTipografica, "fondo"> {
   // Los datos del evento entran por el mismo bloque que los servicios: fecha,
   // lugar y stand son tres líneas cortas apiladas, que es exactamente lo que ese
@@ -67,6 +72,7 @@ export function placaDeVariables(
         : variables.features
 
   return {
+    tema,
     layout: layoutFijo ?? layoutDe(variables),
     familia: template.familia,
     formato,

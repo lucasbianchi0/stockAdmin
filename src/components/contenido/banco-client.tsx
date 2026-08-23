@@ -2,24 +2,30 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { CalendarDays, ImageIcon, Images, Loader2, Sparkles } from "lucide-react"
+import { CalendarDays, ImageIcon, Images, LayoutGrid, Loader2, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { EmptyState, LoadingState } from "@/components/ui/states"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { FeedPrevia, type SlotFeed } from "@/components/contenido/feed-previa"
 import { PiezaBancoDialog } from "@/components/contenido/pieza-banco-dialog"
 import {
   BANCO_LABEL,
   BANCO_NOTA,
   CANALES_BANCO,
   PIEZAS_POR_LOTE,
+  TEMAS_BANCO,
+  TEMA_LABEL,
+  TEMA_NOTA,
   piezaCompleta,
   type PiezaBanco,
+  type TemaBanco,
 } from "@/lib/banco-context"
 import { producirPieza, type PasoPieza } from "@/lib/banco-cliente"
 import { OBJETIVO_LABEL, type Canal } from "@/lib/calendario-context"
+import { templateFeedPorId } from "@/lib/templates-feed"
 import { cn } from "@/lib/utils"
 
 /** En qué anda el lote de un canal. Null cuando ese banco no está trabajando. */
@@ -36,6 +42,30 @@ const VACIO: EstadoCanal = { piezas: [], cargado: false, progreso: null }
 
 /** Las que no están listas para publicar: les falta el copy, la imagen o las dos. */
 const pendientesDe = (piezas: PiezaBanco[]) => piezas.filter((p) => !piezaCompleta(p))
+
+/**
+ * Una pieza del banco, con la forma que el panel del feed sabe dibujar.
+ *
+ * Las dos mitades que agrega —imagen y template— viajan en la propia pieza y no
+ * en un Map aparte: el panel llama a `imagenDe` una vez por celda, y un Map
+ * paralelo es una segunda estructura que hay que acordarse de mantener en
+ * sincronía cada vez que una pieza cambia. Acá no hay nada que sincronizar.
+ *
+ * `opciones` es la idea sola porque en el banco no hay tres propuestas para
+ * elegir: la pieza nace con la suya. Es un slot con una opción ya elegida, que
+ * es el mismo estado al que llega un slot del calendario apenas se genera.
+ */
+type PiezaFeed = SlotFeed & { imagenUrl: string | null; templateSlug: string | null }
+
+const aPiezaFeed = (p: PiezaBanco): PiezaFeed => ({
+  id: p.id,
+  fecha: p.programada,
+  contenido: p.contenido,
+  opciones: [p.idea],
+  elegida: p.idea.id,
+  imagenUrl: p.imagenUrl,
+  templateSlug: p.templateSlug,
+})
 
 /**
  * El banco de imágenes: se genera un lote, se revisa y se programa.
@@ -246,7 +276,7 @@ export function BancoClient() {
   )
 
   const generarLote = useCallback(
-    async (c: Canal) => {
+    async (c: Canal, tema: TemaBanco) => {
       if (enCurso.current.has(c)) return
       parche(c, { progreso: { hechos: 0, total: PIEZAS_POR_LOTE, piezaId: null, paso: "texto" } })
 
@@ -255,7 +285,7 @@ export function BancoClient() {
         const res = await fetch("/api/contenido/banco/lote", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ canal: c }),
+          body: JSON.stringify({ canal: c, tema }),
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error)
@@ -307,7 +337,7 @@ export function BancoClient() {
           <BancoDeCanal
             canal={c}
             estado={estado[c]}
-            onGenerarLote={() => generarLote(c)}
+            onGenerarLote={(tema) => generarLote(c, tema)}
             onCompletar={(pendientes) => producir(c, pendientes)}
             onAplicar={(p) => aplicar(c, p)}
             onSacar={(id) => sacar(c, id)}
@@ -334,12 +364,17 @@ function BancoDeCanal({
 }: {
   canal: Canal
   estado: EstadoCanal
-  onGenerarLote: () => void
+  onGenerarLote: (tema: TemaBanco) => void
   onCompletar: (pendientes: PiezaBanco[]) => void
   onAplicar: (p: PiezaBanco) => void
   onSacar: (id: string) => void
 }) {
   const [abierta, setAbierta] = useState<string | null>(null)
+  const [verFeed, setVerFeed] = useState(false)
+  /* El tema del PRÓXIMO lote. Arranca en oscuro, que es lo que el feed viene
+     siendo, y no se recuerda entre lotes a propósito: es una decisión de cada
+     tanda, no una preferencia guardada. Cada pieza guarda el suyo. */
+  const [tema, setTema] = useState<TemaBanco>("oscuro")
 
   const { piezas, cargado, progreso } = estado
   const incompletas = pendientesDe(piezas)
@@ -354,11 +389,49 @@ function BancoDeCanal({
           <p className="mt-0.5 text-[12px] text-ink-muted">
             {trabajando
               ? "Podés cambiar de pestaña o abrir una pieza: la generación sigue."
-              : BANCO_NOTA[canal]}
+              : `${BANCO_NOTA[canal]} · ${TEMA_NOTA[tema]}`}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Ver el banco como feed, no como grilla de fichas.
+              Una publicación se juzga sola; un feed se juzga junto: ocho placas
+              que por separado están bien pueden ser ocho fotos con texto encima,
+              y eso sólo se ve en la maqueta. Antes había que exportar las ocho al
+              calendario para enterarse. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setVerFeed(true)}
+            disabled={piezas.length === 0}
+          >
+            <LayoutGrid />
+            Ver feed
+          </Button>
+
+          {/* El tema del PRÓXIMO lote. Va pegado al botón porque es parte de la
+              misma decisión: no se elige un tema y después se genera, se genera
+              un lote de un tema. Cada pieza guarda el suyo, así que los dos
+              pueden convivir en el banco. */}
+          {!trabajando && (
+            <div className="flex items-center gap-0.5 rounded-lg border border-line bg-surface-muted p-[3px]">
+              {TEMAS_BANCO.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTema(t)}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-[11.5px] font-medium transition-colors",
+                    t === tema
+                      ? "bg-surface font-semibold text-ink shadow-e1"
+                      : "text-ink-muted hover:text-ink-secondary"
+                  )}
+                >
+                  {TEMA_LABEL[t]}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Secundario y a propósito: con el botón principal arrastrando lo
               pendiente, esto solo hace falta para terminar lo que hay sin
               generar ocho piezas nuevas encima. */}
@@ -369,7 +442,7 @@ function BancoDeCanal({
             </Button>
           )}
 
-          <Button onClick={onGenerarLote} disabled={trabajando}>
+          <Button onClick={() => onGenerarLote(tema)} disabled={trabajando}>
             {trabajando ? <Loader2 className="animate-spin" /> : <Sparkles />}
             {trabajando
               ? `${progreso.paso === "imagen" ? "Imagen" : "Texto"} ${Math.min(progreso.hechos + 1, progreso.total)}/${progreso.total}…`
@@ -389,7 +462,7 @@ function BancoDeCanal({
             title="El banco está vacío"
             description={`Generá un lote de ${PIEZAS_POR_LOTE} piezas: cada una sale con su imagen y su copy listos para revisar.`}
             action={
-              <Button onClick={onGenerarLote} disabled={trabajando}>
+              <Button onClick={() => onGenerarLote(tema)} disabled={trabajando}>
                 <Sparkles />
                 Generar lote de {PIEZAS_POR_LOTE}
               </Button>
@@ -407,6 +480,16 @@ function BancoDeCanal({
             />
           ))}
         </div>
+      )}
+
+      {verFeed && (
+        <FeedPrevia
+          canal={canal}
+          slots={piezas.map(aPiezaFeed)}
+          imagenDe={(p) => p.imagenUrl}
+          nombreTemplate={(p) => templateFeedPorId(p.templateSlug)?.nombre ?? null}
+          onCerrar={() => setVerFeed(false)}
+        />
       )}
 
       <PiezaBancoDialog

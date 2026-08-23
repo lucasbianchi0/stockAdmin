@@ -19,6 +19,7 @@ import { join } from "node:path"
 import sharp from "sharp"
 
 /** El logotipo blanco con el acento azul: el que el kit marca para fondo oscuro. */
+/** El logo por defecto: el blanco, que es el de las piezas oscuras. */
 const ARCHIVO_LOGO = "public/brand/accedra-logo-blanco.svg"
 
 /** Proporción del SVG oficial (1073 × 160). Fija: el logo no se deforma. */
@@ -276,7 +277,21 @@ export async function conLogo(imagen: Buffer, medida: Medida): Promise<Buffer> {
  * `conLogo` la usa para su último paso, de modo que las dos vías componen el logo
  * con las mismas constantes y no hay dos posiciones posibles para la marca.
  */
-export async function soloLogo(arte: Buffer): Promise<Buffer> {
+/**
+ * Dónde se apoya la marca.
+ *
+ * El tema oscuro la pone abajo a la izquierda, cerrando la columna de texto. El
+ * claro la pone centrada arriba, encabezando la pieza: es lo primero que se lee
+ * y lo que sostiene la simetría de una composición centrada. La misma marca en
+ * el mismo tamaño, en el rincón que cada composición le deja.
+ */
+export type PosicionLogo = "abajo-izquierda" | "arriba-centro"
+
+export async function soloLogo(
+  arte: Buffer,
+  archivoLogo = ARCHIVO_LOGO,
+  posicion: PosicionLogo = "abajo-izquierda"
+): Promise<Buffer> {
   const base = sharp(arte)
   const { width, height } = await base.metadata()
   if (!width || !height) return arte
@@ -287,14 +302,21 @@ export async function soloLogo(arte: Buffer): Promise<Buffer> {
 
   // El SVG se rasteriza al ancho pedido en vez de escalar un PNG ya rendereado:
   // sobre 1080 el logo mide 237 px y cualquier bitmap más chico llegaría blando.
-  const svg = await readFile(join(process.cwd(), ARCHIVO_LOGO))
+  const svg = await readFile(join(process.cwd(), archivoLogo))
   const logo = await sharp(svg, { density: 300 })
     .resize({ width: anchoLogo, height: altoLogo, fit: "contain" })
     .png()
     .toBuffer()
 
+  const left =
+    posicion === "arriba-centro" ? Math.round((width - anchoLogo) / 2) : margen
+  const top =
+    posicion === "arriba-centro"
+      ? Math.round(height * (64 / 1080))
+      : height - margen - altoLogo
+
   return await base
-    .composite([{ input: logo, left: margen, top: height - margen - altoLogo }])
+    .composite([{ input: logo, left, top }])
     // 92 y no 100: la diferencia no se ve en un feed y son ~700 KB menos por
     // pieza viajando en base64 hasta el bucket.
     .jpeg({ quality: 92 })

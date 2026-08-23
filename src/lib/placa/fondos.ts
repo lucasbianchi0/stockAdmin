@@ -28,7 +28,11 @@
  * escena —vale para cualquiera— y perderlo era el riesgo real de esta migración.
  */
 
-import { zonaDeTexto } from "@/lib/placa/sistema"
+import { PALETAS, zonaDeTexto, type Tema } from "@/lib/placa/sistema"
+
+/** Los colores del ambiente claro, tomados de la paleta y no escritos a mano. */
+const HUESO_FONDO = PALETAS.claro.fondo
+const AZUL_MARCA = PALETAS.claro.azul
 import type { FamiliaFeed } from "@/lib/templates-feed"
 
 /**
@@ -39,7 +43,10 @@ import type { FamiliaFeed } from "@/lib/templates-feed"
  * clara: ilegible. Con ellas, la foto vive a la derecha y abajo, y la esquina de
  * arriba a la izquierda queda tranquila para el titular.
  */
-const sistemaFondo = (familia: FamiliaFeed, layout?: string) => `This is a BACKGROUND PLATE for a social post, not the finished post.
+const sistemaFondo = (familia: FamiliaFeed, layout: string | undefined, tema: Tema) =>
+  tema === "claro" ? sistemaFondoClaro() : sistemaFondoOscuro(familia, layout)
+
+const sistemaFondoOscuro = (familia: FamiliaFeed, layout?: string) => `This is a BACKGROUND PLATE for a social post, not the finished post.
 
 ABSOLUTELY NO TEXT. Not one letter, word, number, caption, label, watermark, logo, wordmark, monogram, brand name, domain, UI element, button, sign, screen text or fake code — nowhere in the image, at any size, on any surface, on any screen, on any garment, on any piece of equipment. Every word of the finished piece and the official logo are composited on top of this plate afterwards, by the design system. If you draw text, the plate is unusable.
 
@@ -58,6 +65,38 @@ FULL BLEED: the artwork fills the entire square canvas, edge to edge. This is no
 PALETTE: near-black navy #0A1424 through #111827, with restrained electric blue as the only accent. No other color outside what the photograph naturally contains. No cyberpunk, no neon, no purple, no teal wash.`
 
 /**
+ * El fondo del tema claro. Otra composición, no el mismo con otra luz.
+ *
+ * En el tema oscuro el sujeto vive a la DERECHA para dejar libre la columna
+ * izquierda donde va el texto. Acá el texto está ARRIBA y centrado, así que el
+ * sujeto va CENTRADO y la banda que hay que reservar es la de arriba.
+ *
+ * Y hay algo que este brief pide y el oscuro no: un AMBIENTE DE COLOR. Se probó
+ * pidiendo "sujeto centrado sobre barrido hueso" y salía correcto y muerto —
+ * noventa por ciento de superficie vacía con un objeto gris en el medio—. Lo que
+ * le faltaba no era composición sino color y profundidad: un degradado que
+ * arranca en luz arriba y se satura hacia abajo, con el sujeto como héroe y una
+ * luz propia detrás.
+ *
+ * La banda reservada es del 46% y no del 40%: la franja de texto de la placa
+ * ocupa el 48% del alto, y el margen de más es lo que evita tener que correr la
+ * foto pieza por pieza cuando el generador deja el sujeto alto.
+ */
+const sistemaFondoClaro = () => `THIS IS THE ENTIRE CANVAS, not a photo to be placed inside a layout. It fills the square edge to edge, one continuous surface with no seam, no panel, no border and no visible edge anywhere.
+
+ABSOLUTELY NO TEXT of any kind: no letters, numbers, labels, logos, wordmarks, watermarks, brand names, markings, screen text or fake UI anywhere in the frame, on any surface or screen. Every word of the finished piece and the official logo are composited on top afterwards. If you draw text, the plate is unusable.
+
+THE COLOUR ENVIRONMENT — the most important instruction. The frame is a gradient that BUILDS: warm bone white ${HUESO_FONDO} at the very top, cooling through pale blue in the middle, and deepening into a rich, luminous but still light brand blue (${AZUL_MARCA} at roughly 25% strength) across the bottom quarter and into the bottom corners. It must read as an atmosphere the subject is standing in, not as a white studio with a tint added.
+
+THE TOP BAND IS EMPTY. The top 46% of the frame is nothing but the calm bone-white part of the gradient — no subject, no object, no detail, no texture, no horizon line, no shadow. Large dark type is laid over it, so it must stay completely quiet and even. The subject NEVER rises into it.
+
+THE SUBJECT is the HERO: large, centred horizontally, complete and unclipped, occupying most of the lower half and commanding the frame. It has real presence — strong form, crisp edges, visible material. A soft contact shadow anchors it so it does not float. A luminous glow radiates from BEHIND it, brightest immediately around it and falling off outward, so it separates from the environment.
+
+LIGHT — bright and soft, with real modelling: gentle highlights along the top edges of the subject and open, coloured shadows underneath. High-key but NEVER washed out; the texture survives everywhere. A blown-out frame with no material in it is the single worst outcome.
+
+Real photography, real camera grain. Never a 3D render, never an illustration, never CGI, never a mockup, never a device frame. No defocused-room background — the environment is a clean gradient. Square 1:1, full bleed.`
+
+/**
  * La dirección de arte que vale para CUALQUIER escena.
  *
  * Estaba escondida dentro de la regla de la familia "foto-real", así que las
@@ -65,7 +104,7 @@ PALETTE: near-black navy #0A1424 through #111827, with restrained electric blue 
  * parezca generado, y eso hace falta siempre. Es la parte de los quince prompts
  * viejos que costó iteraciones y que no había que perder al sacar las escenas.
  */
-const DIRECCION = `NOT AI-LOOKING — the single most important rule. No perfectly symmetric corridor with the vanishing point dead centre, no infinite rows of identical glowing lights, no mirror-polished floor, no impossibly clean scene, no uniform blue glow over everything, no floating holograms, no fake UI. Shoot it like a real photographer did: off-centre framing, a specific object closer to the lens, shallow depth of field with a genuine focal plane, uneven motivated light, visible grain, a little mess.
+const DIRECCION_OSCURO = `NOT AI-LOOKING — the single most important rule. No perfectly symmetric corridor with the vanishing point dead centre, no infinite rows of identical glowing lights, no mirror-polished floor, no impossibly clean scene, no uniform blue glow over everything, no floating holograms, no fake UI. Shoot it like a real photographer did: off-centre framing, a specific object closer to the lens, shallow depth of field with a genuine focal plane, uneven motivated light, visible grain, a little mess.
 
 THE GRADE, NOT THE DARKNESS. Keep natural skin tones, fabric, wood and window light in the scene, then pull the whole frame down and cool it toward navy: shadows crushed to near-black, highlights held back. The piece ends up almost black, but it got there in the grade — never by removing the light from the scene itself. A person you cannot see is a failed plate, and so is a flat murky smear.
 
@@ -73,11 +112,41 @@ REAL PHOTOGRAPHY unless the scene explicitly asks for a graphic: the grain of a 
 
 Blue is an accent only, NEVER a global color grade.`
 
+/**
+ * La dirección de arte del tema claro.
+ *
+ * Comparte con la oscura lo que no depende de la luz —que no parezca generado,
+ * que sea fotografía y no un render, que el azul sea acento y no baño— y cambia
+ * lo único que sí: de qué lado está el riesgo. Allá el peor resultado es una
+ * mancha negra sin nada adentro; acá es una foto quemada, blanca y sin materia.
+ *
+ * Va repetida palabra por palabra en vez de "adaptada" porque es la parte que
+ * costó iteraciones: reescribirla para acortarla es la forma segura de perderla.
+ */
+const DIRECCION_CLARO = `NOT AI-LOOKING — the single most important rule. No impossibly clean scene, no uniform wash over everything, no floating holograms, no fake UI, no perfectly symmetric arrangement. Shoot it like a real photographer did: a genuine focal plane, uneven motivated light, visible grain, real material.
+
+THE GRADE, NOT THE BLOWOUT. Keep natural material in the scene — brushed metal, moulded plastic, cable, fabric — then lift the whole frame and warm it a touch toward bone: shadows opened to soft grey and colour, highlights held just under white, contrast gentle. The piece ends up bright, but it got there in the grade — never by erasing the content. A washed-out frame with no material in it is a failed plate, and so is a grey flat mush. You can still see the weave, the brushed finish, the edge.
+
+REAL PHOTOGRAPHY unless the scene explicitly asks for a graphic: the grain of a real camera, never a CGI render, never an illustration, never a 3D object. If the scene does ask for a graphic, it is flat line-work in deep blue on the bone background — thin single-weight outlines, fine curves — occupying no more than 40% of the frame.
+
+Blue is the ENVIRONMENT here, but never a global colour grade laid over the subject: the subject keeps its own material colour.`
+
+const DIRECCION: Record<Tema, string> = {
+  oscuro: DIRECCION_OSCURO,
+  claro: DIRECCION_CLARO,
+}
+
 /** El matiz que aporta la familia. Se conserva para el velo de la composición. */
 const REGLA_FAMILIA: Record<FamiliaFeed, string> = {
   "foto-real": `The subject is a PERSON at work. Real posture, realistic clothing, believable equipment, an ordinary workday — an Argentine/Latin American professional, not a model. Never a silhouette.`,
   tecnologia: `The subject is INFRASTRUCTURE or a real place. Precise composition, real hardware, no props that do not exist.`,
   editorial: `Typography carries this piece, so the plate stays quiet: generous empty dark background and at most one restrained graphic element.`,
+}
+
+/** La misma regla, para las piezas claras. Solo cambia de qué color es el vacío. */
+const REGLA_FAMILIA_CLARO: Record<FamiliaFeed, string> = {
+  ...REGLA_FAMILIA,
+  editorial: `Typography carries this piece, so the plate stays quiet: generous empty pale background and at most one restrained graphic element.`,
 }
 
 /**
@@ -134,15 +203,24 @@ export function promptDeFondo(
   escena: string | null,
   familia: FamiliaFeed,
   templateLegado?: string | null,
-  layout?: string
+  layout?: string,
+  tema: Tema = "oscuro"
 ): string | null {
   const brief = escena?.trim() || (templateLegado ? ESCENA_LEGADO[templateLegado] : null)
   if (!brief) return null
 
+  /*
+   * Las ESCENAS no cambian con el tema, y es a propósito.
+   *
+   * "Un corredor de data center con los racks a la derecha" es la misma escena
+   * revelada de dos maneras; lo que decide si la pieza sale oscura o clara es la
+   * dirección de arte y el sistema de abajo, no qué se fotografía. Traducir cada
+   * escena a una versión clara sería mantener dos catálogos que van a divergir.
+   */
   return [
     `SCENE — ${brief}`,
-    REGLA_FAMILIA[familia],
-    DIRECCION,
-    sistemaFondo(familia, layout),
+    (tema === "claro" ? REGLA_FAMILIA_CLARO : REGLA_FAMILIA)[familia],
+    DIRECCION[tema],
+    sistemaFondo(familia, layout, tema),
   ].join("\n\n")
 }

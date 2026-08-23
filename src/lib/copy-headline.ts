@@ -497,3 +497,98 @@ export function tramoAzul(titular: string, propuesto?: string): string {
 
   return remateDe(base)
 }
+
+/* ── La doctrina del tema claro ───────────────────────────────────────────── */
+
+/**
+ * Lo que cambia al escribir para el tema claro, y por qué NO alcanza con mover
+ * el techo de caracteres.
+ *
+ * El tema oscuro imprime el titular en una columna angosta que se reparte en las
+ * líneas que hagan falta —hasta cinco— a un cuerpo fijo: ahí un techo de
+ * caracteres TOTALES describe bien el problema, porque lo que se agota es el
+ * área.
+ *
+ * El claro es otra composición: centrado, a DOS líneas, y el cuerpo sale de la
+ * línea más larga. Medido sobre los 67 titulares reales del banco, apenas el
+ * 45% entra al cuerpo grande — y el peor caso es "Nadie espera el cierre. Ya
+ * está.": treinta y dos caracteres, por debajo de cualquier techo razonable, que
+ * igual no entra porque parte en 23 + 9.
+ *
+ * De ahí la forma de este bloque: no pide un titular con un techo, pide DOS
+ * LÍNEAS con un presupuesto cada una. El modelo elige dónde cortar sabiendo
+ * contra qué se lo va a medir, que es la única manera de que el corte y el copy
+ * se decidan juntos.
+ *
+ * Se arma con los números que salen de la geometría —`LINEA_MAX_CLARO` se
+ * calcula del ancho útil y del cuerpo— así que mover la maqueta mueve el prompt
+ * sin que nadie tenga que acordarse.
+ */
+export function doctrinaHeadlineClaro(lineaMax: number, lineaMaxTolerada: number): string {
+  return `EL TITULAR DE LA PIEZA — lo más importante que escribís.
+
+Va impreso ENORME y centrado, en DOS LÍNEAS, arriba de todo. Es lo único que alguien lee scrolleando.
+
+LA FORMA: DOS LÍNEAS, Y LAS ESCRIBÍS VOS.
+No entregás una frase para que alguien la parta después: entregás la línea 1 y la línea 2, y el corte es tuyo. La segunda línea va en azul, así que el corte decide qué se resalta — es una decisión de copy, no de diseño.
+
+EL PRESUPUESTO, y es por LÍNEA, no del total:
+· Cada línea, hasta ${lineaMax} caracteres contando espacios. Ése es el objetivo.
+· ${lineaMaxTolerada} es el máximo absoluto, y con eso el titular ya sale más chico. No lo uses salvo que no haya otra.
+· CONTÁ CADA LÍNEA POR SEPARADO antes de entregar. Que el titular entero sea corto no sirve de nada si una de las dos líneas es larga: "Nadie espera el cierre." + "Ya está." son treinta y dos caracteres en total y aun así sale chico, porque la primera línea sola tiene veintitrés.
+· Las dos líneas PAREJAS. Una de veinte y otra de seis se ve rota; el ideal es que midan parecido.
+
+LAS DOS LÍNEAS SON DOS TIEMPOS. Es la forma que mejor funciona en esta composición y también la que mejor escribe: la primera planta algo, la segunda lo da vuelta.
+· "El papel es opcional." / "La validez legal, no."
+· "Cumplir la norma" / "no es estar seguro"
+· "Backup" / "no es continuidad"
+La segunda línea nunca es la continuación gramatical de la primera cortada al medio. "Firmar en pantalla no" / "es escanear tu firma" está MAL: deja el "no" colgado, separado de lo que niega.
+
+Las cuatro condiciones del contenido, todas obligatorias:
+1. TIENE SUJETO Y VERBO. Es una frase que afirma algo, no tres conceptos apilados.
+2. LE HABLA AL LECTOR, NO AL TEMA. "Tu red", "tus proveedores" — nunca "las redes", "las empresas".
+3. HAY ALGO EN JUEGO. Una consecuencia, un costo, un dato que contradice lo que el lector supone.
+4. SOLO LO PUEDE FIRMAR ACCEDRA. Con un nombre propio, una cifra del catálogo o una distinción que solo sabe alguien que hace esto.
+
+Elegí UNO de estos siete patrones y declaralo:
+${PATRONES_HEADLINE.map((p) => `· "${p.id}" — ${p.nombre}. ${p.cuando}\n  Ejemplo: "${p.ejemplo}"`).join("\n")}
+
+Español argentino. Sin emojis, sin hashtags, sin signos de exclamación, sin comillas adentro.
+
+PROHIBIDO, por nombre:
+· El slogan tripartito de imperativos sin sujeto ("Nunca confiar. Siempre verificar. Mínimo privilegio").
+· Definir un concepto técnico. El titular afirma algo sobre el negocio de quien lee.
+· El sustantivo abstracto solo: "Seguridad que protege", "Transformación digital".
+· Inventar cifras. Si el número no está en el catálogo, no va.`
+}
+
+/**
+ * La bajada del tema claro.
+ *
+ * Va centrada bajo el titular y tiene DOS líneas contadas: una tercera empuja el
+ * bloque sobre la foto. Es bastante más corta que la del oscuro —donde la bajada
+ * vive en una columna y se le permiten tres o cuatro renglones— y por eso tiene
+ * su propio texto en vez de reusar el otro con otro número.
+ */
+export function doctrinaBajadaClaro(max: number): string {
+  return `"bajada": una frase, hasta ${max} caracteres contando espacios. UNA sola frase, no dos.
+
+Va centrada y chica, debajo del titular, y entra en dos líneas: más largo empuja el bloque sobre la foto y la pieza se arruina. Contá los caracteres antes de entregar.
+
+No repite el titular con otras palabras: agrega el porqué, la consecuencia o el dato que lo sostiene. Si el titular dice "Cumplir la norma / no es estar seguro", la bajada explica en qué se diferencian, no lo vuelve a decir.
+
+Español argentino con voseo, sin emojis, sin hashtags, sin comillas adentro.`
+}
+
+/**
+ * El llamado a la acción del tema claro.
+ *
+ * En el oscuro es opcional y decorativo; acá es un botón, un elemento de la
+ * composición que siempre está. Va en VERSALITA, y una mayúscula de Inter mide
+ * casi el doble que una minúscula: de ahí que el techo sea tan corto.
+ */
+export function doctrinaCtaClaro(max: number): string {
+  return `"cta": el texto del botón, hasta ${max} caracteres. Se imprime EN MAYÚSCULAS, así que ocupa casi el doble que en minúscula — contá corto.
+
+De 2 a 4 palabras, un verbo adelante. Es lo que el lector hace después de leer, no un eslogan: "AUDITÁ TU RED", "VALIDEZ LEGAL, EXPLICADA", "PEDÍ EL RELEVAMIENTO". Sin signos de exclamación y sin "click acá".`
+}

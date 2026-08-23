@@ -23,6 +23,7 @@ import {
 } from "@/lib/calendario-context"
 import {
   DOCTRINA_HEADLINE,
+  doctrinaHeadlineClaro,
   HEADLINE_MAX_CARACTERES,
   HEADLINE_MAX_PALABRAS,
   PATRONES_HEADLINE,
@@ -31,7 +32,13 @@ import {
   esPatron,
   limpiarTitular,
 } from "@/lib/copy-headline"
-import { repararTitulares } from "@/lib/titular-reparacion"
+import { repararTitulares, repararTitularesClaro } from "@/lib/titular-reparacion"
+import {
+  LINEA_MAX_CLARO,
+  LINEA_MAX_CLARO_TOLERADA,
+  esTema,
+  type Tema,
+} from "@/lib/placa/sistema"
 import {
   anotarEnHistorial,
   clavesUsadas,
@@ -229,6 +236,16 @@ export async function POST(req: Request) {
   if (!esCanal(raw.canal)) return NextResponse.json({ error: "Canal inválido" }, { status: 400 })
   const canal = raw.canal
 
+  /*
+   * El tema se elige AL GENERAR, no al componer, y por eso llega hasta acá.
+   *
+   * No es una decisión de presentación: decide con qué reglas se escribe el
+   * copy. El titular claro son dos líneas de hasta ${LINEA_MAX_CLARO}
+   * caracteres cada una; el oscuro es una columna de hasta 50 en total. Escribir
+   * uno y componerlo con el otro da una pieza que no entra o que sobra.
+   */
+  const tema: Tema = esTema(raw.tema) ? raw.tema : "oscuro"
+
   try {
     const planId = await planDelBanco(canal)
 
@@ -262,12 +279,21 @@ export async function POST(req: Request) {
       clavesUsadas(),
     ])
 
-    const ideas = await generarIdeas(canal, desde, reciente, otroCanal, usadas)
+    const ideas = await generarIdeas(canal, desde, reciente, otroCanal, usadas, tema)
     if (ideas.length === 0) throw new Error("El modelo no devolvió ninguna idea")
 
-    // El mismo control de calidad del titular que el plan. No es opcional: es lo
-    // que evita que se imprima una frase cortada dentro del JPG.
-    await repararTitulares(ideas)
+    /*
+     * El control de calidad del titular, contra la medida de SU composición.
+     *
+     * Son dos problemas distintos y por eso son dos funciones. En oscuro lo que
+     * se agota es el área de una columna y la medida es el total de caracteres.
+     * En claro el titular va centrado en dos líneas y el cuerpo lo decide la
+     * línea más larga: medido sobre los 67 titulares del banco, solo el 45%
+     * entra al cuerpo grande, y hay uno de treinta y dos caracteres que no entra
+     * porque parte en 23 + 9.
+     */
+    if (tema === "claro") await repararTitularesClaro(ideas)
+    else await repararTitulares(ideas)
 
     /*
      * Se anota ANTES de insertar las piezas y no después.
@@ -278,7 +304,7 @@ export async function POST(req: Request) {
      * memoria a que la pieza sobreviva, que es justamente el agujero que esta
      * tabla vino a tapar.
      */
-    await anotarEnHistorial(canal, ideas, contextoDeIdeas(ideas))
+    await anotarEnHistorial(canal, ideas, contextoDeIdeas(ideas), tema)
 
     const templates = repartirTemplates(ideas.length, canal, desde)
     const hoy = hoyISO()
@@ -298,6 +324,7 @@ export async function POST(req: Request) {
       // no los usa para nada.
       opciones: [sinContexto(idea)],
       elegida: idea.id,
+      tema,
       template_slug: templates[i] ?? null,
     }))
 
@@ -398,10 +425,12 @@ async function generarIdeas(
   /** Los titulares del otro canal, para no repetirlos literalmente. */
   otroCanal: string[],
   /** TODAS las huellas, de los dos canales. Es el filtro: lo literal no vuelve. */
-  usadas: Set<string>
+  usadas: Set<string>,
+  /** Con qué composición se va a imprimir. Decide las reglas del titular. */
+  tema: Tema
 ): Promise<IdeaCruda[]> {
   const resultados = await Promise.allSettled(
-    tandasDelLote(desde).map((tanda) => pedirIdeas(canal, tanda, reciente, otroCanal))
+    tandasDelLote(desde).map((tanda) => pedirIdeas(canal, tanda, reciente, otroCanal, tema))
   )
 
   for (const r of resultados) {
@@ -438,7 +467,8 @@ async function pedirIdeas(
   canal: Canal,
   tanda: Tanda,
   reciente: EntradaHistorial[],
-  otroCanal: string[]
+  otroCanal: string[],
+  tema: Tema
 ): Promise<IdeaCruda[]> {
   const cantidad = tanda.objetivos.length
 
@@ -495,7 +525,7 @@ ${tanda.ejes.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}
 - Audiencias: la mayoría a decisores técnicos o de negocio, y una o dos a corporativo/RH. Las etiquetas válidas son ${Object.entries(AUDIENCIA_LABEL).filter(([k]) => k !== "todos").map(([k, v]) => `"${k}" (${v})`).join(", ")}.
 - Como máximo DOS piezas pueden usar el mismo "patron" de titular. Ocho titulares con la misma fórmula se leen como ocho veces el mismo posteo.
 
-${DOCTRINA_HEADLINE}
+${tema === "claro" ? doctrinaHeadlineClaro(LINEA_MAX_CLARO, LINEA_MAX_CLARO_TOLERADA) : DOCTRINA_HEADLINE}
 
 ${TEST_RECHAZO}
 
@@ -528,8 +558,15 @@ Devolvé SOLO un JSON válido, sin markdown ni texto fuera del objeto:
   "piezas": [
     {
       "tesis": "La afirmación que defiende la pieza, en 1 frase discutible",
-      "headline": "EL TEXTO IMPRESO EN LA PIEZA. Máx ${HEADLINE_MAX_PALABRAS} palabras Y máx ${HEADLINE_MAX_CARACTERES} caracteres con espacios. Ver las reglas del titular más arriba",
-      "caracteres": "cuántos caracteres tiene el titular que acabás de escribir, contando espacios y puntuación. Si te da más de ${HEADLINE_MAX_CARACTERES}, reescribilo antes de seguir",
+      ${
+        tema === "claro"
+          ? `"linea1": "la PRIMERA línea del titular impreso, hasta ${LINEA_MAX_CLARO} caracteres",
+      "linea2": "la SEGUNDA línea, la que va en azul, hasta ${LINEA_MAX_CLARO} caracteres",
+      "caracteres1": "cuántos caracteres tiene linea1. Si pasa de ${LINEA_MAX_CLARO_TOLERADA}, reescribí las dos",
+      "caracteres2": "cuántos caracteres tiene linea2. Si pasa de ${LINEA_MAX_CLARO_TOLERADA}, reescribí las dos"`
+          : `"headline": "EL TEXTO IMPRESO EN LA PIEZA. Máx ${HEADLINE_MAX_PALABRAS} palabras Y máx ${HEADLINE_MAX_CARACTERES} caracteres con espacios. Ver las reglas del titular más arriba",
+      "caracteres": "cuántos caracteres tiene el titular que acabás de escribir, contando espacios y puntuación. Si te da más de ${HEADLINE_MAX_CARACTERES}, reescribilo antes de seguir"`
+      },
       "patron": ${PATRONES_HEADLINE.map((p) => `"${p.id}"`).join(" | ")},
       "titulo": "Nombre interno de la pieza para la grilla, máx 8 palabras. NO es el titular impreso",
       "linea": "la línea de servicio de esta pieza, copiada de la lista de la tanda",
@@ -590,7 +627,16 @@ Exactamente ${cantidad} piezas.`,
           // Entero y sin recortar: el techo lo hace cumplir `repararTitulares`,
           // pidiéndoselo de vuelta al modelo. El tope de 200 es un freno contra
           // un párrafo en el campo del titular, no el presupuesto.
-          headline: typeof o.headline === "string" ? limpiarTitular(o.headline).slice(0, 200) : "",
+          /* En claro el titular llega partido en dos y se guarda UNIDO: el
+             titular es uno solo, y `armarTitularClaro` lo vuelve a partir al
+             componer. Guardarlo en dos campos lo ataría a esta composición. */
+          headline: limpiarTitular(
+            tema === "claro"
+              ? [o.linea1, o.linea2].filter((x) => typeof x === "string").join(" ")
+              : typeof o.headline === "string"
+                ? o.headline
+                : ""
+          ).slice(0, 200),
           patron: esPatron(o.patron) ? o.patron : "",
           tesis: typeof o.tesis === "string" ? o.tesis.slice(0, 400) : "",
           hook: typeof o.hook === "string" ? o.hook.slice(0, 300) : "",

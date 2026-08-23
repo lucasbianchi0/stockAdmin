@@ -24,20 +24,21 @@ import { plano, tramoAzul } from "@/lib/copy-headline"
 import { soloLogo } from "@/lib/logo-pieza"
 import { fuentes } from "@/lib/placa/fuentes"
 import {
-  AZUL_SOBRE_OSCURO,
   EYEBROW,
   FAMILIA,
-  FONDO,
   INTERLINEADO,
   ITEM,
   MEDIDAS,
   SEPARACION,
-  TEXTO,
-  TITULAR,
   TRACKING_TITULAR,
   BAJADA,
+  CLARO,
+  PALETAS,
+  armarTitularClaro,
   composicionDeTexto,
   type Formato,
+  type PaletaTema,
+  type Tema,
 } from "@/lib/placa/sistema"
 
 /**
@@ -127,6 +128,19 @@ export type PlacaTipografica = {
    * expresar: allá el titular es un bloque de un solo cuerpo.
    */
   enfasis?: "ninguno" | "primera"
+  /**
+   * Cuánto se corre la foto hacia abajo, solo en el tema claro.
+   *
+   * Existe porque el generador reserva la banda de arriba con margen variable, y
+   * cuando la deja justa el sujeto queda pegado a la bajada. Ver `PlacaClara`.
+   */
+  bajarFoto?: number
+  /**
+   * Claro u oscuro. Es el MISMO sistema dado vuelta —mismas bandas, mismos
+   * cuerpos, mismo rincón del logo—: lo único que cambia son los colores, el
+   * color del velo y qué archivo de logo se compone.
+   */
+  tema?: Tema
 }
 
 /* ── El destacado ─────────────────────────────────────────────────────────── */
@@ -188,12 +202,14 @@ function Titular({
   cuerpo,
   escalas,
   centrado,
+  paleta,
 }: {
   lineas: string[]
   destacado?: string
   cuerpo: number
   escalas: number[]
   centrado?: boolean
+  paleta: PaletaTema
 }) {
   // El reparto del color se calcula una sola vez sobre el titular entero: es lo
   // que permite que el azul cruce un salto de línea.
@@ -223,7 +239,7 @@ function Titular({
               fontWeight: 700,
               letterSpacing: TRACKING_TITULAR * px,
               lineHeight: INTERLINEADO,
-              color: TITULAR,
+              color: paleta.titular,
             }}
           >
             {porLinea[i].map((t, j) => (
@@ -232,7 +248,7 @@ function Titular({
               // espacio entre ellos — "sostiene tu" salía "sostienetu".
               <span
                 key={j}
-                style={{ whiteSpace: "pre", color: t.azul ? AZUL_SOBRE_OSCURO : TITULAR }}
+                style={{ whiteSpace: "pre", color: t.azul ? paleta.azul : paleta.titular }}
               >
                 {t.texto}
               </span>
@@ -248,6 +264,7 @@ function Titular({
 
 function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number; alto: number }) {
   const layout = placa.layout ?? "solo"
+  const paleta = PALETAS[placa.tema ?? "oscuro"]
   const centrado = layout === "centrado"
   const familia = placa.familia ?? "tecnologia"
   const items = placa.items ?? []
@@ -277,7 +294,7 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
         height: alto,
         display: "flex",
         position: "relative",
-        backgroundColor: FONDO,
+        backgroundColor: paleta.fondo,
       }}
     >
       {placa.fondo ? (
@@ -305,11 +322,13 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
               // que el velo tiene que caer de arriba hacia abajo. Con el de 100
               // grados —pensado para la columna izquierda— la mitad derecha del
               // titular quedaba sobre la foto sin protección.
+              // Los mismos stops en los dos temas: lo único que cambia es de
+              // qué color es la niebla que protege al texto.
               backgroundImage: centrado
-                ? "linear-gradient(180deg, rgba(10,20,36,0.94) 0%, rgba(10,20,36,0.86) 26%, rgba(10,20,36,0.44) 44%, rgba(10,20,36,0.08) 60%, rgba(10,20,36,0) 72%)"
+                ? `linear-gradient(180deg, rgba(${paleta.velo},0.94) 0%, rgba(${paleta.velo},0.86) 26%, rgba(${paleta.velo},0.44) 44%, rgba(${paleta.velo},0.08) 60%, rgba(${paleta.velo},0) 72%)`
                 : placa.familia === "editorial"
-                  ? "linear-gradient(100deg, rgba(10,20,36,0.72) 0%, rgba(10,20,36,0.42) 40%, rgba(10,20,36,0.10) 70%, rgba(10,20,36,0) 88%)"
-                  : "linear-gradient(100deg, rgba(10,20,36,0.90) 0%, rgba(10,20,36,0.74) 30%, rgba(10,20,36,0.34) 52%, rgba(10,20,36,0.06) 72%, rgba(10,20,36,0) 84%)",
+                  ? `linear-gradient(100deg, rgba(${paleta.velo},0.72) 0%, rgba(${paleta.velo},0.42) 40%, rgba(${paleta.velo},0.10) 70%, rgba(${paleta.velo},0) 88%)`
+                  : `linear-gradient(100deg, rgba(${paleta.velo},0.90) 0%, rgba(${paleta.velo},0.74) 30%, rgba(${paleta.velo},0.34) 52%, rgba(${paleta.velo},0.06) 72%, rgba(${paleta.velo},0) 84%)`,
             }}
           />
           {/* Y la banda del logo, que va oscura sí o sí. */}
@@ -318,8 +337,7 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
               position: "absolute",
               inset: 0,
               display: "flex",
-              backgroundImage:
-                "linear-gradient(0deg, rgba(10,20,36,0.80) 0%, rgba(10,20,36,0.32) 16%, rgba(10,20,36,0) 30%)",
+              backgroundImage: `linear-gradient(0deg, rgba(${paleta.velo},0.80) 0%, rgba(${paleta.velo},0.32) 16%, rgba(${paleta.velo},0) 30%)`,
             }}
           />
         </>
@@ -361,7 +379,7 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
               fontWeight: EYEBROW.peso,
               letterSpacing: EYEBROW.tracking * EYEBROW.cuerpo,
               textTransform: "uppercase",
-              color: AZUL_SOBRE_OSCURO,
+              color: paleta.azul,
             }}
           >
             {placa.eyebrow}
@@ -375,6 +393,7 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
             cuerpo={cuerpo}
             escalas={escalas}
             centrado={centrado}
+            paleta={paleta}
           />
         </div>
 
@@ -387,7 +406,7 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
               fontSize: BAJADA.cuerpo,
               fontWeight: BAJADA.peso,
               lineHeight: BAJADA.interlineado,
-              color: TEXTO,
+              color: paleta.texto,
             }}
           >
             {placa.bajada}
@@ -417,7 +436,7 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
                     height: 2,
                     marginRight: 22,
                     display: "flex",
-                    backgroundColor: AZUL_SOBRE_OSCURO,
+                    backgroundColor: paleta.azul,
                   }}
                 />
                 <div
@@ -426,7 +445,7 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
                     fontFamily: FAMILIA,
                     fontSize: ITEM.cuerpo,
                     fontWeight: ITEM.peso,
-                    color: TEXTO,
+                    color: paleta.texto,
                   }}
                 >
                   {item}
@@ -439,6 +458,225 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
     </div>
   )
 
+}
+
+/* ── El layout claro ──────────────────────────────────────────────────────── */
+
+/**
+ * La pieza del tema claro: apilada, no superpuesta.
+ *
+ * Es OTRA composición, no el mismo layout con otros colores, y esa es la
+ * decisión de fondo. Los cuatro layouts de arriba apoyan el texto SOBRE la foto
+ * y se defienden con un velo negro, que tapa cualquier cosa. En claro el velo
+ * tiene que ser sutil para no borrar la imagen, y con un sujeto a la derecha el
+ * texto y la foto pelean por el mismo lugar: se probó, y era ilegible.
+ *
+ * Acá nada se superpone. El logo, el titular, la bajada, el sujeto y el botón
+ * viven cada uno en su franja. La foto ES la pieza —a sangre contra los cuatro
+ * bordes— y viene con la banda de arriba vacía desde el propio pedido de la
+ * imagen, así que el texto se apoya sobre superficie tranquila sin necesidad de
+ * un panel que la corte.
+ *
+ * El logo NO se dibuja acá: lo compone `soloLogo` después, con el archivo navy,
+ * igual que en el tema oscuro. Por eso la franja de arriba reserva su lugar.
+ */
+function PlacaClara({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number; alto: number }) {
+  const paleta = PALETAS.claro
+  const { lineas, cuerpo } = armarTitularClaro(placa.titular.join(" "))
+
+  /*
+   * Cuánto se corre la foto hacia abajo.
+   *
+   * El generador reserva la banda de arriba pero no siempre con el mismo margen,
+   * y cuando la deja justa el sujeto queda pegado a la bajada. La franja que
+   * queda descubierta muestra el fondo del contenedor, que es el MISMO hueso con
+   * el que arranca la foto: no aparece ninguna juntura, y el velo de arriba —que
+   * va sobre las dos— termina de igualarlas. Lo que se recorta abajo es piso.
+   */
+  const bajar = placa.bajarFoto ?? 0
+
+  return (
+    <div
+      style={{
+        width: ancho,
+        height: alto,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        position: "relative",
+        // Respaldo: si la foto fallara, la pieza sale sobre el hueso en vez de
+        // sobre un rectángulo vacío. Con la foto puesta no se ve nunca.
+        backgroundColor: paleta.fondo,
+      }}
+    >
+      {placa.fondo ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element -- Satori no usa next/image */}
+          <img
+            src={placa.fondo}
+            width={ancho}
+            height={alto}
+            style={{ position: "absolute", left: 0, top: bajar, objectFit: "cover" }}
+            alt=""
+          />
+
+          {/*
+            EL VELO DE LA BANDA DE ARRIBA. La red, no el efecto.
+
+            El prompt reserva el 40% superior vacío y el generador lo cumple casi
+            siempre. "Casi" no alcanza para un texto que se publica: en una de
+            las pruebas el sujeto subió a la banda y la bajada quedó ilegible
+            sobre la pantalla de un laptop.
+
+            Es el mismo razonamiento que el velo del tema oscuro —allá el fondo
+            trae su propio degradado pedido en el prompt y el velo del código es
+            la garantía— traído al lado de la luz. Muy suave y desvanecido antes
+            de la mitad: donde el generador cumplió no se nota, y donde no
+            cumplió salva la pieza.
+          */}
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              height: CLARO.velo.alto,
+              display: "flex",
+              backgroundImage: `linear-gradient(180deg, rgba(245,242,236,0.92) 0%, rgba(245,242,236,0.86) 42%, rgba(245,242,236,0.55) 72%, rgba(245,242,236,0) 100%)`,
+            }}
+          />
+        </>
+      ) : null}
+
+      {/* El lugar del logo, que compone `soloLogo` después. */}
+      <div style={{ display: "flex", height: CLARO.logo.desdeArriba + CLARO.logo.alto }} />
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          marginTop: CLARO.titular.desdeLogo,
+          paddingLeft: CLARO.titular.margen,
+          paddingRight: CLARO.titular.margen,
+          textAlign: "center",
+        }}
+      >
+        {/*
+          La SEGUNDA línea va en azul, siempre.
+
+          En el tema oscuro el tramo azul se busca dentro del titular con
+          `tramoAzul`, porque ahí el reparto en líneas lo decide el encaje y el
+          acento puede caer en cualquier lado. Acá el corte es de dos y lo
+          escribió el propio modelo sabiendo que la segunda línea se resalta: el
+          acento ES el corte, así que no hay nada que buscar.
+        */}
+        {lineas.map((linea, i) => (
+          <div
+            key={i}
+            style={{
+              display: "flex",
+              fontFamily: FAMILIA,
+              fontSize: cuerpo,
+              fontWeight: 700,
+              letterSpacing: TRACKING_TITULAR * cuerpo,
+              lineHeight: CLARO.titular.interlineado,
+              color: i === lineas.length - 1 && lineas.length > 1 ? paleta.azul : paleta.titular,
+            }}
+          >
+            {linea}
+          </div>
+        ))}
+
+        {placa.bajada ? (
+          <div
+            style={{
+              display: "flex",
+              marginTop: CLARO.bajada.desdeTitular,
+              fontFamily: FAMILIA,
+              fontSize: CLARO.bajada.cuerpo,
+              fontWeight: 400,
+              lineHeight: CLARO.bajada.interlineado,
+              color: paleta.texto,
+            }}
+          >
+            {placa.bajada}
+          </div>
+        ) : null}
+      </div>
+
+      {placa.cta ? (
+        <div
+          style={{
+            position: "absolute",
+            bottom: CLARO.pie.desdeAbajo,
+            left: 0,
+            right: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
+          {/*
+            EL BOTÓN, sin borde.
+
+            Se probó con un filo blanco y después con uno celeste, y las dos
+            veces pasó lo mismo: un aro claro alrededor de una pieza que ya es
+            clara le saca peso en vez de dárselo.
+
+            Todo el trabajo lo hacen las sombras, y las tres van HACIA ATRÁS y
+            hacia abajo, nunca alrededor: una oscura y corta para que apoye, una
+            azul desplazada que es el brillo, y una amplia y tenue que tiñe el
+            aire debajo. El halo es del mismo azul del ambiente, así que se lee
+            como que el botón ilumina lo que tiene alrededor y no como un efecto
+            pegado encima.
+          */}
+          <div
+            style={{
+              display: "flex",
+              paddingLeft: CLARO.cta.padeoX,
+              paddingRight: CLARO.cta.padeoX,
+              paddingTop: CLARO.cta.padeoY,
+              paddingBottom: CLARO.cta.padeoY,
+              borderRadius: 999,
+              backgroundImage: "linear-gradient(180deg, #2F5CD8 0%, #234BC4 48%, #15318F 100%)",
+              boxShadow: [
+                "0 9px 20px rgba(12,28,84,0.46)",
+                "0 6px 30px rgba(43,86,212,0.62)",
+                "0 2px 52px rgba(43,86,212,0.34)",
+              ].join(", "),
+              fontFamily: FAMILIA,
+              fontSize: CLARO.cta.cuerpo,
+              fontWeight: 700,
+              letterSpacing: 0.07 * CLARO.cta.cuerpo,
+              color: "#FFFFFF",
+            }}
+          >
+            {placa.cta.toUpperCase()}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              marginTop: CLARO.pie.separacion,
+              fontFamily: FAMILIA,
+              fontSize: CLARO.pie.cuerpo,
+              fontWeight: 500,
+              color: "#FFFFFF",
+              /* La sombra hace el trabajo que haría una repisa oscura.
+                 El pie cae sobre lo que el generador haya puesto ahí abajo —a
+                 veces cables azules saturados, a veces un piso casi blanco— y
+                 ningún color fijo funciona sobre los dos. Con el halo detrás, el
+                 blanco se lee sobre cualquiera sin tener que oscurecer la obra. */
+              textShadow: "0 1px 10px rgba(10,24,64,0.75), 0 0 3px rgba(10,24,64,0.5)",
+            }}
+          >
+            accedra.com.ar
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 /* ── El render ────────────────────────────────────────────────────────────── */
@@ -454,11 +692,27 @@ function Placa({ placa, ancho, alto }: { placa: PlacaTipografica; ancho: number;
 export async function renderizarPlaca(placa: PlacaTipografica): Promise<Buffer> {
   const { ancho, alto } = MEDIDAS[placa.formato ?? "square"]
 
-  const respuesta = new ImageResponse(<Placa placa={placa} ancho={ancho} alto={alto} />, {
+  // Cada tema tiene su composición. No es el mismo layout con otros colores:
+  // ver el comentario de `PlacaClara`.
+  const cuerpo =
+    placa.tema === "claro" ? (
+      <PlacaClara placa={placa} ancho={ancho} alto={alto} />
+    ) : (
+      <Placa placa={placa} ancho={ancho} alto={alto} />
+    )
+
+  const respuesta = new ImageResponse(cuerpo, {
     width: ancho,
     height: alto,
     fonts: await fuentes(),
   })
 
-  return await soloLogo(Buffer.from(await respuesta.arrayBuffer()))
+  /* El logo del tema: el blanco sobre navy y abajo a la izquierda cerrando la
+     columna; el navy sobre hueso y centrado arriba, encabezando la pieza. */
+  const tema = placa.tema ?? "oscuro"
+  return await soloLogo(
+    Buffer.from(await respuesta.arrayBuffer()),
+    PALETAS[tema].logo,
+    tema === "claro" ? "arriba-centro" : "abajo-izquierda"
+  )
 }

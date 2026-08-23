@@ -13,6 +13,7 @@
  */
 
 import { PALETA } from "@/lib/brand-kit"
+import { oracionesDe, terminaColgado } from "@/lib/copy-headline"
 
 const color = (nombre: string) => PALETA.find((c) => c.nombre === nombre)!
 
@@ -47,6 +48,87 @@ export const AZUL = color("Azul Accedra").hex
  * decisión que hay que ratificar ahí: hoy vive acá y en ningún otro lado.
  */
 export const AZUL_SOBRE_OSCURO = "#5B82F0"
+
+/* ── El tema ──────────────────────────────────────────────────────────────── */
+
+export const TEMAS = ["oscuro", "claro"] as const
+export type Tema = (typeof TEMAS)[number]
+
+export function esTema(v: unknown): v is Tema {
+  return typeof v === "string" && (TEMAS as readonly string[]).includes(v)
+}
+
+export type PaletaTema = {
+  /** El canvas, cuando no hay fondo generado. */
+  fondo: string
+  /** El titular. Es el que tiene que gritar. */
+  titular: string
+  /** Prosa e ítems: un punto por debajo del titular, nunca al máximo contraste. */
+  texto: string
+  /** El acento: el rótulo y el remate del titular. */
+  azul: string
+  /**
+   * El color del velo, como triplete RGB.
+   *
+   * Se guarda en crudo y no como gradiente entero porque los stops son los
+   * mismos en los dos temas: lo único que cambia es de qué color es la niebla
+   * que protege al texto. Así el formato queda idéntico, que es lo pedido.
+   */
+  velo: string
+  /** Qué archivo de logo compone `soloLogo`. */
+  logo: string
+}
+
+/**
+ * Los dos temas de la placa.
+ *
+ * "claro" es el mismo sistema dado vuelta, no un diseño nuevo: mismas bandas,
+ * mismos cuerpos, mismo reparto de líneas, mismo rincón del logo. Lo único que
+ * cambia son estos seis valores y la dirección de arte del fondo.
+ *
+ * El azul NO es el mismo en los dos. Sobre navy, el #2B56D4 del kit da 3,0:1 —
+ * alcanza para un titular grande y no para un rótulo de 26 px— y por eso el
+ * tema oscuro usa una versión aclarada. Sobre el hueso pasa lo contrario: el
+ * azul del kit llega a 6,6:1 y es el que corresponde, mientras que el aclarado
+ * se lavaría. Cada tema usa el tono que su fondo pide, y los dos son el azul de
+ * la marca.
+ */
+export const PALETAS: Record<Tema, PaletaTema> = {
+  oscuro: {
+    fondo: FONDO,
+    titular: TITULAR,
+    texto: TEXTO,
+    azul: AZUL_SOBRE_OSCURO,
+    velo: "10, 20, 36",
+    logo: "public/brand/accedra-logo-blanco.svg",
+  },
+  claro: {
+    /*
+     * Blanco hueso y no blanco puro.
+     *
+     * El #FFFFFF en una pieza a sangre se lee como "no hay fondo": el feed de
+     * Instagram ya es blanco y la placa desaparece contra la interfaz. El hueso
+     * tiene la temperatura suficiente para que el borde del cuadro exista sin
+     * que nadie note un color.
+     */
+    fondo: "#F5F2EC",
+    /*
+     * El titular en navy y no en negro puro. Es el mismo criterio que del otro
+     * lado —allá el cuerpo de texto no va en blanco puro porque vibra— y acá el
+     * negro sobre hueso es duro de más para un cuerpo de 84 px. El navy del kit
+     * da 15,8:1 sobre el hueso: sobra.
+     */
+    titular: color("Navy Accedra").hex,
+    /*
+     * Prosa e ítems un escalón más suaves que el titular, igual que en oscuro.
+     * Medido sobre el hueso: 8,4:1, cómodo para los 38-40 px de la bajada.
+     */
+    texto: "#41506A",
+    azul: AZUL,
+    velo: "245, 242, 236",
+    logo: "public/brand/accedra-logo-navy.svg",
+  },
+}
 
 /* ── Geometría ────────────────────────────────────────────────────────────── */
 
@@ -610,4 +692,239 @@ export function composicionDeTexto({
   }
 
   return { visibles, geometria: encaje.geometria, lineas, escalas, cuerpo, entra }
+}
+
+/* ── El layout claro ──────────────────────────────────────────────────────── */
+
+/**
+ * La composición del tema claro. Apilada, no superpuesta.
+ *
+ * POR QUÉ NO ES UNO DE LOS CUATRO DE SIEMPRE. Los layouts oscuros apoyan el
+ * texto SOBRE la foto y se defienden con un velo negro, que tapa cualquier cosa.
+ * En claro ese velo tiene que ser sutil para no borrar la imagen, y con un
+ * sujeto a la derecha el texto y la foto terminan peleando por el mismo lugar:
+ * se probó y el resultado era ilegible.
+ *
+ * Acá nada se superpone. Logo, titular, bajada, sujeto y botón viven cada uno en
+ * su franja, y la foto —que ES la pieza entera, a sangre— viene con la banda de
+ * arriba vacía desde el propio pedido de la imagen.
+ *
+ * Los números salen de una maqueta que se afinó mirando piezas reales, no de una
+ * grilla teórica.
+ */
+export const CLARO = {
+  /** Dónde termina la franja del texto. Fija: es lo que garantiza el aire. */
+  altoTexto: 520,
+  logo: { ancho: 168, alto: 25, desdeArriba: 64 },
+  titular: {
+    desdeLogo: 46,
+    /** El margen a cada lado. 1080 − 2×120 = 840 px de ancho útil. */
+    margen: 120,
+    /**
+     * Los tres cuerpos posibles, de mayor a menor.
+     *
+     * Tres y no uno solo —como en oscuro, donde el cuerpo es fijo y el copy se
+     * ajusta al cuerpo— porque acá el titular va SIEMPRE en dos líneas: no hay
+     * un tercer renglón al que mandar lo que sobra. Cuando no entra a 74 no
+     * queda otra que bajar un escalón.
+     */
+    cuerpos: [74, 64, 56],
+    interlineado: 1.06,
+  },
+  bajada: { desdeTitular: 26, cuerpo: 30, interlineado: 1.4, maxLineas: 2 },
+  /** El velo de la banda de arriba. La red por si el sujeto sube. */
+  velo: { alto: 560 },
+  cta: { cuerpo: 22, padeoX: 44, padeoY: 19 },
+  pie: { desdeAbajo: 68, cuerpo: 20, separacion: 22 },
+} as const
+
+/** El ancho útil de una línea de texto en el tema claro. */
+export const ANCHO_CLARO = MEDIDAS.square.ancho - 2 * CLARO.titular.margen
+
+/**
+ * Cuánto ocupa a lo ancho un carácter de Inter Regular, en múltiplos del cuerpo.
+ *
+ * Más angosto que la bold (`AVANCE_INTER_BOLD`, 0,55) porque la regular lo es.
+ * Mismo criterio: el peor caso más margen, para que el error caiga siempre del
+ * lado seguro — sobreestimar acorta el texto, subestimarlo lo hace desbordar.
+ */
+const AVANCE_INTER_REGULAR = 0.52
+
+/** Lo que mide una línea de titular a un cuerpo dado, con su tracking. */
+function anchoTitularClaro(linea: string, cuerpo: number): number {
+  return linea.length * (AVANCE_INTER_BOLD + TRACKING_TITULAR) * cuerpo
+}
+
+/**
+ * El titular claro: dos líneas parejas y el cuerpo más grande que las banque.
+ *
+ * DOS LÍNEAS SIEMPRE, y ahí está la diferencia con el oscuro. Allá el titular se
+ * reparte en las que hagan falta —hasta cinco— y el cuerpo es fijo. Acá la
+ * composición es centrada y de dos renglones: uno solo se ve desbalanceado
+ * contra la bajada, y tres empujan el sujeto fuera de cuadro.
+ *
+ * El corte minimiza la línea MÁS LARGA, que es la que decide el cuerpo. Un
+ * titular de una sola palabra es el único caso de una línea.
+ */
+export function armarTitularClaro(texto: string): {
+  lineas: string[]
+  cuerpo: number
+  entra: boolean
+} {
+  const palabras = texto.trim().split(/\s+/).filter(Boolean)
+  if (palabras.length === 0) return { lineas: [], cuerpo: CLARO.titular.cuerpos[0], entra: false }
+
+  if (palabras.length === 1) {
+    const cuerpo =
+      CLARO.titular.cuerpos.find((c) => anchoTitularClaro(palabras[0], c) <= ANCHO_CLARO) ??
+      CLARO.titular.cuerpos[CLARO.titular.cuerpos.length - 1]
+    return { lineas: [palabras[0]], cuerpo, entra: cuerpo === CLARO.titular.cuerpos[0] }
+  }
+
+  /*
+   * El corte, con tres criterios y en este orden.
+   *
+   * 1 · SI SON DOS ORACIONES, se corta entre ellas. "Tu red ya no tiene borde. /
+   *     ¿Tu seguridad lo sabe?" es el corte que el titular ya trae escrito, y
+   *     ningún reparto por largo lo va a mejorar.
+   * 2 · La primera línea NO TERMINA COLGADA. Minimizando solo el largo salía
+   *     "Firmar en pantalla no / es escanear tu firma": las dos líneas quedan
+   *     parejas y el "no" cuelga al final de la primera, separado de lo que
+   *     niega. Se descartan esos cortes antes de mirar el largo.
+   * 3 · Entre los que quedan, el que deja la línea más larga lo más corta
+   *     posible: es la que decide el cuerpo.
+   *
+   * `terminaColgado` es la misma función que protege al titular del tema oscuro
+   * de publicarse a medias. Ahí decide si una frase quedó rota; acá, dónde
+   * respira.
+   */
+  const oraciones = oracionesDe(texto)
+  if (oraciones.length === 2) {
+    const porOracion = oraciones.map((o) => o.trim())
+    const cuerpoOracion = CLARO.titular.cuerpos.find((c) =>
+      porOracion.every((l) => anchoTitularClaro(l, c) <= ANCHO_CLARO)
+    )
+    if (cuerpoOracion) {
+      return {
+        lineas: porOracion,
+        cuerpo: cuerpoOracion,
+        entra: cuerpoOracion === CLARO.titular.cuerpos[0],
+      }
+    }
+  }
+
+  const cortes: { lineas: string[]; peor: number; colgado: boolean }[] = []
+  for (let corte = 1; corte < palabras.length; corte++) {
+    const a = palabras.slice(0, corte).join(" ")
+    const b = palabras.slice(corte).join(" ")
+    cortes.push({ lineas: [a, b], peor: Math.max(a.length, b.length), colgado: terminaColgado(a) })
+  }
+
+  const limpios = cortes.filter((c) => !c.colgado)
+  const candidatos = limpios.length > 0 ? limpios : cortes
+  const mejor = candidatos.reduce((m, c) => (c.peor < m.peor ? c : m))
+
+  const cuerpo =
+    CLARO.titular.cuerpos.find((c) =>
+      mejor.lineas.every((l) => anchoTitularClaro(l, c) <= ANCHO_CLARO)
+    ) ?? CLARO.titular.cuerpos[CLARO.titular.cuerpos.length - 1]
+
+  return { lineas: mejor.lineas, cuerpo, entra: cuerpo === CLARO.titular.cuerpos[0] }
+}
+
+/**
+ * El techo de caracteres del titular claro, DERIVADO de la geometría.
+ *
+ * No es un número elegido: es lo que entra en dos líneas al cuerpo más grande.
+ * Se calcula acá para que el prompt y el renderizador no puedan discrepar —el
+ * mismo problema que en oscuro obligó a documentar que `HEADLINE_MAX_CARACTERES`
+ * y `CUERPO_TITULAR` son "el mismo acuerdo visto desde cada lado", solo que acá
+ * el acuerdo se computa en vez de mantenerse a mano.
+ */
+export const HEADLINE_MAX_CLARO = Math.floor(
+  (ANCHO_CLARO / ((AVANCE_INTER_BOLD + TRACKING_TITULAR) * CLARO.titular.cuerpos[0])) * 2
+)
+
+/** Lo mismo para la bajada: dos líneas centradas al cuerpo de la bajada. */
+export const BAJADA_MAX_CLARO = Math.floor(
+  (ANCHO_CLARO / (AVANCE_INTER_REGULAR * CLARO.bajada.cuerpo)) * CLARO.bajada.maxLineas
+)
+
+/**
+ * El techo del llamado a la acción.
+ *
+ * Va en VERSALITA, y una mayúscula de Inter mide 0,89 del cuerpo contra los 0,55
+ * de la caja baja: un techo pensado para minúsculas dejaría el botón más ancho
+ * que la pieza. Se descuenta el relleno de la pastilla a los dos lados.
+ */
+export const CTA_MAX_CLARO = Math.floor(
+  (ANCHO_CLARO - 2 * CLARO.cta.padeoX) / ((0.89 + 0.07) * CLARO.cta.cuerpo)
+)
+
+/**
+ * El cuerpo más chico que se acepta sin rehacer el titular.
+ *
+ * 74 es el objetivo y 64 es tolerable —medido mirando piezas, a 64 la pieza
+ * sigue leyéndose bien—. De 56 para abajo el titular pierde la presencia que
+ * justifica todo el layout, y ahí conviene reescribir el copy antes que publicar
+ * una pieza floja.
+ */
+export const CUERPO_ACEPTABLE_CLARO = 64
+
+/**
+ * EL TECHO QUE IMPORTA: cuántos caracteres entran en UNA línea.
+ *
+ * No es lo mismo que el techo del titular entero, y confundirlos es el error que
+ * este número viene a evitar. Medido sobre los 67 titulares reales del banco:
+ * "Nadie espera el cierre. Ya está." son 32 caracteres —muy por debajo de
+ * cualquier techo total razonable— y NO entra a 74 px, porque parte en 23 + 9.
+ * Lo que decide el cuerpo es la línea más larga; el total no dice nada.
+ *
+ * Por eso el prompt del tema claro pide DOS LÍNEAS con este presupuesto cada
+ * una, en vez de un titular con un techo global: así el modelo elige el corte
+ * sabiendo contra qué lo tiene que medir.
+ */
+export const LINEA_MAX_CLARO = Math.floor(
+  ANCHO_CLARO / ((AVANCE_INTER_BOLD + TRACKING_TITULAR) * CLARO.titular.cuerpos[0])
+)
+
+/** Lo mismo con el cuerpo tolerable: hasta acá se acepta sin reescribir. */
+export const LINEA_MAX_CLARO_TOLERADA = Math.floor(
+  ANCHO_CLARO / ((AVANCE_INTER_BOLD + TRACKING_TITULAR) * CUERPO_ACEPTABLE_CLARO)
+)
+
+/**
+ * En cuántas líneas cae la bajada, simulando el mismo corte que hace el motor.
+ *
+ * Corte codicioso por palabras, que es lo que hace cualquier repartidor de
+ * texto: se van agregando palabras mientras entren y se baja de línea cuando no.
+ * Contar caracteres y dividir daría un número optimista —el ajuste por palabra
+ * siempre desperdicia el final de cada línea— y esa diferencia es justo la que
+ * hace que una bajada de tres líneas empuje el bloque sobre la foto.
+ */
+export function lineasBajadaClaro(texto: string): number {
+  const palabras = texto.trim().split(/\s+/).filter(Boolean)
+  if (palabras.length === 0) return 0
+
+  const porCaracter = AVANCE_INTER_REGULAR * CLARO.bajada.cuerpo
+  let lineas = 1
+  let actual = ""
+
+  for (const palabra of palabras) {
+    const tentativa = actual ? `${actual} ${palabra}` : palabra
+    if (tentativa.length * porCaracter <= ANCHO_CLARO) {
+      actual = tentativa
+    } else {
+      lineas++
+      actual = palabra
+    }
+  }
+
+  return lineas
+}
+
+/** Si el llamado a la acción entra en la pastilla. Va en versalita: mide más. */
+export function entraCtaClaro(texto: string): boolean {
+  const ancho = texto.trim().length * (0.89 + 0.07) * CLARO.cta.cuerpo
+  return ancho <= ANCHO_CLARO - 2 * CLARO.cta.padeoX
 }

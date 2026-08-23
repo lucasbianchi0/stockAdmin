@@ -43,6 +43,7 @@ export function aPiezaBanco(fila: Fila, imagenUrl: string | null = null): PiezaB
     canal: (esCanal(fila.canal) ? fila.canal : "meta") as Canal,
     orden: Number(fila.orden) || 0,
     idea,
+    tema: fila.tema === "claro" ? "claro" : "oscuro",
     contenido: (fila.contenido ?? null) as Contenido | null,
     templateSlug: texto(fila.template_slug),
     imagenPath: texto(fila.imagen_path),
@@ -109,7 +110,7 @@ export async function planDelBanco(canal: Canal): Promise<string> {
 
 /** Las columnas que necesita una pieza. Explícitas: `beat` y `elegida` no se usan. */
 export const columnasPieza =
-  "id, canal, orden, opciones, contenido, template_slug, imagen_path, programada, created_at"
+  "id, canal, orden, opciones, contenido, template_slug, imagen_path, programada, created_at, tema"
 
 /**
  * Las piezas de un banco, o las programadas de un rango.

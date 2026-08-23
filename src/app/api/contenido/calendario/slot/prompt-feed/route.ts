@@ -13,11 +13,19 @@ import {
 } from "@/lib/feed-variables"
 import { promptDeFeed, templateFeedPorId, type CampoFeed } from "@/lib/templates-feed"
 import {
+  BAJADA_MAX_CLARO,
+  CTA_MAX_CLARO,
+  esTema,
+  type Tema,
+} from "@/lib/placa/sistema"
+import {
   DESTACADO_GUIA,
   DOCTRINA_HEADLINE,
   HEADLINE_MAX_PALABRAS,
   TEST_RECHAZO,
   cortarHeadline,
+  doctrinaBajadaClaro,
+  doctrinaCtaClaro,
   limpiarTitular,
   plano,
   tramoAzul,
@@ -175,6 +183,17 @@ export async function POST(req: Request) {
   const contenido = (slot.contenido ?? null) as Contenido | null
   const plan = (slot.content_plans ?? {}) as Record<string, unknown>
 
+  /*
+   * El tema decide los TECHOS del copy que se imprime, no solo los colores.
+   *
+   * En el tema claro la bajada entra en dos líneas centradas de 840 px y el
+   * llamado a la acción es un botón en versalita —una mayúscula de Inter mide
+   * casi el doble que una minúscula—, así que los dos son bastante más cortos
+   * que en el oscuro, donde la bajada vive en una columna con tres o cuatro
+   * renglones disponibles.
+   */
+  const tema: Tema = esTema(slot.tema) ? slot.tema : "oscuro"
+
   let variables: VariablesFeed
   try {
     variables = await derivarVariables({
@@ -185,6 +204,7 @@ export async function POST(req: Request) {
       caption: contenido?.caption ?? "",
       fecha: String(slot.fecha),
       contextoPlan: typeof plan.contexto === "string" ? plan.contexto : "",
+      tema,
     })
   } catch (err) {
     console.error("[slot/prompt-feed derivar]", err)
@@ -258,6 +278,7 @@ async function derivarVariables({
   caption,
   fecha,
   contextoPlan,
+  tema,
 }: {
   campos: CampoFeed[]
   nombreTemplate: string
@@ -266,6 +287,7 @@ async function derivarVariables({
   caption: string
   fecha: string
   contextoPlan: string
+  tema: Tema
 }): Promise<VariablesFeed> {
   const headlineEscrito = typeof opcion.headline === "string" ? opcion.headline.trim() : ""
 
@@ -285,7 +307,14 @@ async function derivarVariables({
     // "category", y esas seis salían sin rótulo arriba del titular por
     // construcción, no por casualidad.
     INSTRUCCION.category,
-    INSTRUCCION.bajada,
+    /* La bajada y el botón tienen OTRO techo en el tema claro. No es el mismo
+       texto con otro número: allá la bajada vive en una columna con tres o
+       cuatro renglones, acá entra en dos líneas centradas y una tercera empuja
+       el bloque sobre la foto. Y el botón, que en oscuro es opcional, acá es un
+       elemento de la composición y va en versalita — una mayúscula de Inter mide
+       casi el doble que una minúscula. */
+    tema === "claro" ? doctrinaBajadaClaro(BAJADA_MAX_CLARO) : INSTRUCCION.bajada,
+    ...(tema === "claro" ? [doctrinaCtaClaro(CTA_MAX_CLARO)] : []),
   ].join("\n")
 
   const message = await anthropic.messages.create({
