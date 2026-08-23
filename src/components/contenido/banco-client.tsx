@@ -8,6 +8,7 @@ import {
   Images,
   LayoutGrid,
   Loader2,
+  ChevronDown,
   Sparkles,
   Trash2,
 } from "lucide-react"
@@ -409,10 +410,6 @@ function BancoDeCanal({
 }) {
   const [abierta, setAbierta] = useState<string | null>(null)
   const [verFeed, setVerFeed] = useState(false)
-  /* El tema del PRÓXIMO lote. Arranca en oscuro, que es lo que el feed viene
-     siendo, y no se recuerda entre lotes a propósito: es una decisión de cada
-     tanda, no una preferencia guardada. Cada pieza guarda el suyo. */
-  const [tema, setTema] = useState<TemaBanco>("oscuro")
 
   const { piezas, cargado, progreso } = estado
   const incompletas = pendientesDe(piezas)
@@ -427,7 +424,7 @@ function BancoDeCanal({
           <p className="mt-0.5 text-[12px] text-ink-muted">
             {trabajando
               ? "Podés cambiar de pestaña o abrir una pieza: la generación sigue."
-              : `${BANCO_NOTA[canal]} · ${TEMA_NOTA[tema]}`}
+              : BANCO_NOTA[canal]}
           </p>
         </div>
 
@@ -447,29 +444,6 @@ function BancoDeCanal({
             Ver feed
           </Button>
 
-          {/* El tema del PRÓXIMO lote. Va pegado al botón porque es parte de la
-              misma decisión: no se elige un tema y después se genera, se genera
-              un lote de un tema. Cada pieza guarda el suyo, así que los dos
-              pueden convivir en el banco. */}
-          {!trabajando && (
-            <div className="flex items-center gap-0.5 rounded-lg border border-line bg-surface-muted p-[3px]">
-              {TEMAS_BANCO.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTema(t)}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 text-[11.5px] font-medium transition-colors",
-                    t === tema
-                      ? "bg-surface font-semibold text-ink shadow-e1"
-                      : "text-ink-muted hover:text-ink-secondary"
-                  )}
-                >
-                  {TEMA_LABEL[t]}
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* Secundario y a propósito: con el botón principal arrastrando lo
               pendiente, esto solo hace falta para terminar lo que hay sin
               generar ocho piezas nuevas encima. */}
@@ -480,14 +454,29 @@ function BancoDeCanal({
             </Button>
           )}
 
-          <Button onClick={() => onGenerarLote(tema)} disabled={trabajando}>
-            {trabajando ? <Loader2 className="animate-spin" /> : <Sparkles />}
-            {trabajando
-              ? `${progreso.paso === "imagen" ? "Imagen" : "Texto"} ${Math.min(progreso.hechos + 1, progreso.total)}/${progreso.total}…`
-              : incompletas.length > 0
-                ? `Generar ${PIEZAS_POR_LOTE} y completar las ${incompletas.length}`
-                : `Generar lote de ${PIEZAS_POR_LOTE}`}
-          </Button>
+          {/*
+            EL TEMA SE ELIGE AL GENERAR, dentro del propio botón.
+
+            Antes era un control segmentado al lado: se elegía un tema y después
+            se apretaba generar, y entre las dos cosas quedaba un estado —"el
+            tema actual"— que no significa nada, porque el banco no tiene tema:
+            lo tiene cada pieza.
+
+            Con el menú no hay estado intermedio. Un click abre, el segundo
+            elige y arranca. Y de paso el tema deja de poder quedar puesto de un
+            lote anterior sin que nadie lo mire.
+          */}
+          <MenuGenerar
+            trabajando={trabajando}
+            etiqueta={
+              trabajando
+                ? `${progreso.paso === "imagen" ? "Imagen" : "Texto"} ${Math.min(progreso.hechos + 1, progreso.total)}/${progreso.total}…`
+                : incompletas.length > 0
+                  ? `Generar ${PIEZAS_POR_LOTE} y completar las ${incompletas.length}`
+                  : `Generar lote de ${PIEZAS_POR_LOTE}`
+            }
+            onElegir={onGenerarLote}
+          />
         </div>
       </div>
 
@@ -500,10 +489,11 @@ function BancoDeCanal({
             title="El banco está vacío"
             description={`Generá un lote de ${PIEZAS_POR_LOTE} piezas: cada una sale con su imagen y su copy listos para revisar.`}
             action={
-              <Button onClick={() => onGenerarLote(tema)} disabled={trabajando}>
-                <Sparkles />
-                Generar lote de {PIEZAS_POR_LOTE}
-              </Button>
+              <MenuGenerar
+                trabajando={trabajando}
+                etiqueta={`Generar lote de ${PIEZAS_POR_LOTE}`}
+                onElegir={onGenerarLote}
+              />
             }
           />
         </div>
@@ -545,6 +535,113 @@ function BancoDeCanal({
           })
         }}
       />
+    </div>
+  )
+}
+
+/**
+ * El botón de generar, que primero pregunta con qué tema.
+ *
+ * No hay un menú desplegable en el proyecto —solo pestañas, tooltip y switch de
+ * Radix— y traer una dependencia entera para dos opciones sería desproporcionado.
+ * Son treinta líneas y no tiene submenús, ni items deshabilitados, ni nada de lo
+ * que justifica una librería.
+ *
+ * Lo que sí hace falta y es fácil de olvidar: cerrarse al hacer click afuera y
+ * con Escape. Un menú que solo se cierra eligiendo una opción obliga a generar
+ * un lote para salir de él.
+ */
+function MenuGenerar({
+  trabajando,
+  etiqueta,
+  onElegir,
+}: {
+  trabajando: boolean
+  etiqueta: string
+  onElegir: (tema: TemaBanco) => void
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const caja = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!abierto) return
+
+    const afuera = (e: MouseEvent) => {
+      if (!caja.current?.contains(e.target as Node)) setAbierto(false)
+    }
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAbierto(false)
+    }
+
+    // `mousedown` y no `click`: con click, el mismo gesto que abre el menú lo
+    // cerraría al soltar el botón.
+    document.addEventListener("mousedown", afuera)
+    document.addEventListener("keydown", escape)
+    return () => {
+      document.removeEventListener("mousedown", afuera)
+      document.removeEventListener("keydown", escape)
+    }
+  }, [abierto])
+
+  return (
+    <div ref={caja} className="relative">
+      <Button
+        onClick={() => setAbierto((v) => !v)}
+        disabled={trabajando}
+        aria-haspopup="menu"
+        aria-expanded={abierto}
+      >
+        {trabajando ? <Loader2 className="animate-spin" /> : <Sparkles />}
+        {etiqueta}
+        {!trabajando && (
+          <ChevronDown
+            className={cn("transition-transform duration-150", abierto && "rotate-180")}
+          />
+        )}
+      </Button>
+
+      {abierto && !trabajando && (
+        <div
+          role="menu"
+          className={cn(
+            "absolute right-0 top-full z-30 mt-1.5 w-[268px] overflow-hidden",
+            "rounded-xl border border-line bg-surface shadow-e3"
+          )}
+        >
+          <p className="border-b border-line px-3 py-2 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-ink-faint">
+            Con qué tema
+          </p>
+
+          {TEMAS_BANCO.map((t) => (
+            <button
+              key={t}
+              role="menuitem"
+              onClick={() => {
+                setAbierto(false)
+                onElegir(t)
+              }}
+              className={cn(
+                "flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left",
+                "transition-colors duration-150 hover:bg-surface-muted",
+                "focus-visible:bg-surface-muted focus-visible:outline-none"
+              )}
+            >
+              <span className="flex items-center gap-2 text-[12.5px] font-semibold text-ink">
+                {/* La muestra de color dice mas rapido que el nombre cual es cual. */}
+                <span
+                  aria-hidden
+                  className={cn(
+                    "h-3 w-3 shrink-0 rounded-full border",
+                    t === "oscuro" ? "border-navy-950 bg-navy-950" : "border-line bg-[#F5F2EC]"
+                  )}
+                />
+                {TEMA_LABEL[t]}
+              </span>
+              <span className="pl-5 text-[11px] leading-snug text-ink-muted">{TEMA_NOTA[t]}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
