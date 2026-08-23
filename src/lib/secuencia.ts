@@ -88,8 +88,13 @@ export type OpcionesSecuencia = {
  * —[0,1,2] contra [10,9,8]—, así que calcular la armonía en orden de fecha
  * produciría filas que en el perfil nunca existen.
  */
-export function ordenDeLectura<T extends { fecha: string }>(piezas: T[], canal: Canal): T[] {
-  const porFecha = [...piezas].sort((a, b) => a.fecha.localeCompare(b.fecha))
+export function ordenDeLectura<T extends { fecha: string | null }>(piezas: T[], canal: Canal): T[] {
+  // `fecha` puede ser null: las piezas del banco no tienen fecha hasta que se
+  // programan, y el banco también quiere verse como feed. El sort de JS es
+  // estable, así que un lote entero sin fecha conserva el orden en que vino —el
+  // de generación— y el reverse de Instagram lo deja con la más nueva arriba,
+  // que es exactamente lo que muestra el perfil.
+  const porFecha = [...piezas].sort((a, b) => (a.fecha ?? "").localeCompare(b.fecha ?? ""))
   return canal === "meta" ? porFecha.reverse() : porFecha
 }
 
