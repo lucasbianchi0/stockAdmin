@@ -715,7 +715,15 @@ export function composicionDeTexto({
 export const CLARO = {
   /** Dónde termina la franja del texto. Fija: es lo que garantiza el aire. */
   altoTexto: 520,
-  logo: { ancho: 168, alto: 25, desdeArriba: 64 },
+  /*
+   * El logo de la pieza clara. Más chico que el del oscuro y centrado arriba.
+   *
+   * `alto` NO se escribe: sale del ancho y de la proporción del archivo
+   * (1073×160). Escribirlo a mano fue el error de la primera versión — decía 25
+   * mientras el logo se componía a 35, porque el tamaño real lo decidía otro
+   * módulo con otra constante.
+   */
+  logo: { ancho: 168, alto: Math.round(168 / (1073 / 160)), desdeArriba: 64 },
   titular: {
     desdeLogo: 46,
     /** El margen a cada lado. 1080 − 2×120 = 840 px de ancho útil. */

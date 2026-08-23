@@ -707,12 +707,27 @@ export async function renderizarPlaca(placa: PlacaTipografica): Promise<Buffer> 
     fonts: await fuentes(),
   })
 
-  /* El logo del tema: el blanco sobre navy y abajo a la izquierda cerrando la
-     columna; el navy sobre hueso y centrado arriba, encabezando la pieza. */
+  /*
+   * El logo, con la ubicación que pide cada composición.
+   *
+   * Los números salen de `CLARO.logo` y de ningún otro lado: son los MISMOS con
+   * los que `PlacaClara` le reserva el lugar arriba, así que el hueco y la marca
+   * no se pueden desacomodar. Antes el margen superior estaba escrito a mano
+   * dentro de `logo-pieza` y el ancho salía del 22% del tema oscuro: el logo se
+   * componía un 40% más grande que el espacio reservado.
+   *
+   * El tema oscuro no pasa nada y cae a los valores de siempre.
+   */
   const tema = placa.tema ?? "oscuro"
+
   return await soloLogo(
     Buffer.from(await respuesta.arrayBuffer()),
-    PALETAS[tema].logo,
-    tema === "claro" ? "arriba-centro" : "abajo-izquierda"
+    tema === "claro"
+      ? {
+          archivo: PALETAS.claro.logo,
+          anchoRelativo: CLARO.logo.ancho / MEDIDAS.square.ancho,
+          arribaCentrado: CLARO.logo.desdeArriba,
+        }
+      : { archivo: PALETAS.oscuro.logo }
   )
 }

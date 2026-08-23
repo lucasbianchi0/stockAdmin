@@ -278,25 +278,42 @@ export async function conLogo(imagen: Buffer, medida: Medida): Promise<Buffer> {
  * con las mismas constantes y no hay dos posiciones posibles para la marca.
  */
 /**
- * Dónde se apoya la marca.
+ * Dónde y de qué tamaño se apoya la marca.
  *
- * El tema oscuro la pone abajo a la izquierda, cerrando la columna de texto. El
- * claro la pone centrada arriba, encabezando la pieza: es lo primero que se lee
- * y lo que sostiene la simetría de una composición centrada. La misma marca en
- * el mismo tamaño, en el rincón que cada composición le deja.
+ * El tema oscuro la pone abajo a la izquierda cerrando la columna de texto, y
+ * ese es el default: nada que no pida otra cosa cambia de lugar. El tema claro
+ * la pone centrada arriba, encabezando la pieza, y más chica.
+ *
+ * LOS NÚMEROS LOS PASA QUIEN LLAMA, no los tiene este módulo. La primera versión
+ * traía acá un `height * (64 / 1080)` para el caso centrado, y ese 64 era el
+ * mismo `CLARO.logo.desdeArriba` que la placa usa para reservarle el lugar: dos
+ * copias del mismo número, en dos archivos, que hay que acordarse de mover
+ * juntas. Es exactamente la deriva que ya pasó en este proyecto con el azul de
+ * marca y con el ancho de la columna de texto.
+ *
+ * Ahora la composición decide dónde va su logo y este módulo solo lo compone.
  */
-export type PosicionLogo = "abajo-izquierda" | "arriba-centro"
+export type UbicacionLogo = {
+  /** El archivo. El blanco sobre navy, el navy sobre hueso. */
+  archivo?: string
+  /** El ancho, como fracción del lado de la pieza. */
+  anchoRelativo?: number
+  /**
+   * Arriba y centrado, con este margen superior en píxeles. Sin esto, el logo va
+   * abajo a la izquierda, que es donde vivió siempre.
+   */
+  arribaCentrado?: number
+}
 
-export async function soloLogo(
-  arte: Buffer,
-  archivoLogo = ARCHIVO_LOGO,
-  posicion: PosicionLogo = "abajo-izquierda"
-): Promise<Buffer> {
+export async function soloLogo(arte: Buffer, ubicacion: UbicacionLogo = {}): Promise<Buffer> {
+  const archivoLogo = ubicacion.archivo ?? ARCHIVO_LOGO
+  const anchoRelativo = ubicacion.anchoRelativo ?? ANCHO_RELATIVO
+
   const base = sharp(arte)
   const { width, height } = await base.metadata()
   if (!width || !height) return arte
 
-  const anchoLogo = Math.round(width * ANCHO_RELATIVO)
+  const anchoLogo = Math.round(width * anchoRelativo)
   const altoLogo = Math.round(anchoLogo / RATIO_LOGO)
   const margen = Math.round(width * MARGEN_RELATIVO)
 
@@ -308,12 +325,9 @@ export async function soloLogo(
     .png()
     .toBuffer()
 
-  const left =
-    posicion === "arriba-centro" ? Math.round((width - anchoLogo) / 2) : margen
-  const top =
-    posicion === "arriba-centro"
-      ? Math.round(height * (64 / 1080))
-      : height - margen - altoLogo
+  const centrado = ubicacion.arribaCentrado !== undefined
+  const left = centrado ? Math.round((width - anchoLogo) / 2) : margen
+  const top = centrado ? ubicacion.arribaCentrado! : height - margen - altoLogo
 
   return await base
     .composite([{ input: logo, left, top }])
