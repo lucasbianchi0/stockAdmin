@@ -138,7 +138,27 @@ export async function POST(req: Request) {
       .eq("origen", "banco")
 
     const desde = count ?? 0
-    const ideas = await generarIdeas(canal, desde)
+
+    /*
+     * Los titulares que ya están en el banco, programados incluidos.
+     *
+     * Van al prompt Y al dedupe del servidor. Las dos cosas: pedirle al modelo
+     * que no repita es lo que hace que escriba OTRA idea en vez de una variante,
+     * y el filtro de atrás es lo que garantiza que si igual repite, no entre.
+     */
+    const { data: previas } = await supabase
+      .from("content_slots")
+      .select("opciones")
+      .eq("plan_id", planId)
+      .eq("origen", "banco")
+      .order("orden", { ascending: false })
+      .limit(40)
+
+    const yaEscritos = (previas ?? [])
+      .map((f) => ((f.opciones ?? []) as Opcion[])[0])
+      .filter(Boolean)
+
+    const ideas = await generarIdeas(canal, desde, yaEscritos)
     if (ideas.length === 0) throw new Error("El modelo no devolvió ninguna idea")
 
     // El mismo control de calidad del titular que el plan. No es opcional: es lo
@@ -214,6 +234,18 @@ function repartirTemplates(cantidad: number, canal: Canal, desde: number): strin
 /* ── Generación ───────────────────────────────────────────────────────────── */
 
 /**
+ * La huella de un titular, para saber si ya se escribió.
+ *
+ * Sin puntuación ni tildes ni mayúsculas: "Cinco proveedores. Cero
+ * responsables." y "Cinco proveedores, cero responsables" son la misma pieza
+ * con una coma de diferencia, y salieron en dos lotes seguidos del mismo banco.
+ * Comparar el texto tal cual no las hubiera visto.
+ */
+function claveTitular(texto: string): string {
+  return plano(texto).replace(/[^a-z0-9]+/g, " ").trim()
+}
+
+/**
  * Las ocho ideas: las dos tandas a la vez, unidas y sin repetidas.
  *
  * `allSettled` y no `all`: si una tanda falla, las cuatro de la otra son mejor
@@ -225,20 +257,28 @@ function repartirTemplates(cantidad: number, canal: Canal, desde: number): strin
  * caminos al mismo titular — y dos piezas idénticas en el banco se descubren
  * recién al leerlas.
  */
-async function generarIdeas(canal: Canal, desde: number): Promise<Opcion[]> {
+async function generarIdeas(
+  canal: Canal,
+  desde: number,
+  /** Las ideas que ya viven en el banco de este canal. */
+  yaEscritos: Opcion[]
+): Promise<Opcion[]> {
   const resultados = await Promise.allSettled(
-    tandasDelLote(desde).map((tanda) => pedirIdeas(canal, tanda))
+    tandasDelLote(desde).map((tanda) => pedirIdeas(canal, tanda, yaEscritos))
   )
 
   for (const r of resultados) {
     if (r.status === "rejected") console.error("[banco/lote tanda]", r.reason)
   }
 
-  const vistos = new Set<string>()
+  // Arranca con lo que ya hay: el dedupe era solo DENTRO del lote, así que dos
+  // lotes seguidos del mismo banco podían escribir la misma pieza y ninguno de
+  // los dos se enteraba.
+  const vistos = new Set(yaEscritos.map((o) => claveTitular(o.headline)))
   return resultados
     .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
     .filter((idea) => {
-      const clave = plano(idea.headline)
+      const clave = claveTitular(idea.headline)
       if (vistos.has(clave)) return false
       vistos.add(clave)
       return true
@@ -249,7 +289,7 @@ async function generarIdeas(canal: Canal, desde: number): Promise<Opcion[]> {
     .slice(0, PIEZAS_POR_LOTE)
 }
 
-async function pedirIdeas(canal: Canal, tanda: Tanda): Promise<Opcion[]> {
+async function pedirIdeas(canal: Canal, tanda: Tanda, yaEscritos: Opcion[]): Promise<Opcion[]> {
   const cantidad = tanda.objetivos.length
 
   const objetivos = [...new Set(tanda.objetivos)]
@@ -284,10 +324,19 @@ ${DOCTRINA_HEADLINE}
 
 ${TEST_RECHAZO}
 
-TITULARES YA PUBLICADOS — ninguno de estos puede volver a salir, ni tal cual, ni reescrito, ni con los mismos sustantivos en otro orden:
-${PATRONES_HEADLINE.map((p) => `· "${p.ejemplo}"`).join("\n")}
+LO QUE YA ESTÁ ESCRITO — no se repite NINGUNO, y no alcanza con cambiar las palabras.
 
-Son los ejemplos de los patrones de arriba y están ahí para mostrar la FORMA, no el contenido. Copiar uno es postear dos veces lo mismo. Si tu titular se parece a alguno en algo más que la estructura, cambiá el tema.
+Titulares de ejemplo, que muestran la FORMA de cada patrón y no el contenido:
+${PATRONES_HEADLINE.map((p) => `· "${p.ejemplo}"`).join("\n")}
+${
+    yaEscritos.length > 0
+      ? `\nTEMAS QUE YA TIENE ESTE BANCO. Cada linea es un tema AGOTADO: elegí otros.\n${yaEscritos
+          .map((o) => `· ${o.titulo} — "${o.headline}"`)
+          .join("\n")}`
+      : ""
+  }
+
+Se pide el TEMA distinto, no el titular distinto. "Tres proveedores, cero responsables" y "Más proveedores, menos responsables" son dos redacciones de la misma pieza: si el tema ya está en la lista de arriba, no lo escribas de nuevo con otras palabras — buscá otro problema, otro servicio, otra audiencia. Lo mismo con la puntuación: cambiarle un punto por una coma no hace un titular nuevo.
 
 ANTES DEL TITULAR, LA TESIS. Cada pieza defiende una afirmación concreta, en una frase que alguien podría discutir. "La importancia de la ciberseguridad" NO es una tesis: nadie la discute y no se puede desarrollar. "El firewall perimetral no ve al atacante que ya entró con credenciales válidas" sí lo es. El titular es la versión impresa de la tesis.
 
