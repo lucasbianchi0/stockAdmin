@@ -195,9 +195,23 @@ async function generarContenido({
     messages: [
       {
         role: "user",
-        content: `${ACCEDRA_BRAND_CONTEXT}
-
-Generá el contenido completo y listo para publicar de esta pieza.
+        content: [
+          /*
+           * El brand kit, en su propio bloque y cacheado.
+           *
+           * Es la llamada que más se repite del sistema: una por pieza, ocho por
+           * lote, y cada una mandaba estos 4.448 tokens de nuevo. El bloque va
+           * primero y sin interpolar nada adentro porque el caché es un prefijo:
+           * un byte distinto adelante y no cachea ninguna.
+           */
+          {
+            type: "text" as const,
+            text: ACCEDRA_BRAND_CONTEXT,
+            cache_control: { type: "ephemeral" as const },
+          },
+          {
+            type: "text" as const,
+            text: `Generá el contenido completo y listo para publicar de esta pieza.
 
 CANAL: ${CANAL_LABEL[canal]}
 ${CANAL_BRIEF[canal]}
@@ -249,6 +263,8 @@ Test antes de entregar: si el caption se puede copiar y pegar en la web de cualq
 
 ###PROMPT_IMAGEN###
 [Prompt en INGLÉS para DALL-E o Midjourney que describa el visual de esta pieza. Incluí siempre: ${BASE_VISUAL}, ${MEDIDA[canal]}.]`,
+          },
+        ],
       },
     ],
   })

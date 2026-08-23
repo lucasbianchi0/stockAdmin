@@ -34,6 +34,9 @@ type EstadoCanal = {
 
 const VACIO: EstadoCanal = { piezas: [], cargado: false, progreso: null }
 
+/** Las que no están listas para publicar: les falta el copy, la imagen o las dos. */
+const pendientesDe = (piezas: PiezaBanco[]) => piezas.filter((p) => !piezaCompleta(p))
+
 /**
  * El banco de imágenes: se genera un lote, se revisa y se programa.
  *
@@ -72,6 +75,17 @@ export function BancoClient() {
    * —el doble de generaciones pagadas para el mismo resultado—.
    */
   const enCurso = useRef<Set<Canal>>(new Set())
+
+  /**
+   * El estado, siempre al día, para leerlo dentro de una función asíncrona.
+   *
+   * `generarLote` tarda medio minuto en volver de la llamada de ideas, y para
+   * entonces `estado` es el del render en el que se creó la función. Leyendo de
+   * ahí, las piezas pendientes que se quiere arrastrar serían las de hace medio
+   * minuto. El ref siempre tiene la última.
+   */
+  const estadoRef = useRef(estado)
+  estadoRef.current = estado
 
   const parche = useCallback((c: Canal, cambio: Partial<EstadoCanal>) => {
     setEstado((prev) => ({ ...prev, [c]: { ...prev[c], ...cambio } }))
@@ -151,11 +165,16 @@ export function BancoClient() {
   }, [estado])
 
   /**
-   * Produce las piezas a las que les falte algo, de a una y en serie.
+   * Produce las piezas a las que les falte algo, de a DOS a la vez.
    *
-   * En serie y no en paralelo: cada imagen es una generación pesada, y lanzar
-   * ocho juntas es la forma más rápida de comerse el rate limit del generador y
-   * perder las ocho.
+   * Serial tardaba unos siete minutos para doce piezas —cuarenta y cinco
+   * segundos cada una, casi todo generando el fondo— y eso es tiempo con la
+   * pantalla abierta. De a dos baja a la mitad.
+   *
+   * Dos y no ocho: cada imagen es una generación pesada y lanzarlas todas
+   * juntas es la forma más rápida de comerse el rate limit del generador y
+   * perderlas. La generación de imágenes anda bien y no se toca — esto sube la
+   * concurrencia del cliente, no cambia una línea de cómo se compone la pieza.
    *
    * Sirve igual para un lote recién generado y para reintentar lo que quedó a
    * medias: la condición es "le falta copy o imagen", no "es nueva".
@@ -166,24 +185,51 @@ export function BancoClient() {
       enCurso.current.add(c)
 
       const fallas: string[] = []
+      let hechos = 0
 
-      try {
-        for (const [i, pieza] of pendientes.entries()) {
-          const avance = (paso: PasoPieza) =>
-            parche(c, { progreso: { hechos: i, total: pendientes.length, piezaId: pieza.id, paso } })
-
-          avance("texto")
+      /* Una pieza, con UN reintento. La mayoría de los fallos son un timeout o
+         un 429 del generador, y volver a pedirla sale más barato que dejarla a
+         medias para que el usuario tenga que apretar otro botón. */
+      const unaPieza = async (pieza: PiezaBanco) => {
+        for (let intento = 0; intento < 2; intento++) {
           try {
-            aplicar(c, await producirPieza(pieza, avance))
+            const lista = await producirPieza(pieza, (paso) =>
+              parche(c, {
+                progreso: { hechos, total: pendientes.length, piezaId: pieza.id, paso },
+              })
+            )
+            aplicar(c, lista)
+            return
           } catch (e) {
+            if (intento === 0) {
+              console.warn(`[banco] reintento de "${pieza.idea.titulo}":`, e)
+              continue
+            }
             // El motivo se guarda y se muestra. Antes se contaban los fallos y
             // se tiraba el error, así que "3 quedaron a medias" no venía con
-            // ninguna pista de por qué — ni en pantalla ni en la consola.
-            const motivo = e instanceof Error ? e.message : "error desconocido"
+            // ninguna pista — ni en pantalla ni en la consola.
             console.error(`[banco] "${pieza.idea.titulo}":`, e)
-            fallas.push(motivo)
+            fallas.push(e instanceof Error ? e.message : "error desconocido")
           }
         }
+      }
+
+      /* Dos "carriles" que van tomando de la misma cola. Con `map` sobre pares
+         el carril rápido esperaría al lento en cada par; así ninguno queda
+         parado mientras haya piezas sin empezar. */
+      const cola = [...pendientes]
+      const carril = async () => {
+        for (;;) {
+          const pieza = cola.shift()
+          if (!pieza) return
+          await unaPieza(pieza)
+          hechos++
+          parche(c, { progreso: { hechos, total: pendientes.length, piezaId: null, paso: "imagen" } })
+        }
+      }
+
+      try {
+        await Promise.all([carril(), carril()])
       } finally {
         enCurso.current.delete(c)
         parche(c, { progreso: null })
@@ -223,7 +269,21 @@ export function BancoClient() {
       // Las ideas se muestran ANTES de tener copy e imagen: el lote tarda varios
       // minutos y ver los ocho títulos aparecer es lo que dice que arrancó.
       setEstado((prev) => ({ ...prev, [c]: { ...prev[c], piezas: [...prev[c].piezas, ...nuevas] } }))
-      await producir(c, nuevas)
+
+      /*
+       * UN SOLO BOTÓN. El lote arrastra también lo que haya quedado a medias
+       * antes, no solo lo que acaba de generar.
+       *
+       * Sin esto, un lote donde falló una pieza dejaba el banco con material
+       * incompleto que solo se terminaba apretando OTRO botón, y el usuario no
+       * tiene por qué saber que existen dos pasos: pidió ocho publicaciones
+       * listas. Las pendientes van primero porque son las más viejas.
+       */
+      const pendientes = [
+        ...pendientesDe(estadoRef.current[c].piezas),
+        ...nuevas,
+      ]
+      await producir(c, pendientes)
     },
     [parche, producir]
   )
@@ -282,7 +342,7 @@ function BancoDeCanal({
   const [abierta, setAbierta] = useState<string | null>(null)
 
   const { piezas, cargado, progreso } = estado
-  const incompletas = piezas.filter((p) => !piezaCompleta(p))
+  const incompletas = pendientesDe(piezas)
   const pieza = piezas.find((p) => p.id === abierta) ?? null
   const trabajando = progreso !== null
 
@@ -299,10 +359,13 @@ function BancoDeCanal({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Secundario y a propósito: con el botón principal arrastrando lo
+              pendiente, esto solo hace falta para terminar lo que hay sin
+              generar ocho piezas nuevas encima. */}
           {incompletas.length > 0 && !trabajando && (
-            <Button variant="outline" size="sm" onClick={() => onCompletar(incompletas)}>
+            <Button variant="ghost" size="sm" onClick={() => onCompletar(incompletas)}>
               <ImageIcon />
-              Completar las {incompletas.length} que faltan
+              Solo completar las {incompletas.length} que faltan
             </Button>
           )}
 
@@ -310,7 +373,9 @@ function BancoDeCanal({
             {trabajando ? <Loader2 className="animate-spin" /> : <Sparkles />}
             {trabajando
               ? `${progreso.paso === "imagen" ? "Imagen" : "Texto"} ${Math.min(progreso.hechos + 1, progreso.total)}/${progreso.total}…`
-              : `Generar lote de ${PIEZAS_POR_LOTE}`}
+              : incompletas.length > 0
+                ? `Generar ${PIEZAS_POR_LOTE} y completar las ${incompletas.length}`
+                : `Generar lote de ${PIEZAS_POR_LOTE}`}
           </Button>
         </div>
       </div>

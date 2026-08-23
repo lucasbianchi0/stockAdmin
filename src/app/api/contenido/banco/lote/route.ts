@@ -27,11 +27,18 @@ import {
   HEADLINE_MAX_PALABRAS,
   PATRONES_HEADLINE,
   TEST_RECHAZO,
+  claveTitular,
   esPatron,
   limpiarTitular,
-  plano,
 } from "@/lib/copy-headline"
 import { repararTitulares } from "@/lib/titular-reparacion"
+import {
+  anotarEnHistorial,
+  clavesUsadas,
+  historialDelOtroCanal,
+  historialReciente,
+  type EntradaHistorial,
+} from "@/lib/historial-server"
 import { SERVICIOS } from "@/lib/brand-kit"
 import { secuenciaRecomendada } from "@/lib/secuencia"
 import { TEMPLATES_FEED } from "@/lib/templates-feed"
@@ -79,14 +86,109 @@ export const maxDuration = 60
  * con dos etiquetas distintas. Es el mismo equilibrio que el plan de quince días
  * propone en su análisis, escalado a ocho.
  */
-type Tanda = { objetivos: string[]; lineas: string[] }
+type Tanda = { objetivos: string[]; lineas: string[]; ejes: string[] }
+
+/**
+ * Una idea recién salida del modelo: la pieza más de dónde salió.
+ *
+ * `linea` y `eje` NO son de la pieza —no se imprimen, no se publican, no los
+ * lee el calendario— así que no van en `Opcion`, que es el tipo que comparten
+ * las dos pantallas. Viven el tiempo que tardan en anotarse en el historial y
+ * ahí se separan.
+ */
+type IdeaCruda = Opcion & { linea: string; eje: string }
 
 const LINEAS = SERVICIOS.map((s) => s.nombre)
 
+/**
+ * DESDE DÓNDE se mira el tema. El otro eje del contenido.
+ *
+ * La línea de servicio dice DE QUÉ habla la pieza; esto dice desde dónde. Sin
+ * este segundo eje, ocho piezas sobre Networking son ocho formas de decir
+ * "vendemos redes", y el banco se agota en dos lotes: el modelo vuelve sobre el
+ * mismo problema —el multiproveedor, la caída, el costo oculto— porque es lo
+ * único que el catálogo, solo, sugiere.
+ *
+ * Ninguno de estos ángulos habla de lo que Accedra vende. Hablan del PROBLEMA,
+ * de la tecnología, del oficio, del error que comete el mercado. La marca entra
+ * igual —el catálogo sigue siendo la única fuente de cifras, servicios y
+ * clientes—, pero entra como quien sabe del tema y no como quien tiene algo que
+ * ofrecer. Es lo que separa una cuenta que vale la pena seguir de un folleto.
+ *
+ * Línea × eje es el espacio real de temas: cinco por nueve son cuarenta y cinco
+ * combinaciones antes de que ninguna se repita.
+ */
+const EJES = [
+  {
+    id: "error-del-mercado",
+    nombre: "El error que comete el mercado",
+    brief:
+      "La decisión equivocada que toma la mayoría de las empresas en este tema, y por qué parece razonable hasta que falla. No es un ataque a nadie: es la trampa en la que cae cualquiera que no hace esto todos los días.",
+  },
+  {
+    id: "como-se-decide",
+    nombre: "Cómo se decide bien",
+    brief:
+      "Qué hay que preguntar ANTES de contratar o comprar en este rubro. Las dos o tres preguntas que separan una decisión informada de una compra por catálogo. Útil incluso para el que termina eligiendo a otro.",
+  },
+  {
+    id: "distincion-tecnica",
+    nombre: "La distinción técnica que nadie explica",
+    brief:
+      "Dos cosas que el mercado usa como sinónimos y no lo son. Se explica la diferencia real y qué consecuencia práctica tiene. Es la pieza que hace que alguien del rubro diga 'estos saben'.",
+  },
+  {
+    id: "que-cambio",
+    nombre: "Qué cambió",
+    brief:
+      "Algo que era cierto hace unos años y ya no lo es en este tema: una tecnología que se volvió estándar, un supuesto que caducó, una práctica que dejó de alcanzar. Sin declarar tendencias vagas ni hablar de 'la transformación digital'.",
+  },
+  {
+    id: "costo-invisible",
+    nombre: "El costo que nadie mide",
+    brief:
+      "El gasto real que no aparece en ninguna factura ni en ningún reporte: horas perdidas, retrabajo, decisiones tomadas tarde, riesgo asumido sin saberlo. Se nombra el costo, no el remedio.",
+  },
+  {
+    id: "como-se-ve-bien-hecho",
+    nombre: "Cómo se ve cuando está bien hecho",
+    brief:
+      "El estándar. Qué se siente, qué se mide y qué NO pasa cuando este tema está resuelto de verdad. Da un patrón contra el cual el lector puede comparar lo que tiene hoy.",
+  },
+  {
+    id: "el-oficio",
+    nombre: "El oficio por dentro",
+    brief:
+      "Cómo se hace el trabajo de verdad: el relevamiento, la etapa que nadie ve, lo que se decide en obra, por qué un proyecto tarda lo que tarda. Marca empleadora y autoridad técnica a la vez.",
+  },
+  {
+    id: "requisito-real",
+    nombre: "El requisito que sí importa",
+    brief:
+      "La exigencia concreta —legal, normativa, de auditoría o de continuidad— que este tema tiene que cumplir, y qué implica de verdad cumplirla. Nada de miedo genérico: el requisito con nombre.",
+  },
+  {
+    id: "caso-como-historia",
+    nombre: "El caso, contado como historia",
+    brief:
+      "Un cliente real del catálogo, contado por lo que le pasaba antes y qué cambió. La cifra publicada es el cierre, no el titular. Solo con casos y números que estén en el catálogo.",
+  },
+] as const
+
+/**
+ * Qué combinación de línea, eje y objetivo le toca a cada tanda.
+ *
+ * La rotación arranca en el tamaño del banco, así que dos lotes seguidos del
+ * mismo canal no salen ni sobre las mismas líneas ni desde los mismos ángulos.
+ * Como las dos listas avanzan a distinto ritmo —cinco líneas, nueve ejes— el par
+ * (línea, eje) tarda cuarenta y cinco lotes en repetirse.
+ */
 function tandasDelLote(desde: number): Tanda[] {
-  // La rotación arranca en el tamaño del banco: dos lotes seguidos del mismo
-  // canal no salen sobre las mismas líneas de servicio.
   const linea = (i: number) => LINEAS[(i + desde) % LINEAS.length]
+  const eje = (i: number) => {
+    const e = EJES[(i + desde) % EJES.length]
+    return `${e.nombre}: ${e.brief}`
+  }
 
   /*
    * LAS DOS LISTAS SON DISJUNTAS. No es un detalle de reparto: es lo único que
@@ -102,10 +204,12 @@ function tandasDelLote(desde: number): Tanda[] {
     {
       objetivos: ["awareness", "awareness", "educacion", "educacion"],
       lineas: [linea(0), linea(1), linea(2)],
+      ejes: [eje(0), eje(1), eje(2), eje(3)],
     },
     {
       objetivos: ["awareness", "educacion", "conversion", "conversion"],
       lineas: [linea(3), linea(4)],
+      ejes: [eje(4), eje(5), eje(6), eje(7)],
     },
   ]
 }
@@ -140,30 +244,41 @@ export async function POST(req: Request) {
     const desde = count ?? 0
 
     /*
-     * Los titulares que ya están en el banco, programados incluidos.
+     * La memoria del canal, en dos formas y por dos motivos distintos.
      *
-     * Van al prompt Y al dedupe del servidor. Las dos cosas: pedirle al modelo
-     * que no repita es lo que hace que escriba OTRA idea en vez de una variante,
-     * y el filtro de atrás es lo que garantiza que si igual repite, no entre.
+     * `reciente` va al PROMPT: es lo que hace que el modelo escriba otra idea en
+     * vez de una variante de una que ya existe. `usadas` es el FILTRO: TODAS las
+     * huellas del canal, para que si el modelo igual repite, no entre.
+     *
+     * Las dos salen del historial y no de las piezas vivas del banco. Antes se
+     * leían de `content_slots`, y ahí descartar una pieza liberaba su titular:
+     * la idea que ya se había mirado y rechazado podía volver en el lote
+     * siguiente. Y la consulta traía cuarenta: al sexto lote, el banco ya no se
+     * acordaba de lo que había escrito en el primero.
      */
-    const { data: previas } = await supabase
-      .from("content_slots")
-      .select("opciones")
-      .eq("plan_id", planId)
-      .eq("origen", "banco")
-      .order("orden", { ascending: false })
-      .limit(40)
+    const [reciente, otroCanal, usadas] = await Promise.all([
+      historialReciente(canal),
+      historialDelOtroCanal(canal),
+      clavesUsadas(),
+    ])
 
-    const yaEscritos = (previas ?? [])
-      .map((f) => ((f.opciones ?? []) as Opcion[])[0])
-      .filter(Boolean)
-
-    const ideas = await generarIdeas(canal, desde, yaEscritos)
+    const ideas = await generarIdeas(canal, desde, reciente, otroCanal, usadas)
     if (ideas.length === 0) throw new Error("El modelo no devolvió ninguna idea")
 
     // El mismo control de calidad del titular que el plan. No es opcional: es lo
     // que evita que se imprima una frase cortada dentro del JPG.
     await repararTitulares(ideas)
+
+    /*
+     * Se anota ANTES de insertar las piezas y no después.
+     *
+     * El historial no registra piezas, registra titulares escritos: si la
+     * inserción falla o el usuario descarta la pieza a los dos minutos, ese
+     * titular igual ya existió y no tiene que volver. Anotarlo después ataría la
+     * memoria a que la pieza sobreviva, que es justamente el agujero que esta
+     * tabla vino a tapar.
+     */
+    await anotarEnHistorial(canal, ideas, contextoDeIdeas(ideas))
 
     const templates = repartirTemplates(ideas.length, canal, desde)
     const hoy = hoyISO()
@@ -179,7 +294,9 @@ export async function POST(req: Request) {
       orden: desde + i,
       // La idea va en `opciones` con un solo elemento y ya elegida: es el mismo
       // estado al que llega un slot del calendario apenas se genera el plan.
-      opciones: [idea],
+      // `linea` y `eje` quedan afuera: ya se anotaron en el historial y la pieza
+      // no los usa para nada.
+      opciones: [sinContexto(idea)],
       elegida: idea.id,
       template_slug: templates[i] ?? null,
     }))
@@ -196,6 +313,33 @@ export async function POST(req: Request) {
     console.error("[banco/lote]", err)
     return NextResponse.json({ error: "No se pudo generar el lote" }, { status: 500 })
   }
+}
+
+/**
+ * De qué línea y con qué ángulo salió cada idea, según lo que declaró el modelo.
+ *
+ * Se probó reconstruirlo del reparto con el que se pidió —`tandasDelLote` es
+ * pura, así que emparejar por índice parecía gratis— y salió mal: el modelo no
+ * devuelve las piezas en el orden en que se le pidieron los ángulos, así que
+ * "Tu SIEM registra. ¿Alguien lo lee?" quedó anotada como Firma Biométrica. Una
+ * metadata que parece cierta y no lo es es peor que no tenerla: el próximo lote
+ * lee esa lista para saber qué está gastado.
+ *
+ * Dos campos más en el JSON son unos diez tokens de salida por pieza. Sale más
+ * barato que adivinar.
+ */
+/** La pieza sola, sin los dos campos que solo sirven para el historial. */
+function sinContexto(idea: IdeaCruda): Opcion {
+  const { linea: _linea, eje: _eje, ...pieza } = idea
+  void _linea
+  void _eje
+  return pieza
+}
+
+function contextoDeIdeas(ideas: IdeaCruda[]): Map<string, { linea?: string; eje?: string }> {
+  return new Map(
+    ideas.map((idea) => [idea.headline, { linea: idea.linea || undefined, eje: idea.eje || undefined }])
+  )
 }
 
 /* ── Los templates del lote ───────────────────────────────────────────────── */
@@ -233,17 +377,6 @@ function repartirTemplates(cantidad: number, canal: Canal, desde: number): strin
 
 /* ── Generación ───────────────────────────────────────────────────────────── */
 
-/**
- * La huella de un titular, para saber si ya se escribió.
- *
- * Sin puntuación ni tildes ni mayúsculas: "Cinco proveedores. Cero
- * responsables." y "Cinco proveedores, cero responsables" son la misma pieza
- * con una coma de diferencia, y salieron en dos lotes seguidos del mismo banco.
- * Comparar el texto tal cual no las hubiera visto.
- */
-function claveTitular(texto: string): string {
-  return plano(texto).replace(/[^a-z0-9]+/g, " ").trim()
-}
 
 /**
  * Las ocho ideas: las dos tandas a la vez, unidas y sin repetidas.
@@ -260,21 +393,33 @@ function claveTitular(texto: string): string {
 async function generarIdeas(
   canal: Canal,
   desde: number,
-  /** Las ideas que ya viven en el banco de este canal. */
-  yaEscritos: Opcion[]
-): Promise<Opcion[]> {
+  /** Lo último escrito en el canal. Va al prompt, para que no salga una variante. */
+  reciente: EntradaHistorial[],
+  /** Los titulares del otro canal, para no repetirlos literalmente. */
+  otroCanal: string[],
+  /** TODAS las huellas, de los dos canales. Es el filtro: lo literal no vuelve. */
+  usadas: Set<string>
+): Promise<IdeaCruda[]> {
   const resultados = await Promise.allSettled(
-    tandasDelLote(desde).map((tanda) => pedirIdeas(canal, tanda, yaEscritos))
+    tandasDelLote(desde).map((tanda) => pedirIdeas(canal, tanda, reciente, otroCanal))
   )
 
   for (const r of resultados) {
     if (r.status === "rejected") console.error("[banco/lote tanda]", r.reason)
   }
 
-  // Arranca con lo que ya hay: el dedupe era solo DENTRO del lote, así que dos
-  // lotes seguidos del mismo banco podían escribir la misma pieza y ninguno de
-  // los dos se enteraba.
-  const vistos = new Set(yaEscritos.map((o) => claveTitular(o.headline)))
+  /*
+   * Arranca con el historial ENTERO —los dos canales— más los titulares de
+   * ejemplo de los patrones.
+   *
+   * Los ejemplos están en el prompt para mostrar la FORMA de cada patrón, y el
+   * texto dice que no se copien; aun así volvieron tal cual más de una vez ("El
+   * papel es opcional. La validez legal, no."). Una instrucción se puede
+   * desobedecer, un `Set.has` no.
+   *
+   * Se copia el Set para no mutar el de quien llama.
+   */
+  const vistos = new Set([...usadas, ...PATRONES_HEADLINE.map((p) => claveTitular(p.ejemplo))])
   return resultados
     .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
     .filter((idea) => {
@@ -289,7 +434,12 @@ async function generarIdeas(
     .slice(0, PIEZAS_POR_LOTE)
 }
 
-async function pedirIdeas(canal: Canal, tanda: Tanda, yaEscritos: Opcion[]): Promise<Opcion[]> {
+async function pedirIdeas(
+  canal: Canal,
+  tanda: Tanda,
+  reciente: EntradaHistorial[],
+  otroCanal: string[]
+): Promise<IdeaCruda[]> {
   const cantidad = tanda.objetivos.length
 
   const objetivos = [...new Set(tanda.objetivos)]
@@ -306,9 +456,30 @@ async function pedirIdeas(canal: Canal, tanda: Tanda, yaEscritos: Opcion[]): Pro
     messages: [
       {
         role: "user",
-        content: `${ACCEDRA_BRAND_CONTEXT}
-
-Sos el director de marketing de Accedra. Generá ${cantidad} ideas de publicación para el banco de contenido.
+        content: [
+          /*
+           * El brand kit va en su propio bloque y CACHEADO.
+           *
+           * Son 4.448 tokens que viajaban diez veces por lote —dos veces acá y
+           * ocho en la redacción del copy— o sea 44.000 de los 77.000 tokens de
+           * entrada: el 57% del gasto era el mismo texto una y otra vez.
+           *
+           * El caché es un prefijo: el bloque tiene que ir PRIMERO y no puede
+           * cambiar un byte entre llamadas. Por eso está partido en dos bloques
+           * y no interpolado en el texto de abajo — con el brief de la tanda
+           * pegado adelante, cada llamada tendría un prefijo distinto y no
+           * cachearía nunca. La primera escritura cuesta 1,25× y cada lectura
+           * 0,1×; con las llamadas cayendo cada pocos segundos, el TTL de cinco
+           * minutos se renueva solo.
+           */
+          {
+            type: "text" as const,
+            text: ACCEDRA_BRAND_CONTEXT,
+            cache_control: { type: "ephemeral" as const },
+          },
+          {
+            type: "text" as const,
+            text: `Sos el director de marketing de Accedra. Generá ${cantidad} ideas de publicación para el banco de contenido.
 
 CANAL: ${CANAL_LABEL[canal]}
 ${CANAL_BRIEF[canal]}
@@ -316,6 +487,10 @@ ${CANAL_BRIEF[canal]}
 CÓMO ES ESTE LOTE — no es un calendario:
 - Las ${cantidad} piezas son INDEPENDIENTES entre sí. Cada una se publica sola, sin depender de las otras, y no hay un orden. No escribas una serie ni una historia en capítulos.
 - LAS LÍNEAS DE SERVICIO DE ESTA TANDA, y ninguna otra: ${tanda.lineas.join(" · ")}. Como máximo DOS piezas por línea.
+- LOS ÁNGULOS DE ESTA TANDA. Una pieza por ángulo, en este orden, y desde ese ángulo y no otro:
+${tanda.ejes.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}
+  El ángulo NO es el tema: es desde dónde se lo mira. Una pieza de "Networking" con el ángulo "El error que comete el mercado" habla del error, no de que vendemos redes.
+- NO ESCRIBAS FOLLETO. Estas piezas no anuncian lo que Accedra hace: hablan del problema, de la tecnología y del oficio, para alguien que decide sobre eso. El catálogo de arriba es la ÚNICA fuente de cifras, clientes, servicios y tecnologías —de ahí no se sale— pero la pieza no tiene por qué mencionar a Accedra ni a lo que vende. Se nota que sabemos por lo que decimos del tema, no por lo que decimos de nosotros.
 - Reparto de objetivos, exacto: ${objetivos}.
 - Audiencias: la mayoría a decisores técnicos o de negocio, y una o dos a corporativo/RH. Las etiquetas válidas son ${Object.entries(AUDIENCIA_LABEL).filter(([k]) => k !== "todos").map(([k, v]) => `"${k}" (${v})`).join(", ")}.
 - Como máximo DOS piezas pueden usar el mismo "patron" de titular. Ocho titulares con la misma fórmula se leen como ocho veces el mismo posteo.
@@ -329,9 +504,17 @@ LO QUE YA ESTÁ ESCRITO — no se repite NINGUNO, y no alcanza con cambiar las p
 Titulares de ejemplo, que muestran la FORMA de cada patrón y no el contenido:
 ${PATRONES_HEADLINE.map((p) => `· "${p.ejemplo}"`).join("\n")}
 ${
-    yaEscritos.length > 0
-      ? `\nTEMAS QUE YA TIENE ESTE BANCO. Cada linea es un tema AGOTADO: elegí otros.\n${yaEscritos
-          .map((o) => `· ${o.titulo} — "${o.headline}"`)
+    reciente.length > 0
+      ? `\nLO QUE YA SE PUBLICÓ EN ESTE CANAL. Cada línea es un tema AGOTADO — elegí otros:\n${reciente
+          .map((o) => `· ${o.titulo}${o.eje ? ` [${o.eje}]` : ""} — "${o.headline}"`)
+          .join("\n")}`
+      : ""
+  }
+
+${
+    otroCanal.length > 0
+      ? `\nTITULARES QUE YA SALIERON EN LA OTRA RED. El TEMA se puede tocar —son públicos distintos— pero el titular literal no: si escribís sobre lo mismo, tiene que ser otra frase y desde otro ángulo.\n${otroCanal
+          .map((h) => `· "${h}"`)
           .join("\n")}`
       : ""
   }
@@ -349,6 +532,8 @@ Devolvé SOLO un JSON válido, sin markdown ni texto fuera del objeto:
       "caracteres": "cuántos caracteres tiene el titular que acabás de escribir, contando espacios y puntuación. Si te da más de ${HEADLINE_MAX_CARACTERES}, reescribilo antes de seguir",
       "patron": ${PATRONES_HEADLINE.map((p) => `"${p.id}"`).join(" | ")},
       "titulo": "Nombre interno de la pieza para la grilla, máx 8 palabras. NO es el titular impreso",
+      "linea": "la línea de servicio de esta pieza, copiada de la lista de la tanda",
+      "eje": "el nombre del ángulo con el que la escribiste, copiado tal cual del que te tocó (solo el nombre, sin los dos puntos ni la explicación)",
       "hook": "Primera línea del caption, la que frena el scroll, máx 15 palabras",
       "objetivo": "awareness | educacion | conversion",
       "audiencia": "decisores | negocio | corporativo",
@@ -360,6 +545,8 @@ Devolvé SOLO un JSON válido, sin markdown ni texto fuera del objeto:
 }
 
 Exactamente ${cantidad} piezas.`,
+          },
+        ],
       },
     ],
   })
@@ -384,7 +571,7 @@ Exactamente ${cantidad} piezas.`,
 
   return parsed.piezas
     .slice(0, cantidad)
-    .flatMap((p): Opcion[] => {
+    .flatMap((p): IdeaCruda[] => {
       if (!p || typeof p !== "object") return []
       const o = p as Record<string, unknown>
 
@@ -414,6 +601,10 @@ Exactamente ${cantidad} piezas.`,
           formato: FORMATO_UNICO,
           recomendada: true,
           porQue: typeof o.porQue === "string" ? o.porQue.slice(0, 300) : "",
+          // De qué habló y desde dónde. No es contenido de la pieza: es lo que
+          // el historial le va a decir al próximo lote que ya está gastado.
+          linea: typeof o.linea === "string" ? o.linea.slice(0, 60) : "",
+          eje: typeof o.eje === "string" ? o.eje.slice(0, 60) : "",
         },
       ]
     })

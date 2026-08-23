@@ -253,6 +253,23 @@ export function plano(texto: string): string {
   })
 }
 
+/**
+ * La huella de un titular, para saber si ya se escribió.
+ *
+ * Sin puntuación, sin tildes, en minúscula y con los espacios colapsados.
+ * "Cinco proveedores. Cero responsables." y "Cinco proveedores, cero
+ * responsables" son la misma pieza con una coma de diferencia, y convivieron en
+ * el banco: comparando el texto tal cual, nada las veía.
+ *
+ * Vive acá y no en la ruta que la usa porque tiene que dar EXACTAMENTE lo mismo
+ * en tres lugares —el dedupe en memoria, la columna `clave` del historial y el
+ * backfill en SQL de esa tabla—. Tres normalizaciones parecidas son tres formas
+ * de que un duplicado se cuele por la rendija de una de ellas.
+ */
+export function claveTitular(texto: string): string {
+  return plano(texto).replace(/[^a-z0-9]+/g, " ").trim()
+}
+
 /** La forma canónica de un titular: un espacio entre palabras y nada en los bordes. */
 export function limpiarTitular(texto: string): string {
   return texto.replace(/\s+/g, " ").trim()
