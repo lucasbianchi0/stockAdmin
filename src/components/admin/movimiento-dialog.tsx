@@ -167,7 +167,7 @@ export function MovimientoDialog({
             origen: modo === "gasto" ? "gasto" : "manual",
             fecha,
             cuentaId,
-            tipo: modo === "gasto" ? "egreso" : tipo,
+            tipo,
             importe: imp,
             moneda,
             tc: tcNum || 1,
@@ -193,7 +193,11 @@ export function MovimientoDialog({
   }
 
   const titulo =
-    modo === "gasto" ? "Nuevo gasto" : modo === "transferencia" ? "Transferencia entre cuentas" : "Ajuste manual"
+    modo === "gasto"
+      ? "Otro movimiento"
+      : modo === "transferencia"
+        ? "Transferencia entre cuentas"
+        : "Ajuste manual"
 
   return (
     <div
@@ -221,7 +225,7 @@ export function MovimientoDialog({
               <h2 className="text-[15px] font-semibold tracking-[-0.015em] text-ink">{titulo}</h2>
               <p className="mt-0.5 text-[11.5px] text-ink-muted">
                 {modo === "gasto"
-                  ? "Un pago sin factura A o C: impuestos, bancarios, sueldos"
+                  ? "Plata que se mueve sin factura: impuestos, bancarios, sueldos, fondos"
                   : esTransferencia
                     ? "Mover plata entre cuentas propias, o comprar dólares"
                     : "La corrección que no encaja en ninguna otra categoría"}
@@ -283,8 +287,14 @@ export function MovimientoDialog({
             </Campo>
           )}
 
-          {modo === "ajuste" && (
-            <Campo id="tipo" rotulo="Tipo">
+          {/* Salió o entró.
+              En "ajuste" siempre estuvo; en "gasto" hacía falta y no estaba, y
+              era lo único que impedía registrar un rescate de FIMA — plata que
+              vuelve a la cuenta sin ser una venta ni una transferencia. Sin esto
+              el rescate había que anotarlo como ajuste, que es la categoría que
+              nadie mira. Es el punto 1 de "otros movimientos" del pliego. */}
+          {!esTransferencia && (
+            <Campo id="tipo" rotulo="Dirección">
               <div className="flex gap-2">
                 {(["ingreso", "egreso"] as const).map((t) => (
                   <button
@@ -294,13 +304,13 @@ export function MovimientoDialog({
                     aria-pressed={tipo === t}
                     disabled={guardando}
                     className={cn(
-                      "flex-1 rounded-lg border px-3 py-2 text-[12.5px] font-medium capitalize transition-colors disabled:opacity-60",
+                      "flex-1 rounded-lg border px-3 py-2 text-[12.5px] font-medium transition-colors disabled:opacity-60",
                       tipo === t
                         ? "border-brand-300 bg-brand-50 text-brand-700"
                         : "border-line bg-surface text-ink-secondary hover:border-line-strong"
                     )}
                   >
-                    {t}
+                    {t === "ingreso" ? "Entró a la cuenta" : "Salió de la cuenta"}
                   </button>
                 ))}
               </div>
@@ -394,14 +404,22 @@ export function MovimientoDialog({
                 id="contable"
                 rotulo="Cuenta contable"
                 opcional
-                ayuda="Contra qué cuenta del plan se imputa el gasto"
+                ayuda={
+                  tipo === "ingreso"
+                    ? "Contra qué cuenta del plan entra la plata"
+                    : "Contra qué cuenta del plan se imputa el gasto"
+                }
               >
+                {/* El rubro sugerido sigue la dirección: un egreso se imputa
+                    casi siempre contra un gasto y un ingreso contra una
+                    ganancia, y arrancar la lista por el rubro correcto es lo
+                    que evita que se deje sin imputar. */}
                 <SelectorCuenta
                   id="contable"
                   valor={cuentaContableId}
                   onElegir={setCuentaContableId}
                   disabled={guardando}
-                  tipoSugerido="egreso"
+                  tipoSugerido={tipo === "ingreso" ? "ingreso" : "egreso"}
                 />
               </Campo>
             </div>

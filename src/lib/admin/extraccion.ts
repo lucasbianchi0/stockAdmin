@@ -93,7 +93,8 @@ export const SCHEMA_EXTRACCION = {
     noGravado: numero,
     exento: numero,
     percepcionIva: numero,
-    percepcionIibb: numero,
+    percepcionIibbBsas: numero,
+    percepcionIibbCaba: numero,
     otrosImpuestos: numero,
     total: numero,
 
@@ -130,7 +131,8 @@ export const SCHEMA_EXTRACCION = {
     "noGravado",
     "exento",
     "percepcionIva",
-    "percepcionIibb",
+    "percepcionIibbBsas",
+    "percepcionIibbCaba",
     "otrosImpuestos",
     "total",
     "detalle",
@@ -163,7 +165,10 @@ export type Extraccion = {
   noGravado: number | null
   exento: number | null
   percepcionIva: number | null
-  percepcionIibb: number | null
+  /** Abierta por jurisdicción, igual que en el formulario: cada una imputa
+   *  contra su propia cuenta del plan (50 BS AS · 51 CABA). */
+  percepcionIibbBsas: number | null
+  percepcionIibbCaba: number | null
   otrosImpuestos: number | null
   total: number | null
   detalle: string | null
@@ -292,15 +297,18 @@ const CODIGOS_AFIP = `
 | 01          | Factura A                | FCA   |
 | 06          | Factura B                | FCB   |
 | 11          | Factura C (monotributo)  | FCC   |
-| 19          | Factura E (exportación)  | FCEA  |
+| 19          | Factura E (exportación)  | FCE   |
+| 201         | Factura de crédito electrónica MiPyME A | FCEA |
 | 03          | Nota de crédito A        | NCA   |
 | 08          | Nota de crédito B        | NCB   |
 | 13          | Nota de crédito C        | NCC   |
-| 21          | Nota de crédito E        | NCEA  |
+| 21          | Nota de crédito E        | NCE   |
+| 203         | Nota de crédito electrónica MiPyME A | NCEA |
 | 02          | Nota de débito A         | NDA   |
 | 07          | Nota de débito B         | NDB   |
 | 12          | Nota de débito C         | NDC   |
-| 20          | Nota de débito E         | NDEA  |
+| 20          | Nota de débito E         | NDE   |
+| 202         | Nota de débito electrónica MiPyME A | NDEA |
 `.trim()
 
 export const PROMPT_EXTRACCION = `Sos el asistente de administración de Accedra SA, una empresa argentina. Te paso un comprobante emitido en AFIP y tenés que extraer sus datos para cargarlo en el sistema.
@@ -321,13 +329,15 @@ REGLAS, en orden de importancia:
 
 6. **Moneda**: "ARS" si está en pesos, "USD" si está en dólares, "" si no se puede saber. Si el documento muestra un tipo de cambio, poné el valor en "tc" (pesos por dólar).
 
-7. **detalle**: una línea con el concepto principal de la factura, como para reconocerla en un listado. No copies el detalle entero si son muchos ítems: resumilo.
+7. **Las percepciones de Ingresos Brutos van abiertas por jurisdicción.** "percepcionIibbBsas" es la de la Provincia de Buenos Aires (ARBA) y "percepcionIibbCaba" la de la Ciudad de Buenos Aires (AGIP). Fijate en el renglón: suele decir "PERC. IIBB BS AS", "ARBA", "Percepción IB Provincia", o bien "PERC. IIBB CABA", "AGIP", "Percepción IB Capital". Si la factura trae las dos, poné cada una en su campo. Si trae una sola y **no dice de qué jurisdicción es**, dejá las dos en null y agregá "percepcionIibbBsas" y "percepcionIibbCaba" a camposDudosos con la aclaración en observacionLectura: adivinar la provincia manda el crédito fiscal a la cuenta equivocada, y eso se descubre recién cuando el fisco lo rechaza. Si es de otra provincia (Santa Fe, Córdoba, Mendoza), no la pongas en ninguno de los dos y decilo en observacionLectura.
 
-8. **confianza**: "alta" si el documento se lee perfecto y todos los campos clave (clase, número, fecha, total) están claros; "media" si tuviste que interpretar algo; "baja" si la imagen está borrosa, cortada, o no parece un comprobante.
+8. **detalle**: una línea con el concepto principal de la factura, como para reconocerla en un listado. No copies el detalle entero si son muchos ítems: resumilo.
 
-9. **camposDudosos**: la lista de nombres de campos que leíste con dudas, usando exactamente los nombres del esquema ("total", "numero", "fecha"...). Es lo que hace que la persona mire primero donde hay que mirar. Si no dudaste de nada, devolvé una lista vacía.
+9. **confianza**: "alta" si el documento se lee perfecto y todos los campos clave (clase, número, fecha, total) están claros; "media" si tuviste que interpretar algo; "baja" si la imagen está borrosa, cortada, o no parece un comprobante.
 
-10. **observacionLectura**: si el documento no es una factura, está cortado, o hay algo que quien lo revise debería saber, escribilo acá en una frase. Si está todo bien, "".
+10. **camposDudosos**: la lista de nombres de campos que leíste con dudas, usando exactamente los nombres del esquema ("total", "numero", "fecha"...). Es lo que hace que la persona mire primero donde hay que mirar. Si no dudaste de nada, devolvé una lista vacía.
+
+11. **observacionLectura**: si el documento no es una factura, está cortado, o hay algo que quien lo revise debería saber, escribilo acá en una frase. Si está todo bien, "".
 
 Devolvé únicamente el objeto con los datos extraídos.`
 

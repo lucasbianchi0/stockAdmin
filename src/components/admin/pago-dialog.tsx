@@ -686,7 +686,17 @@ export function PagoDialog({
             </div>
           </section>
 
-          <Campo id="observaciones" rotulo="Observaciones" opcional>
+          <Campo
+            id="observaciones"
+            rotulo="Observaciones"
+            opcional
+            // Lo que se escriba acá baja al detalle de cada movimiento, así que
+            // aparece en el extracto de la cuenta al lado del importe. Decirlo
+            // cambia lo que se escribe: sabiendo que se va a leer conciliando
+            // contra el resumen del banco, sale el número de transferencia y no
+            // una nota para uno mismo.
+            ayuda="Aparece en el detalle del extracto de la cuenta"
+          >
             <Textarea
               id="observaciones"
               value={observaciones}

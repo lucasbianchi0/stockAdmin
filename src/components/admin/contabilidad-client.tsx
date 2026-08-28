@@ -330,7 +330,17 @@ function MayorDeCuenta() {
     if (!mayor) return
     descargarCsv(
       `mayor-${mayor.cuenta.codigo}.csv`,
-      ["Fecha", "Asiento", "Origen", "Descripción", "Auxiliar", "Debe", "Haber", "Saldo"],
+      [
+        "Fecha",
+        "Asiento",
+        "Origen",
+        "Concepto",
+        "Auxiliar",
+        "Débitos",
+        "Créditos",
+        "Saldo",
+        "Detalle",
+      ],
       mayor.filas.map((f) => [
         f.fecha,
         f.numero,
@@ -340,6 +350,7 @@ function MayorDeCuenta() {
         f.debeArs || "",
         f.haberArs || "",
         f.saldoArs,
+        f.detalle ?? "",
       ])
     )
   }
@@ -391,13 +402,22 @@ function MayorDeCuenta() {
             <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-e1">
               <Table>
                 <TableHeader>
+                  {/* Las mismas columnas y en el mismo orden que el extracto
+                      de una cuenta bancaria —FECHA · CONCEPTO · DÉBITOS ·
+                      CRÉDITOS · SALDO · DETALLE—, que es como lo pidieron: «que
+                      aparezcan los movimientos relacionados a esa cuenta en el
+                      mismo formato que armamos los BANCOS». Leer el mayor de
+                      Proveedores y el extracto del Galicia con la misma grilla
+                      es lo que permite conciliar uno contra otro sin traducir
+                      mentalmente dos vocabularios. */}
                   <TableRow>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Asiento</TableHead>
-                    <TableHead>Descripción</TableHead>
-                    <TableHead className="text-right">Debe</TableHead>
-                    <TableHead className="text-right">Haber</TableHead>
+                    <TableHead>Concepto</TableHead>
+                    <TableHead className="text-right">Débitos</TableHead>
+                    <TableHead className="text-right">Créditos</TableHead>
                     <TableHead className="text-right">Saldo</TableHead>
+                    <TableHead>Detalle</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -411,10 +431,11 @@ function MayorDeCuenta() {
                       </TableCell>
                       <TableCell>
                         <p className="text-[12.5px] text-ink">{f.descripcion}</p>
-                        {(f.auxiliarNombre || f.detalle) && (
-                          <p className="text-[11px] text-ink-muted">
-                            {f.auxiliarNombre ?? f.detalle}
-                          </p>
+                        {/* El submayor va acá y no en Detalle: en el mayor de
+                            Proveedores, de quién es la deuda es parte de qué
+                            operación fue, no una nota al pie. */}
+                        {f.auxiliarNombre && (
+                          <p className="text-[11px] text-ink-muted">{f.auxiliarNombre}</p>
                         )}
                       </TableCell>
                       <TableCell className="num text-right font-mono text-[12px]">
@@ -429,6 +450,15 @@ function MayorDeCuenta() {
                         {formatearImporte(saldoNatural(mayor.cuenta.tipo, f.saldoArs), "ARS", {
                           simbolo: false,
                         })}
+                      </TableCell>
+                      <TableCell className="max-w-[220px] text-[11.5px] text-ink-muted">
+                        {f.detalle ? (
+                          <span className="line-clamp-2" title={f.detalle}>
+                            {f.detalle}
+                          </span>
+                        ) : (
+                          <span className="text-ink-faint">—</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

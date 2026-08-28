@@ -19,13 +19,17 @@ import type { Modulo } from "@/lib/permisos"
 
 type NavItem = {
   name: string
-  href: string
+  /** Sin `href` el ítem no navega: es el rótulo de un submódulo y lo que se
+   *  clickea son sus `hijos`. */
+  href?: string
   available: boolean
   /** Sólo marca activo con coincidencia exacta. Para rutas padre como /marketing,
    *  que si no se quedarían encendidas dentro de /marketing/informes. */
   exact?: boolean
   /** Prefijos extra que también encienden el ítem (ej.: /product/ es Inventario). */
   also?: string[]
+  /** Las pantallas que cuelgan de este submódulo. */
+  hijos?: NavItem[]
 }
 
 type Grupo = {
@@ -69,18 +73,46 @@ const GRUPOS: Grupo[] = [
     id: "administracion",
     titulo: "Administración",
     icon: SlidersHorizontal,
-    /* Las dos primeras son las dos puertas de entrada del módulo, y por eso
-       están arriba: todo lo demás —el proveedor, la deuda, el asiento, lo que
-       hay que pagar— entra al sistema cargando una factura. Los maestros van
-       después porque hoy casi no hace falta abrirlos: la carga da de alta la
-       ficha que no existe. */
+    /*
+     * El menú del pliego, en su orden y con sus nombres.
+     *
+     * Antes eran nueve entradas planas ordenadas por frecuencia de uso —primero
+     * las facturas, después los maestros—, que se lee bien pero no se parece a
+     * nada: el documento del contador organiza el sistema en seis módulos y esa
+     * es la estructura con la que él y administración lo piensan y lo piden.
+     * Cuando alguien dice "el 2.3", tiene que haber un 2.3.
+     *
+     *   1 Datos maestros
+     *   2 Proveedores → alta · facturas de compras · pagos · otros movimientos
+     *   3 Clientes    → alta · facturas de ventas  · cobros
+     *   4 Caja y bancos · 5 Contabilidad · 6 Reportes
+     *
+     * La única libertad que se tomó: el 2.3 "Pagos" del organigrama agrupa dos
+     * hojas —pagos de facturas y otros movimientos— y acá van sueltas y
+     * contiguas dentro de Proveedores, en vez de abrir un cuarto nivel de
+     * sangría para colgarles un rótulo. Se llega a lo mismo con un click menos.
+     */
     items: [
-      { name: "Facturas de compra", href: "/admin/compras", available: true },
-      { name: "Facturas de venta", href: "/admin/ventas", available: true },
-      { name: "Proveedores", href: "/admin/proveedores", available: true },
-      { name: "Clientes", href: "/admin/clientes", available: true },
-      { name: "Pagos a proveedores", href: "/admin/pagos", available: true },
-      { name: "Cobros", href: "/admin/cobros", available: true },
+      { name: "Datos maestros", href: "/admin/maestros", available: true },
+      {
+        name: "Proveedores",
+        available: true,
+        hijos: [
+          { name: "Alta de proveedores", href: "/admin/proveedores", available: true },
+          { name: "Facturas de compras", href: "/admin/compras", available: true },
+          { name: "Pagos de facturas", href: "/admin/pagos", available: true },
+          { name: "Otros movimientos", href: "/admin/movimientos", available: true },
+        ],
+      },
+      {
+        name: "Clientes",
+        available: true,
+        hijos: [
+          { name: "Alta de clientes", href: "/admin/clientes", available: true },
+          { name: "Facturas de ventas", href: "/admin/ventas", available: true },
+          { name: "Cobros de facturas", href: "/admin/cobros", available: true },
+        ],
+      },
       { name: "Caja y bancos", href: "/admin/cuentas", available: true },
       { name: "Contabilidad", href: "/admin/contabilidad", available: true },
       { name: "Reportes", href: "/admin/reportes", available: true },
@@ -88,9 +120,11 @@ const GRUPOS: Grupo[] = [
   },
 ]
 
-function esActivo(item: NavItem, pathname: string) {
+function esActivo(item: NavItem, pathname: string): boolean {
   if (!item.available) return false
+  if (item.hijos) return item.hijos.some((h) => esActivo(h, pathname))
   if (item.also?.some((p) => pathname.startsWith(p))) return true
+  if (!item.href) return false
   return item.exact ? pathname === item.href : pathname.startsWith(item.href)
 }
 
@@ -263,8 +297,105 @@ function GrupoNav({
               className="absolute bottom-1.5 left-[21px] top-1.5 w-px bg-white/[0.10]"
             />
             <div className="space-y-0.5 pl-[30px]">
-              {grupo.items.map((item) => (
-                <ItemNav key={item.name} item={item} pathname={pathname} />
+              {grupo.items.map((item) =>
+                item.hijos ? (
+                  <SubGrupoNav key={item.name} item={item} pathname={pathname} />
+                ) : (
+                  <ItemNav key={item.name} item={item} pathname={pathname} />
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Un submódulo del organigrama —"2 Proveedores", "3 Clientes"— con sus pantallas
+ * adentro, plegable como el grupo de arriba.
+ *
+ * Que se pliegue tiene un efecto que vale más que los cuatro renglones que
+ * ahorra: **cerrados los dos, el menú es exactamente el organigrama.** Datos
+ * maestros · Proveedores · Clientes · Caja y bancos · Contabilidad · Reportes,
+ * los seis módulos del pliego y nada más. Abrir uno es entrar a ese módulo.
+ *
+ * Arranca cerrado salvo que la pantalla en la que estás esté adentro, igual que
+ * el grupo: es la misma regla en los dos niveles, así que el menú se comporta de
+ * una sola manera en vez de dos.
+ *
+ * El rótulo no navega —no hay una pantalla "Proveedores" distinta de "Alta de
+ * proveedores"—, así que el click abre y cierra en vez de ir a ningún lado.
+ */
+function SubGrupoNav({ item, pathname }: { item: NavItem; pathname: string }) {
+  const activo = esActivo(item, pathname)
+  const [abierto, setAbierto] = useState(activo)
+
+  // Al navegar a una pantalla de adentro —desde el buscador, un link de otra
+  // pantalla, un favorito— el submódulo se abre solo. Sin esto, el ítem activo
+  // quedaría escondido y el menú mentiría sobre dónde estás.
+  useEffect(() => {
+    if (activo) setAbierto(true)
+  }, [activo])
+
+  const id = `nav-sub-${item.name.toLowerCase().replace(/\s+/g, "-")}`
+
+  return (
+    <div className="pt-1 first:pt-0">
+      <button
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+        aria-controls={id}
+        className={cn(
+          "flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.11em] transition-colors",
+          activo ? "text-white/60" : "text-white/40",
+          "hover:bg-white/[0.05] hover:text-white/80"
+        )}
+      >
+        <span className="flex-1 truncate text-left">{item.name}</span>
+
+        {/* Plegado y con la pantalla activa adentro, un punto lo dice. Es el
+            mismo recurso que usa el grupo, un escalón más chico. */}
+        {activo && !abierto && (
+          <span className="h-[5px] w-[5px] shrink-0 rounded-full bg-brand-400" aria-hidden />
+        )}
+
+        <ChevronRight
+          className={cn(
+            "h-3 w-3 shrink-0 text-white/25 transition-transform duration-200",
+            abierto && "rotate-90"
+          )}
+          strokeWidth={2.4}
+        />
+      </button>
+
+      <div
+        id={id}
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200 ease-out",
+          abierto ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        )}
+      >
+        <div className="overflow-hidden">
+          {/* Las pantallas del submódulo van 18px más adentro que su rótulo, con
+              su propia guía —más tenue que la del grupo, porque es un escalón
+              menor—. Sin la sangría, "Alta de proveedores" queda alineada con
+              "Caja y bancos" y las dos se leen como hermanas cuando una está un
+              nivel más abajo.
+
+              La guía cae en 9px, que es exactamente donde ItemNav dibuja su
+              marca de posición (-9px desde el borde del link, que arranca en
+              18px): el tramo encendido del hilo es la propia guía, no un punto
+              aparte flotando al lado. */}
+          <div className="relative pt-0.5">
+            <span
+              aria-hidden
+              className="absolute bottom-1 left-[9px] top-1.5 w-px bg-white/[0.07]"
+            />
+            <div className="space-y-0.5 pl-[18px]">
+              {item.hijos?.map((hijo) => (
+                <ItemNav key={hijo.name} item={hijo} pathname={pathname} />
               ))}
             </div>
           </div>
@@ -290,7 +421,7 @@ function ItemNav({ item, pathname }: { item: NavItem; pathname: string }) {
 
   return (
     <Link
-      href={item.href}
+      href={item.href ?? "#"}
       aria-current={activo ? "page" : undefined}
       className={cn(
         "relative flex items-center rounded-md px-2.5 py-2 text-[13px] transition-colors duration-150",

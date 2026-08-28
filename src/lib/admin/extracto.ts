@@ -85,7 +85,12 @@ export type Extracto = {
  */
 export function conceptoDe(
   origen: OrigenMovimiento,
-  categoria: CategoriaGasto | null
+  categoria: CategoriaGasto | null,
+  /** Hacia dónde fue la plata. Solo cambia el rótulo de los movimientos sueltos:
+   *  un ingreso sin categoría no es un "GASTO", y llamarlo así en el extracto
+   *  hace que la fila de un rescate de fondos se lea como un egreso justo en la
+   *  columna donde figura como crédito. */
+  tipo: "ingreso" | "egreso" = "egreso"
 ): string {
   switch (origen) {
     case "cobro":
@@ -95,7 +100,8 @@ export function conceptoDe(
     case "transferencia":
       return "TRANSFERENCIA"
     case "gasto":
-      return categoria ? CATEGORIA_LABEL[categoria].toUpperCase() : "GASTO"
+      if (categoria) return CATEGORIA_LABEL[categoria].toUpperCase()
+      return tipo === "ingreso" ? "ACREDITACIÓN" : "GASTO"
     case "manual":
       return "AJUSTE"
   }

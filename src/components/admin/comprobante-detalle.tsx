@@ -177,7 +177,16 @@ export function ComprobanteDetalle({
               <Importe rotulo="No gravado" valor={c.noGravado} moneda={c.moneda} />
               <Importe rotulo="Exento" valor={c.exento} moneda={c.moneda} />
               <Importe rotulo="Percepción IVA" valor={c.percepcionIva} moneda={c.moneda} />
-              <Importe rotulo="Percepción IIBB" valor={c.percepcionIibb} moneda={c.moneda} />
+              <Importe
+                rotulo="Percep. IIBB Bs. As."
+                valor={c.percepcionIibbBsas}
+                moneda={c.moneda}
+              />
+              <Importe
+                rotulo="Percep. IIBB CABA"
+                valor={c.percepcionIibbCaba}
+                moneda={c.moneda}
+              />
               <Importe rotulo="Otros impuestos" valor={c.otrosImpuestos} moneda={c.moneda} />
               <Importe rotulo="Total" valor={c.total} moneda={c.moneda} destacado />
             </div>

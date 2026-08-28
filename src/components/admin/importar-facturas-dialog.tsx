@@ -110,7 +110,8 @@ type Campos = {
   noGravado: string
   exento: string
   percepcionIva: string
-  percepcionIibb: string
+  percepcionIibbBsas: string
+  percepcionIibbCaba: string
   otrosImpuestos: string
   detalle: string
   condicionPago: string
@@ -158,7 +159,8 @@ function aCampos(b: Borrador): Campos {
     noGravado: n(e?.noGravado),
     exento: n(e?.exento),
     percepcionIva: n(e?.percepcionIva),
-    percepcionIibb: n(e?.percepcionIibb),
+    percepcionIibbBsas: n(e?.percepcionIibbBsas),
+    percepcionIibbCaba: n(e?.percepcionIibbCaba),
     otrosImpuestos: n(e?.otrosImpuestos),
     detalle: e?.detalle ?? "",
     condicionPago: e?.condicionPago ?? "",
@@ -328,7 +330,8 @@ export function ImportarFacturasDialog({
             noGravado: parsearImporte(c.noGravado) ?? 0,
             exento: parsearImporte(c.exento) ?? 0,
             percepcionIva: parsearImporte(c.percepcionIva) ?? 0,
-            percepcionIibb: parsearImporte(c.percepcionIibb) ?? 0,
+            percepcionIibbBsas: parsearImporte(c.percepcionIibbBsas) ?? 0,
+            percepcionIibbCaba: parsearImporte(c.percepcionIibbCaba) ?? 0,
             otrosImpuestos: parsearImporte(c.otrosImpuestos) ?? 0,
             condicionPago: c.condicionPago,
             observaciones: `Importada de ${fila.borrador.archivo}`,
@@ -573,7 +576,8 @@ function TarjetaBorrador({
     noGravado: parsearImporte(c.noGravado) ?? 0,
     exento: parsearImporte(c.exento) ?? 0,
     percepcionIva: parsearImporte(c.percepcionIva) ?? 0,
-    percepcionIibb: parsearImporte(c.percepcionIibb) ?? 0,
+    percepcionIibbBsas: parsearImporte(c.percepcionIibbBsas) ?? 0,
+    percepcionIibbCaba: parsearImporte(c.percepcionIibbCaba) ?? 0,
     otrosImpuestos: parsearImporte(c.otrosImpuestos) ?? 0,
   })
 
@@ -775,7 +779,12 @@ function TarjetaBorrador({
           )}
         </Campo>
 
-        <div className="grid gap-3 sm:grid-cols-4">
+        {/* Las mismas tres filas y en el mismo orden que el formulario de carga
+            manual: base, no alcanzado por IVA, percepciones. Quien revisa un
+            lote acaba de ver esa pantalla o va a verla enseguida, y dos grillas
+            con los mismos campos ordenados distinto obligan a buscar cada campo
+            de nuevo en cada una. */}
+        <div className="grid gap-3 sm:grid-cols-3">
           <Campo rotulo="Neto gravado" dudoso={dudosos.has("netoGravado")}>
             <MiniInput
               value={c.netoGravado}
@@ -806,17 +815,9 @@ function TarjetaBorrador({
               alineadoDerecha
             />
           </Campo>
-          <Campo rotulo="Perc. IIBB" dudoso={dudosos.has("percepcionIibb")}>
-            <MiniInput
-              value={c.percepcionIibb}
-              onChange={(v) => onCampo("percepcionIibb", v)}
-              disabled={guardada}
-              alineadoDerecha
-            />
-          </Campo>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-3">
           <Campo rotulo="No gravado" dudoso={dudosos.has("noGravado")}>
             <MiniInput
               value={c.noGravado}
@@ -833,6 +834,17 @@ function TarjetaBorrador({
               alineadoDerecha
             />
           </Campo>
+          <Campo rotulo="Otros impuestos" dudoso={dudosos.has("otrosImpuestos")}>
+            <MiniInput
+              value={c.otrosImpuestos}
+              onChange={(v) => onCampo("otrosImpuestos", v)}
+              disabled={guardada}
+              alineadoDerecha
+            />
+          </Campo>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
           <Campo rotulo="Perc. IVA" dudoso={dudosos.has("percepcionIva")}>
             <MiniInput
               value={c.percepcionIva}
@@ -841,10 +853,18 @@ function TarjetaBorrador({
               alineadoDerecha
             />
           </Campo>
-          <Campo rotulo="Otros impuestos" dudoso={dudosos.has("otrosImpuestos")}>
+          <Campo rotulo="P. IIBB Bs. As." dudoso={dudosos.has("percepcionIibbBsas")}>
             <MiniInput
-              value={c.otrosImpuestos}
-              onChange={(v) => onCampo("otrosImpuestos", v)}
+              value={c.percepcionIibbBsas}
+              onChange={(v) => onCampo("percepcionIibbBsas", v)}
+              disabled={guardada}
+              alineadoDerecha
+            />
+          </Campo>
+          <Campo rotulo="P. IIBB CABA" dudoso={dudosos.has("percepcionIibbCaba")}>
+            <MiniInput
+              value={c.percepcionIibbCaba}
+              onChange={(v) => onCampo("percepcionIibbCaba", v)}
               disabled={guardada}
               alineadoDerecha
             />

@@ -54,7 +54,8 @@ type Borrador = {
   noGravado: string
   exento: string
   percepcionIva: string
-  percepcionIibb: string
+  percepcionIibbBsas: string
+  percepcionIibbCaba: string
   otrosImpuestos: string
   condicionPago: string
   observaciones: string
@@ -80,7 +81,8 @@ const VACIO = (): Borrador => ({
   noGravado: "",
   exento: "",
   percepcionIva: "",
-  percepcionIibb: "",
+  percepcionIibbBsas: "",
+  percepcionIibbCaba: "",
   otrosImpuestos: "",
   condicionPago: "",
   observaciones: "",
@@ -105,7 +107,8 @@ function aBorrador(c: Comprobante): Borrador {
     noGravado: String(c.noGravado || ""),
     exento: String(c.exento || ""),
     percepcionIva: String(c.percepcionIva || ""),
-    percepcionIibb: String(c.percepcionIibb || ""),
+    percepcionIibbBsas: String(c.percepcionIibbBsas || ""),
+    percepcionIibbCaba: String(c.percepcionIibbCaba || ""),
     otrosImpuestos: String(c.otrosImpuestos || ""),
     condicionPago: c.condicionPago ?? "",
     observaciones: c.observaciones ?? "",
@@ -175,10 +178,21 @@ export function ComprobanteDialog({
       noGravado: parsearImporte(f.noGravado) ?? 0,
       exento: parsearImporte(f.exento) ?? 0,
       percepcionIva: parsearImporte(f.percepcionIva) ?? 0,
-      percepcionIibb: parsearImporte(f.percepcionIibb) ?? 0,
+      percepcionIibbBsas: parsearImporte(f.percepcionIibbBsas) ?? 0,
+      percepcionIibbCaba: parsearImporte(f.percepcionIibbCaba) ?? 0,
       otrosImpuestos: parsearImporte(f.otrosImpuestos) ?? 0,
     }),
-    [neto, alicuota, iva, f.noGravado, f.exento, f.percepcionIva, f.percepcionIibb, f.otrosImpuestos]
+    [
+      neto,
+      alicuota,
+      iva,
+      f.noGravado,
+      f.exento,
+      f.percepcionIva,
+      f.percepcionIibbBsas,
+      f.percepcionIibbCaba,
+      f.otrosImpuestos,
+    ]
   )
 
   const total = totalDe(importes)
@@ -568,7 +582,11 @@ export function ComprobanteDialog({
               </Campo>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            {/* Ingresos Brutos va abierto por jurisdicción y no en un campo
+                único con un selector al lado: una misma factura puede traer las
+                dos, y cada una imputa contra su propia cuenta —50 BS AS y 51
+                CABA—. Es el punto 3 del pliego de compras. */}
+            <div className="grid gap-4 sm:grid-cols-3">
               <Campo id="percepcionIva" rotulo="Percepción IVA" opcional>
                 <CampoMoneda
                   id="percepcionIva"
@@ -579,11 +597,21 @@ export function ComprobanteDialog({
                   disabled={guardando}
                 />
               </Campo>
-              <Campo id="percepcionIibb" rotulo="Percepción IIBB" opcional>
+              <Campo id="percepcionIibbBsas" rotulo="Percep. IIBB Bs. As." opcional>
                 <CampoMoneda
-                  id="percepcionIibb"
-                  valor={f.percepcionIibb}
-                  onChange={(v) => set("percepcionIibb", v)}
+                  id="percepcionIibbBsas"
+                  valor={f.percepcionIibbBsas}
+                  onChange={(v) => set("percepcionIibbBsas", v)}
+                  moneda={f.moneda}
+                  tc={tc}
+                  disabled={guardando}
+                />
+              </Campo>
+              <Campo id="percepcionIibbCaba" rotulo="Percep. IIBB CABA" opcional>
+                <CampoMoneda
+                  id="percepcionIibbCaba"
+                  valor={f.percepcionIibbCaba}
+                  onChange={(v) => set("percepcionIibbCaba", v)}
                   moneda={f.moneda}
                   tc={tc}
                   disabled={guardando}
@@ -614,7 +642,20 @@ export function ComprobanteDialog({
             </div>
           </Seccion>
 
-          <Campo id="observaciones" rotulo="Observaciones" opcional>
+          <Campo
+            id="observaciones"
+            rotulo="Observaciones"
+            opcional
+            // Aparecen como columna propia en el estado de cuenta de la ficha,
+            // que es donde se mira cuando hay que reclamar un saldo. Decirlo acá
+            // es lo que hace que se escriba la orden de compra contra la que va
+            // la factura, y no una nota suelta que después nadie encuentra.
+            ayuda={
+              esCompra
+                ? "Se ven en el estado de cuenta del proveedor"
+                : "Se ven en el estado de cuenta del cliente"
+            }
+          >
             <Textarea
               id="observaciones"
               value={f.observaciones}

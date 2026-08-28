@@ -245,7 +245,8 @@ async function enriquecer(
     noGravado: e.noGravado ?? 0,
     exento: e.exento ?? 0,
     percepcionIva: e.percepcionIva ?? 0,
-    percepcionIibb: e.percepcionIibb ?? 0,
+    percepcionIibbBsas: e.percepcionIibbBsas ?? 0,
+    percepcionIibbCaba: e.percepcionIibbCaba ?? 0,
     otrosImpuestos: e.otrosImpuestos ?? 0,
   }
   const calculado = totalDe(partes)

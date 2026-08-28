@@ -49,11 +49,22 @@ export const GET = ruta("movimientos GET", async (req: Request) => {
   const hastaFecha = url.searchParams.get("hasta") ?? ""
   const conciliado = url.searchParams.get("conciliado") ?? ""
   const q = url.searchParams.get("q")?.trim() ?? ""
+  /**
+   * Solo los movimientos que no cuelgan de un recibo.
+   *
+   * Es la definición que da el pliego de "otros movimientos": «todo movimiento
+   * de dinero que no sea a través de facturas». No se puede armar filtrando por
+   * `origen`, porque son tres —gasto, transferencia y manual— y el filtro es por
+   * uno solo; y sobre todo porque la pregunta real no es de qué tipo es, sino si
+   * alguien lo tipeó a mano o lo generó un cobro o un pago.
+   */
+  const sueltos = url.searchParams.get("sueltos") === "1"
 
   let query = supabase.from("movimientos").select(SELECT_MOVIMIENTO, { count: "exact" })
 
   if (cuentaId) query = query.eq("cuenta_id", cuentaId)
   if (origen) query = query.eq("origen", origen)
+  if (sueltos) query = query.is("pago_id", null)
   if (desdeFecha) query = query.gte("fecha", desdeFecha)
   if (hastaFecha) query = query.lte("fecha", hastaFecha)
   if (conciliado === "si") query = query.eq("conciliado", true)

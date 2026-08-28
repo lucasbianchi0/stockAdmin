@@ -183,11 +183,31 @@ export type Campo =
   | "noGravado"
   | "exento"
   | "percepcionIva"
-  | "percepcionIibb"
+  | "percepcionIibbBsas"
+  | "percepcionIibbCaba"
+  /** La columna genérica de un Excel armado a mano: "Percepción IIBB" a secas,
+   *  sin decir de qué fisco. No se reparte sola — ver `filaAExtraccion`. */
+  | "percepcionIibbSinJurisdiccion"
   | "otrosImpuestos"
   | "total"
   | "detalle"
   | "condicionPago"
+  /* Las columnas que el export de ARCA abre por alícuota. Van como campos
+     propios en vez de una sola columna de neto porque son la única fuente
+     confiable del porcentaje: el archivo trae los importes pero nunca la
+     alícuota, y deducirla dividiendo IVA sobre neto falla justo en las facturas
+     que mezclan dos. Ver `alicuotasDeFila`. */
+  | "netoGravado0"
+  | "netoGravado25"
+  | "iva25"
+  | "netoGravado5"
+  | "iva5"
+  | "netoGravado105"
+  | "iva105"
+  | "netoGravado21"
+  | "iva21"
+  | "netoGravado27"
+  | "iva27"
 
 /**
  * Cómo se puede llamar cada columna.
@@ -236,13 +256,64 @@ const ALIAS: Record<Campo, string[]> = {
   moneda: ["moneda", "mon"],
   tc: ["tipo cambio", "tipo de cambio", "tc", "cotizacion"],
 
-  netoGravado: ["imp neto gravado", "neto gravado", "neto", "importe neto gravado", "gravado"],
+  netoGravado: [
+    "imp neto gravado total",
+    "imp neto gravado",
+    "neto gravado",
+    "neto",
+    "importe neto gravado",
+    "gravado",
+  ],
   alicuotaIva: ["alicuota", "alicuota iva", "alic iva", "iva porcentaje"],
-  iva: ["iva", "imp iva", "importe iva", "total iva"],
+  iva: ["total iva", "iva", "imp iva", "importe iva"],
   noGravado: ["imp neto no gravado", "neto no gravado", "no gravado", "importe no gravado"],
   exento: ["imp op exentas", "op exentas", "exento", "exentas", "importe exento"],
   percepcionIva: ["percepcion iva", "perc iva", "percepciones iva"],
-  percepcionIibb: ["percepcion iibb", "perc iibb", "percepciones iibb", "iibb"],
+
+  /* Ingresos Brutos, abierto por jurisdicción porque cada una imputa contra su
+     propia cuenta (50 BS AS · 51 CABA). La columna genérica tiene su propio
+     campo en vez de caer en una de las dos: dónde termina esa plata lo decide
+     `filaAExtraccion`, que además marca la fila para que alguien la mire. */
+  percepcionIibbBsas: [
+    "percepcion iibb bs as",
+    "percepcion iibb bsas",
+    "perc iibb bs as",
+    "perc iibb bsas",
+    "percepcion iibb buenos aires",
+    "percepcion iibb provincia",
+    "arba",
+  ],
+  percepcionIibbCaba: [
+    "percepcion iibb caba",
+    "perc iibb caba",
+    "percepcion iibb cap",
+    "perc iibb cap",
+    "percepcion iibb capital",
+    "percepcion iibb ciudad",
+    "agip",
+  ],
+  percepcionIibbSinJurisdiccion: [
+    "percepcion iibb",
+    "perc iibb",
+    "percepciones iibb",
+    "percepcion ingresos brutos",
+    "iibb",
+  ],
+
+  /* El export de "Mis Comprobantes" de ARCA abre neto e IVA en una pareja de
+     columnas por alicuota. Los encabezados normalizados pierden la coma y el
+     signo de porcentaje: "IVA 10,5%" queda en `iva 10 5`. */
+  netoGravado0: ["imp neto gravado iva 0", "neto gravado iva 0"],
+  netoGravado25: ["imp neto gravado iva 2 5", "neto gravado iva 2 5"],
+  iva25: ["iva 2 5"],
+  netoGravado5: ["imp neto gravado iva 5", "neto gravado iva 5"],
+  iva5: ["iva 5"],
+  netoGravado105: ["imp neto gravado iva 10 5", "neto gravado iva 10 5"],
+  iva105: ["iva 10 5"],
+  netoGravado21: ["imp neto gravado iva 21", "neto gravado iva 21"],
+  iva21: ["iva 21"],
+  netoGravado27: ["imp neto gravado iva 27", "neto gravado iva 27"],
+  iva27: ["iva 27"],
   otrosImpuestos: [
     "otros tributos",
     "otros impuestos",
@@ -353,15 +424,23 @@ const CODIGO_AFIP: Record<number, string> = {
   1: "FCA",
   6: "FCB",
   11: "FCC",
-  19: "FCEA",
   2: "NDA",
   7: "NDB",
   12: "NDC",
-  20: "NDEA",
   3: "NCA",
   8: "NCB",
   13: "NCC",
-  21: "NCEA",
+
+  // Exportación. La E de acá no es la de la MiPyME, aunque las dos se escriban
+  // con una E: 19/20/21 es el régimen de exportación.
+  19: "FCE",
+  20: "NDE",
+  21: "NCE",
+
+  // Factura de Crédito Electrónica MiPyME clase A. Es el «FCEA» del pliego.
+  201: "FCEA",
+  202: "NDEA",
+  203: "NCEA",
 }
 
 const CODIGOS = new Set([...CLASES_VENTA, ...CLASES_COMPRA].map((c) => c.codigo))
@@ -389,6 +468,21 @@ export function aClase(raw: string): string | null {
   }
 
   const texto = normalizarCabecera(s)
+
+  /* La MiPyME se resuelve antes que nada. Su nombre lleva las dos palabras que
+     el reconocedor de familias usa para decidir —"credito" y "debito"— así que
+     sin este atajo "factura de credito electronica" se leería como una nota de
+     crédito, que es un error de signo. */
+  const esMipyme = /\b(mipyme|fce)\b/.test(texto) || texto.includes("electronica")
+  if (esMipyme && !texto.includes("exportacion")) {
+    if (texto.includes("nota")) {
+      if (texto.includes("credito")) return "NCEA"
+      if (texto.includes("debito")) return "NDEA"
+      return null
+    }
+    return "FCEA"
+  }
+
   // "Nota" tiene que estar: sin esa palabra, una "factura de crédito
   // electrónica" —que es una factura común— se leería como nota de crédito.
   const familia = texto.includes("nota")
@@ -405,19 +499,79 @@ export function aClase(raw: string): string | null {
   const letra = texto.match(/\b([abce])\b/)?.[1]?.toUpperCase()
   if (!letra) return null
 
-  // La E de exportación se escribe `FCEA` / `NCEA` / `NDEA`.
-  const clase = letra === "E" ? `${familia}EA` : `${familia}${letra}`
+  // La E de exportación se escribe `FCE` / `NCE` / `NDE`; la MiPyME ya se
+  // resolvió arriba y no llega hasta acá.
+  const clase = `${familia}${letra}`
   return CODIGOS.has(clase) ? clase : null
 }
 
-/** `PES` y `DOL` son los códigos que usa AFIP. */
+/**
+ * `PES` y `DOL` son los códigos que usa AFIP, pero el export de "Mis
+ * Comprobantes" escribe la columna Moneda como el símbolo pelado: `$` para
+ * pesos y `USD` para dólares.
+ *
+ * El símbolo hay que mirarlo **antes** de normalizar, porque `normalizarCabecera`
+ * borra todo lo que no sea alfanumérico y deja `"$"` en cadena vacía — que es
+ * indistinguible de una celda en blanco. Con eso, las 43 filas en pesos del
+ * archivo de agosto quedaban sin moneda reconocida.
+ */
 export function aMoneda(raw: string): "ARS" | "USD" | null {
-  const s = normalizarCabecera(raw ?? "")
+  const crudo = (raw ?? "").trim()
+  if (crudo === "$" || crudo === "AR$" || crudo === "$a") return "ARS"
+  if (crudo === "U$S" || crudo === "US$" || crudo === "u$s") return "USD"
+
+  const s = normalizarCabecera(crudo)
   if (!s) return null
-  if (/\b(pes|ars|peso|pesos)\b/.test(s) || s === "$") return "ARS"
+  if (/\b(pes|ars|peso|pesos)\b/.test(s)) return "ARS"
   if (/\b(dol|usd|u s|dolar|dolares)\b/.test(s)) return "USD"
   return null
 }
+
+/**
+ * Las parejas neto/IVA que el export de ARCA abre por alícuota, en el orden en
+ * que salen en el archivo.
+ *
+ * El 0 % no tiene columna de IVA propia —sería siempre cero— y el 2,5 % y el 5 %
+ * están porque el archivo los trae, aunque el plan de cuentas del estudio no
+ * tenga una cuenta de IVA crédito para ellos: es mejor leerlos y avisar que
+ * ignorarlos y que el neto no cierre con el total.
+ */
+const COLUMNAS_POR_ALICUOTA: { alicuota: number; neto: Campo; iva: Campo | null }[] = [
+  { alicuota: 0, neto: "netoGravado0", iva: null },
+  { alicuota: 0.025, neto: "netoGravado25", iva: "iva25" },
+  { alicuota: 0.05, neto: "netoGravado5", iva: "iva5" },
+  { alicuota: 0.105, neto: "netoGravado105", iva: "iva105" },
+  { alicuota: 0.21, neto: "netoGravado21", iva: "iva21" },
+  { alicuota: 0.27, neto: "netoGravado27", iva: "iva27" },
+]
+
+export type TramoAlicuota = { alicuota: number; neto: number; iva: number }
+
+/**
+ * Qué alícuotas tocó esta fila, según las columnas abiertas del export.
+ *
+ * Devuelve lista vacía cuando la planilla no trae ese desglose —un Excel propio
+ * con una sola columna de neto—, y ahí el resto del código sigue por el camino
+ * de siempre: deducir la alícuota dividiendo el IVA por el neto.
+ */
+export function tramosDeAlicuota(fila: string[], mapa: Mapa): TramoAlicuota[] {
+  const valor = (campo: Campo | null): number => {
+    if (campo === null) return 0
+    const i = mapa[campo]
+    if (i === undefined) return 0
+    return parsearImporte((fila[i] ?? "").trim()) ?? 0
+  }
+
+  return COLUMNAS_POR_ALICUOTA.map((c) => ({
+    alicuota: c.alicuota,
+    neto: valor(c.neto),
+    iva: valor(c.iva),
+  })).filter((t) => t.neto !== 0 || t.iva !== 0)
+}
+
+/** `21` en vez de `0.21`, para escribirlo en un aviso. */
+const porciento = (a: number): string =>
+  `${(a * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })} %`
 
 /**
  * La alícuota, deducida del IVA sobre el neto.
@@ -521,24 +675,82 @@ export function filaAExtraccion(
     notas.push(`No se reconoció el tipo de comprobante «${crudo("clase")}».`)
   }
 
-  const netoGravado = monto("netoGravado")
-  const iva = monto("iva")
+  /* El desglose por alícuota del export de ARCA, cuando la planilla lo trae.
+     Es la mejor fuente que hay para el porcentaje: el archivo no tiene columna
+     de alícuota, y deducirla dividiendo IVA sobre neto se rompe justo en las
+     facturas que mezclan dos. */
+  const tramos = tramosDeAlicuota(fila, mapa)
 
-  /* La alícuota: la de la planilla si la trae, y si no la que se deduce del IVA
-     sobre el neto. El `> 1` es para la planilla que la escribe como 21 en vez
-     de 0,21 — las dos formas se ven, y guardar 21 como fracción daría un IVA
-     de dos mil por ciento. */
+  /* El neto y el IVA totales. La columna de total manda —"Imp. Neto Gravado
+     Total" es la que ARCA declara— y el desglose es el respaldo para la planilla
+     que abre por alícuota sin totalizar. */
+  const sumar = (ns: number[]) => Math.round(ns.reduce((a, n) => a + n, 0) * 100) / 100
+  const netoGravado =
+    monto("netoGravado") ?? (tramos.length > 0 ? sumar(tramos.map((t) => t.neto)) : null)
+  const iva = monto("iva") ?? (tramos.length > 0 ? sumar(tramos.map((t) => t.iva)) : null)
+
+  /* La alícuota, en tres escalones: la columna explícita si existe, después el
+     desglose por alícuota, y recién al final la deducción por división. El `> 1`
+     es para la planilla que la escribe como 21 en vez de 0,21 — las dos formas
+     se ven, y guardar 21 como fracción daría un IVA de dos mil por ciento. */
   let alicuotaIva = monto("alicuotaIva")
   if (alicuotaIva !== null && alicuotaIva > 1) alicuotaIva = alicuotaIva / 100
+
+  if (alicuotaIva === null && tramos.length > 0) {
+    // Con varias, la de mayor neto. El comprobante guarda una sola alícuota, así
+    // que la fila queda marcada: el IVA total sigue siendo correcto, pero el
+    // asiento va a imputar todo el crédito a una cuenta.
+    const dominante = tramos.reduce((a, t) => (t.neto > a.neto ? t : a))
+    const conocidas = ALICUOTAS as readonly number[]
+
+    if (conocidas.includes(dominante.alicuota)) {
+      alicuotaIva = dominante.alicuota
+    } else {
+      dudosos.push("alicuotaIva")
+      notas.push(
+        `La fila viene al ${porciento(dominante.alicuota)}, que no está en el plan de cuentas. Elegí la alícuota a mano.`
+      )
+    }
+
+    if (tramos.length > 1) {
+      dudosos.push("alicuotaIva")
+      notas.push(
+        `La factura mezcla ${tramos.length} alícuotas (${tramos.map((t) => porciento(t.alicuota)).join(", ")}): se carga la de mayor neto y el IVA total.`
+      )
+    }
+  }
+
   if (alicuotaIva === null) alicuotaIva = alicuotaDe(iva, netoGravado)
-  if (alicuotaIva === null && iva !== null && iva !== 0) dudosos.push("alicuotaIva")
+  if (alicuotaIva === null && iva !== null && iva !== 0 && !dudosos.includes("alicuotaIva")) {
+    dudosos.push("alicuotaIva")
+  }
 
   const moneda = aMoneda(crudo("moneda"))
 
   const noGravado = monto("noGravado")
   const exento = monto("exento")
   const percepcionIva = monto("percepcionIva")
-  const percepcionIibb = monto("percepcionIibb")
+
+  /* Ingresos Brutos. Cuando la planilla trae una columna genérica —"Percepción
+     IIBB" sin decir de qué fisco— esa plata tiene que ir a algún lado o el total
+     de la fila deja de cerrar, y a la vez no se puede inventar la jurisdicción:
+     el crédito fiscal terminaría en la cuenta equivocada y se descubre cuando el
+     fisco lo rechaza. Va a Buenos Aires, que es la jurisdicción de Accedra, y la
+     fila queda marcada en ámbar diciendo exactamente eso. */
+  const iibbSinJurisdiccion = monto("percepcionIibbSinJurisdiccion")
+  const percepcionIibbBsas =
+    iibbSinJurisdiccion !== null && iibbSinJurisdiccion !== 0
+      ? Math.round(((monto("percepcionIibbBsas") ?? 0) + iibbSinJurisdiccion) * 100) / 100
+      : monto("percepcionIibbBsas")
+  const percepcionIibbCaba = monto("percepcionIibbCaba")
+
+  if (iibbSinJurisdiccion !== null && iibbSinJurisdiccion !== 0) {
+    dudosos.push("percepcionIibbBsas", "percepcionIibbCaba")
+    notas.push(
+      "La columna de percepción de IIBB no dice la jurisdicción: se cargó como Buenos Aires. Si es de CABA, pasala al otro campo antes de guardar."
+    )
+  }
+
   const otrosImpuestos = monto("otrosImpuestos")
   const total = monto("total")
 
@@ -557,7 +769,8 @@ export function filaAExtraccion(
     noGravado,
     exento,
     percepcionIva,
-    percepcionIibb,
+    percepcionIibbBsas,
+    percepcionIibbCaba,
     otrosImpuestos,
   ]
   const sinDiscriminar = partes.every((p) => p === null || p === 0) && !!total
@@ -596,7 +809,8 @@ export function filaAExtraccion(
     noGravado,
     exento,
     percepcionIva,
-    percepcionIibb,
+    percepcionIibbBsas,
+    percepcionIibbCaba,
     otrosImpuestos,
     total,
     detalle: texto("detalle"),

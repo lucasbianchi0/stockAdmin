@@ -6,13 +6,13 @@ import { PageBody, PageHeader } from "@/components/ui/page-header"
  * ni factura, porque dos sistemas peleándose por el correlativo es un problema
  * que no vale la pena tener.
  */
-export const metadata = { title: "Facturas de venta · Accedra" }
+export const metadata = { title: "Facturas de ventas · Accedra" }
 
 export default function VentasPage() {
   return (
     <main className="flex min-h-full flex-col">
       <PageHeader
-        title="Facturas de venta"
+        title="Facturas de ventas"
         description="Comprobantes emitidos, en pesos y en dólares, con su vencimiento y su saldo"
         back={{ href: "/admin", label: "Administración" }}
       />

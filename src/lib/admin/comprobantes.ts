@@ -31,17 +31,35 @@ const clase = (codigo: string, nombre: string): Clase => ({
   esNota: codigo.startsWith("NC") || codigo.startsWith("ND"),
 })
 
-/** Las que emite Accedra. Salen del pliego de administración. */
+/**
+ * Las que emite Accedra. Salen del pliego de administración, que las lista una
+ * por una.
+ *
+ * Las dos familias «E» son distintas y el pliego las nombra por separado, así
+ * que acá también van separadas:
+ *
+ *  · **FCEA / NCEA / NDEA** — Factura de Crédito Electrónica MiPyME clase A,
+ *    códigos 201, 203 y 202 de AFIP. Es una factura al mercado interno con
+ *    régimen de pago propio.
+ *  · **FCE / NCE / NDE** — Factura E de exportación, códigos 19, 21 y 20.
+ *
+ * Hasta la migración `20260825_01` el sistema usaba FCEA para la de exportación
+ * y no tenía la MiPyME. Lo ya cargado se renombró allá; si aparece un FCEA de
+ * antes de esa fecha en algún export viejo, es una E.
+ */
 export const CLASES_VENTA: Clase[] = [
   clase("FCA", "Factura A"),
   clase("FCB", "Factura B"),
-  clase("FCEA", "Factura E (exportación)"),
+  clase("FCEA", "Factura de crédito electrónica A"),
+  clase("FCE", "Factura E (exportación)"),
   clase("NCA", "Nota de crédito A"),
   clase("NCB", "Nota de crédito B"),
-  clase("NCEA", "Nota de crédito E"),
+  clase("NCEA", "Nota de crédito electrónica A"),
+  clase("NCE", "Nota de crédito E"),
   clase("NDA", "Nota de débito A"),
   clase("NDB", "Nota de débito B"),
-  clase("NDEA", "Nota de débito E"),
+  clase("NDEA", "Nota de débito electrónica A"),
+  clase("NDE", "Nota de débito E"),
 ]
 
 /**
@@ -58,12 +76,15 @@ export const CLASES_COMPRA: Clase[] = [
   clase("FCA", "Factura A"),
   clase("FCB", "Factura B"),
   clase("FCC", "Factura C"),
+  clase("FCEA", "Factura de crédito electrónica A"),
   clase("NCA", "Nota de crédito A"),
   clase("NCB", "Nota de crédito B"),
   clase("NCC", "Nota de crédito C"),
+  clase("NCEA", "Nota de crédito electrónica A"),
   clase("NDA", "Nota de débito A"),
   clase("NDB", "Nota de débito B"),
   clase("NDC", "Nota de débito C"),
+  clase("NDEA", "Nota de débito electrónica A"),
 ]
 
 export function clasesDe(tipo: TipoComprobante): Clase[] {
@@ -206,8 +227,28 @@ export type ImportesComprobante = {
   noGravado: number
   exento: number
   percepcionIva: number
-  percepcionIibb: number
+  /**
+   * La percepción de Ingresos Brutos, abierta por jurisdicción.
+   *
+   * Son dos campos y no uno con un selector de provincia porque una misma
+   * factura puede traer las dos —un proveedor con sede en Capital que entrega en
+   * provincia percibe por los dos regímenes— y porque cada una imputa contra su
+   * propia cuenta del plan: 50 PERCEP IIBB BS AS y 51 PERCEP IIBB CAP. Es el
+   * punto 3 del pliego de compras, textual: «hacer la apertura BS AS o CABA y
+   * que vaya a la cuenta según corresponda».
+   */
+  percepcionIibbBsas: number
+  percepcionIibbCaba: number
   otrosImpuestos: number
+}
+
+/** Las dos jurisdicciones juntas, que es lo que se muestra donde no hay lugar
+ *  para abrirlas (un listado, un total). */
+export function percepcionIibbTotal(i: {
+  percepcionIibbBsas: number
+  percepcionIibbCaba: number
+}): number {
+  return Math.round((i.percepcionIibbBsas + i.percepcionIibbCaba) * 100) / 100
 }
 
 /**
@@ -222,7 +263,8 @@ export function totalDe(i: ImportesComprobante): number {
     i.noGravado +
     i.exento +
     i.percepcionIva +
-    i.percepcionIibb +
+    i.percepcionIibbBsas +
+    i.percepcionIibbCaba +
     i.otrosImpuestos
   return Math.round(suma * 100) / 100
 }
@@ -276,7 +318,8 @@ export type Comprobante = {
   noGravado: number
   exento: number
   percepcionIva: number
-  percepcionIibb: number
+  percepcionIibbBsas: number
+  percepcionIibbCaba: number
   otrosImpuestos: number
   total: number
   totalArs: number

@@ -146,7 +146,8 @@ export const GET = ruta("extracto GET", async (req: Request, ctx: { params: Prom
       fecha: m.fecha as string,
       concepto: conceptoDe(
         m.origen as OrigenMovimiento,
-        (m.categoria as CategoriaGasto | null) ?? null
+        (m.categoria as CategoriaGasto | null) ?? null,
+        entra ? "ingreso" : "egreso"
       ),
       detalle: (m.detalle as string | null) ?? null,
       referencia: (m.referencia as string | null) ?? null,

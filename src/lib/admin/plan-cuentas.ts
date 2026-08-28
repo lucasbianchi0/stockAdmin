@@ -44,6 +44,18 @@ export type CuentaContable = {
   /** El código como número, que es el orden del papel del contador. Existe
    *  porque `codigo` es texto y ahí '10' ordena antes que '9'. */
   orden: number
+  /**
+   * Si se ofrece al imputar.
+   *
+   * El endpoint filtra por esto salvo que se le pida `?todas=1`, así que en un
+   * selector siempre llega `true` y el campo no dice nada. Existe para la
+   * pantalla de datos maestros, que es la única que ve el plan entero — y la
+   * única desde la que se puede dar de baja una cuenta.
+   */
+  activo: boolean
+  /** Falso en las cuentas de agrupación. En el plan del estudio no hay ninguna
+   *  —el agrupador es el rubro—, pero un plan con árbol sí las tiene. */
+  imputable: boolean
   /** Lleva submayor: el saldo total no alcanza, hace falta saber cuánto es de
    *  cada quién. */
   llevaSubcuenta: boolean

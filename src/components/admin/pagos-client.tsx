@@ -41,6 +41,21 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
   const recurso = esCobro ? "cobros" : "pagos"
   const rotuloEntidad = esCobro ? "Cliente" : "Proveedor"
 
+  /**
+   * El listado de cobros va sin el desglose; el de pagos lo conserva.
+   *
+   * Es el punto 3.C del pliego: «que sólo figure para ingresar el cobro, no el
+   * detalle que después lo vemos en otro módulo». Qué facturas cancela y por qué
+   * cuenta entró la plata se ven en el detalle del recibo —que se abre haciendo
+   * clic en la fila— y en el estado de cuenta del cliente, así que acá eran dos
+   * columnas anchas que empujaban el importe fuera de la vista para repetir algo
+   * que ya está en otro lado.
+   *
+   * En pagos se dejan: la pregunta que se le hace a esa pantalla es «de qué
+   * cuenta salió esto», y ahí el desglose es el dato, no el ruido.
+   */
+  const conDesglose = !esCobro
+
   const tabla = useTablaAdmin<Cobro>({
     endpoint: `/api/admin/${recurso}`,
     clave: recurso,
@@ -86,7 +101,7 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
         <div className="flex items-center justify-between gap-3 border-b border-line bg-surface-subtle px-4 py-3">
           <p className="text-[12.5px] text-ink-muted">
             {esCobro
-              ? "Recibos con su imputación a facturas y las cuentas donde entró la plata"
+              ? "Los cobros recibidos. El desglose de cada uno está en su detalle"
               : "Órdenes de pago con su imputación y las cuentas de donde salió la plata"}
           </p>
           <Button onClick={() => setNuevo(true)}>
@@ -112,8 +127,12 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
                   <TableRow>
                     <TableHead>Fecha</TableHead>
                     <TableHead>{rotuloEntidad}</TableHead>
-                    <TableHead>Cancela</TableHead>
-                    <TableHead>{esCobro ? "Entró por" : "Salió de"}</TableHead>
+                    {conDesglose && (
+                      <>
+                        <TableHead>Cancela</TableHead>
+                        <TableHead>Salió de</TableHead>
+                      </>
+                    )}
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead className="w-[86px]" />
                   </TableRow>
@@ -138,6 +157,8 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
                             cancela quince facturas hacía una fila de tres
                             renglones de chips que empujaba la plata fuera de
                             la vista; el desglose completo está en el detalle. */}
+                        {conDesglose && (
+                        <>
                         <TableCell>
                           {c.imputaciones.length === 0 ? (
                             <span className="text-ink-faint">—</span>
@@ -178,6 +199,8 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
                             </div>
                           )}
                         </TableCell>
+                        </>
+                        )}
 
                         {/* Total es lo que canceló, no lo que entró a la caja.
                             Cuando hay retención los dos números no coinciden, y
@@ -232,7 +255,7 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={6} className="p-0">
+                      <TableCell colSpan={conDesglose ? 6 : 4} className="p-0">
                         <EmptyState
                           icon={HandCoins}
                           title={`Todavía no hay ${recurso}`}

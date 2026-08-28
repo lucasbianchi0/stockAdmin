@@ -66,6 +66,7 @@ type FilaCuenta = {
   tipo: string
   comprobante: string | null
   detalle: string | null
+  observaciones: string | null
   moneda: "ARS" | "USD"
   importe: number
   importeUsd: number | null
@@ -508,7 +509,17 @@ function EstadoDeCuenta({ inicial }: { inicial: Preseleccion | null }) {
               onClick={() =>
                 descargarCsv(
                   `estado-cuenta-${elegida?.razonSocial ?? "ficha"}.csv`,
-                  ["Fecha", "Tipo", "Comprobante", "Moneda", "Dólares", "TC", "Pesos", "Saldo"],
+                  [
+                    "Fecha",
+                    "Tipo",
+                    "Comprobante",
+                    "Moneda",
+                    "Dólares",
+                    "TC",
+                    "Pesos",
+                    "Saldo",
+                    "Observaciones",
+                  ],
                   filas.map((f) => [
                     f.fecha,
                     f.tipo,
@@ -518,6 +529,7 @@ function EstadoDeCuenta({ inicial }: { inicial: Preseleccion | null }) {
                     f.tc ?? "",
                     f.importeArs,
                     f.saldo,
+                    f.observaciones ?? "",
                   ])
                 )
               }
@@ -582,6 +594,7 @@ function EstadoDeCuenta({ inicial }: { inicial: Preseleccion | null }) {
                 <TableHead className="text-right">TC</TableHead>
                 <TableHead className="text-right">Pesos</TableHead>
                 <TableHead className="text-right">Saldo</TableHead>
+                <TableHead>Observaciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -624,6 +637,18 @@ function EstadoDeCuenta({ inicial }: { inicial: Preseleccion | null }) {
                     </TableCell>
                     <TableCell className="num text-right font-semibold text-ink">
                       {formatearImporte(f.saldo, "ARS")}
+                    </TableCell>
+                    {/* Última y sin ancho fijo: es texto libre y de largo
+                        impredecible, y en el medio de la tabla empujaría los
+                        importes fuera de la vista. */}
+                    <TableCell className="max-w-[260px] text-[12px] text-ink-secondary">
+                      {f.observaciones ? (
+                        <span className="line-clamp-2" title={f.observaciones}>
+                          {f.observaciones}
+                        </span>
+                      ) : (
+                        <span className="text-ink-faint">—</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 )

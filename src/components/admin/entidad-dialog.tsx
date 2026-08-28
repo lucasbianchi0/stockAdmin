@@ -435,6 +435,18 @@ export function EntidadDialog({
               disabled={guardando}
               tipoSugerido={esProveedor ? "egreso" : "ingreso"}
             />
+            {/* La aclaración existe por una confusión concreta y cara.
+                El pliego dice «alta de proveedores: asociar con la cuenta 201
+                Proveedores», y leído al lado de este campo invita a elegir la
+                201 acá — que sería imputar la compra contra la deuda y dejar el
+                gasto sin registrar, con un asiento que cuadra y un cuadro de
+                resultados vacío. La cuenta corriente no se elige nunca: el
+                motor de asientos la toma de la configuración contable. */}
+            <p className="mt-1.5 text-[11.5px] text-ink-muted">
+              {esProveedor
+                ? "Su cuenta corriente es la 201 Proveedores y la pone el sistema sola. Acá va la cuenta del gasto: 514 Fletes, 508 Compras de reventa, 513 Internet."
+                : "Su cuenta corriente es la 25 Créditos por Ventas y la pone el sistema sola. Acá va la cuenta de la venta: 809 Ventas de Servicios, 811 Venta Productos de reventa."}
+            </p>
           </Campo>
 
           <div className="grid gap-5 sm:grid-cols-2">

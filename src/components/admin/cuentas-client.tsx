@@ -145,7 +145,7 @@ export function CuentasClient() {
           </Button>
           <Button onClick={() => setDialogo("gasto")}>
             <Receipt className="h-3.5 w-3.5" />
-            Nuevo gasto
+            Otro movimiento
           </Button>
         </div>
       </div>

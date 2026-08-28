@@ -7,8 +7,12 @@ import type { Moneda } from "@/lib/admin/moneda"
  * los crea el recibo y **no se editan desde esta pantalla**: se anula el recibo
  * y el `on delete cascade` se los lleva. Los que se cargan a mano son tres:
  *
- *  · **gasto** — un egreso sin factura A o C: impuestos, gastos bancarios,
- *    sueldos. Es la categoría que pide el pliego y la que más se usa.
+ *  · **gasto** — un movimiento sin factura: impuestos, gastos bancarios,
+ *    sueldos, suscripciones a fondos. Es lo que el pliego llama «otros
+ *    movimientos» y la categoría que más se usa. Va casi siempre para afuera,
+ *    pero no siempre: un rescate de FIMA es plata que **vuelve** a la cuenta y
+ *    no es ni una venta ni una transferencia, así que también entra por acá y
+ *    suma en la columna de créditos del extracto.
  *  · **transferencia** — mover plata entre cuentas propias. Son dos movimientos
  *    hermanos, y como pueden estar en monedas distintas también sirve para
  *    registrar la compra o venta de dólares.
@@ -22,6 +26,7 @@ export const CATEGORIAS_GASTO = [
   "sueldos",
   "cargas_sociales",
   "servicios",
+  "inversiones",
   "otros",
 ] as const
 export type CategoriaGasto = (typeof CATEGORIAS_GASTO)[number]
@@ -32,6 +37,10 @@ export const CATEGORIA_LABEL: Record<CategoriaGasto, string> = {
   sueldos: "Sueldos",
   cargas_sociales: "Cargas sociales",
   servicios: "Servicios",
+  /** Suscripciones y rescates de fondos —los FIMA del Galicia—, que el pliego
+   *  nombra por su nombre en las dos direcciones: la suscripción sale de la
+   *  cuenta y el rescate vuelve a ella. */
+  inversiones: "Fondos e inversiones",
   otros: "Otros",
 }
 

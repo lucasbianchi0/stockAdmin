@@ -342,6 +342,17 @@ async function validarPago(
   let totalMedios = 0
   const filasMovimiento: Record<string, unknown>[] = []
 
+  /* Las observaciones del recibo bajan al detalle de cada movimiento.
+   *
+   * Es el pedido del pliego, textual: «Lo que figura en OBSERVACIONES: que vaya
+   * al detalle en Banco Galicia». El extracto de la cuenta tiene una columna
+   * DETALLE y hasta acá salía siempre vacía en las filas de un recibo, porque el
+   * texto quedaba guardado solo en la cabecera del pago. Conciliar contra el
+   * resumen del banco sin poder leer «TRF 1234 · anticipo obra» al lado del
+   * importe obliga a abrir cada recibo de a uno. */
+  const observaciones =
+    typeof raw.observaciones === "string" ? raw.observaciones.trim().slice(0, 1000) || null : null
+
   for (const item of mediosRaw) {
     const m = item as Record<string, unknown>
     const cuentaId = typeof m.cuentaId === "string" ? m.cuentaId : ""
@@ -382,6 +393,7 @@ async function validarPago(
       moneda_origen: cruzada ? moneda : null,
       origen: tipo,
       referencia: typeof m.referencia === "string" ? m.referencia.trim() || null : null,
+      detalle: observaciones,
     })
   }
 
@@ -415,10 +427,7 @@ async function validarPago(
         fecha,
         moneda,
         tc,
-        observaciones:
-          typeof raw.observaciones === "string"
-            ? raw.observaciones.trim().slice(0, 1000) || null
-            : null,
+        observaciones,
       },
       imputaciones: filasImputacion,
       retenciones,

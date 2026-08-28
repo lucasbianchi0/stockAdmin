@@ -367,6 +367,11 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
             ))}
           </div>
 
+          {/* Los dos caminos de alta que el pliego numera 2.2.A y 2.2.B —«nuevo
+              ingreso» y «carga inteligente»—, con sus nombres. Están al mismo
+              nivel a propósito: no es que uno sea el modo avanzado del otro, son
+              dos maneras de que entre la misma factura según qué haya en la
+              mano, el papel o los datos. */}
           <div className="flex items-center gap-2 lg:ml-auto">
             <Button variant="outline" onClick={() => setImportando(true)}>
               <FileInput className="h-3.5 w-3.5" />
@@ -374,7 +379,7 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
             </Button>
             <Button onClick={() => setDialogo({ abierto: true, comprobante: null })}>
               <Plus className="h-3.5 w-3.5" />
-              {esCompra ? "Nuevo comprobante" : "Nueva factura"}
+              Nuevo ingreso
             </Button>
           </div>
         </div>
@@ -493,7 +498,7 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
                                 }
                               >
                                 <Plus className="h-3.5 w-3.5" />
-                                {esCompra ? "Nuevo comprobante" : "Nueva factura"}
+                                Nuevo ingreso
                               </Button>
                             )
                           }

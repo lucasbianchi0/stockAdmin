@@ -26,6 +26,17 @@ type Fila = {
   tipo: string
   comprobante: string | null
   detalle: string | null
+  /**
+   * Lo que se escribió en el campo Observaciones del documento.
+   *
+   * Va en su propia columna y no mezclado con `detalle` porque son dos cosas
+   * distintas y el pliego pide justo esta: «Lo que figura en OBSERVACIONES, que
+   * impacte en una columna del estado de cuenta del cliente». `detalle` es el
+   * concepto de la factura —qué se vendió—; las observaciones son la nota que
+   * alguien dejó para el que después reclama el saldo (la orden de compra
+   * contra la que va, el reclamo pendiente, el acuerdo de plazo).
+   */
+  observaciones: string | null
   moneda: "ARS" | "USD"
   /** El importe en la moneda original, con signo. */
   importe: number
@@ -69,7 +80,9 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
   /* Comprobantes. */
   let qComp = supabase
     .from("comprobantes")
-    .select("id, clase, punto_venta, numero, fecha, moneda, tc, total, total_ars, total_usd, signo, detalle")
+    .select(
+      "id, clase, punto_venta, numero, fecha, moneda, tc, total, total_ars, total_usd, signo, detalle, observaciones"
+    )
     .eq("tipo", tipoComprobante)
     .eq(campo, entidadId)
 
@@ -111,6 +124,7 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
       tipo: c.clase as string,
       comprobante: numeroFormateado(c.punto_venta as number | null, c.numero as number | null),
       detalle: (c.detalle as string | null) ?? null,
+      observaciones: (c.observaciones as string | null) ?? null,
       moneda: c.moneda as "ARS" | "USD",
       importe: redondear(Number(c.total) * signo),
       // Ahora también sale en los comprobantes en pesos que tengan TC cargado:
@@ -143,7 +157,8 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
       fecha: p.fecha as string,
       tipo: esCliente ? "COBRO" : "PAGO",
       comprobante: null,
-      detalle: (p.observaciones as string | null) ?? null,
+      detalle: null,
+      observaciones: (p.observaciones as string | null) ?? null,
       moneda: p.moneda as "ARS" | "USD",
       importe: -redondear(enPesos),
       importeUsd: enUsd > 0 ? -redondear(enUsd) : null,
