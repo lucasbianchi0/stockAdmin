@@ -12,13 +12,16 @@
  *     lista de resultados: o entrás en la respuesta o no existís.
  */
 
-export const RELEVADO = "2026-08-10"
+export const RELEVADO = "2026-08-23"
 export const DOMINIO = "https://www.accedra.com.ar"
 
 /* ── 1. Arquitectura ──────────────────────────────────────────────────────── */
 
 export const SOLUCIONES = [
-  "Networking",
+  // "Networking" hasta agosto 2026. Se renombró porque la categoría genérica la
+  // podía firmar cualquier competidor, y en castellano colisiona con networking
+  // de contactos. El slug de la URL sigue siendo /soluciones/networking.
+  "Conectividad Crítica",
   "Firma Biométrica",
   "Consultoría Microsoft",
   "Seguridad IT",
@@ -32,6 +35,10 @@ export const INDUSTRIAS = [
   "Laboratorios y salud",
   "Logística",
   "Retail",
+  // Minería entra en agosto 2026: es el vertical de mayor crecimiento del país
+  // y donde Accedra tiene su antecedente más fuerte (Finning, 15+ sitios en
+  // cuatro provincias).
+  "Minería",
 ] as const
 
 /**
@@ -60,11 +67,16 @@ export const MAPA_URLS = [
   },
   {
     grupo: "Solución × industria",
-    cantidad: 30,
+    cantidad: 35,
     patron: "/soluciones/{solución}/{industria}",
     nota: "El destino de los anuncios",
   },
-  { grupo: "Casos de éxito", cantidad: 6, patron: "/casos/{tema}/{n}", nota: "Prueba social" },
+  {
+    grupo: "Casos de éxito",
+    cantidad: 7,
+    patron: "/casos/{tema}/{n}",
+    nota: "Prueba social · incluye el alias /casos/finning",
+  },
   { grupo: "Legales", cantidad: 1, patron: "/privacidad", nota: "—" },
 ]
 
@@ -81,7 +93,7 @@ export type Pieza = {
 }
 
 /**
- * Qué lleva cada una de las 30 landings. El ejemplo es real y sale siempre de
+ * Qué lleva cada una de las 35 landings. El ejemplo es real y sale siempre de
  * la misma página (/soluciones/networking/bancos) para que se lea como una
  * pieza entera y no como seis fragmentos sueltos.
  */
@@ -89,9 +101,9 @@ export const ANATOMIA: Pieza[] = [
   {
     campo: "Title",
     que: "El link azul en Google. Se corta a ~60 caracteres.",
-    ejemplo: "Networking para Bancos: Redes de Sucursales | Accedra",
+    ejemplo: "Redes para bancos y entidades financieras · Accedra",
     estado: "ok",
-    detalle: "35 de 35 entre 42 y 68 caracteres",
+    detalle: "40 de 40 escritos, entre 42 y 68 caracteres. 2 superan los 60 y Google los va a cortar",
   },
   {
     campo: "Meta description",
@@ -99,35 +111,35 @@ export const ANATOMIA: Pieza[] = [
     ejemplo:
       "Infraestructura de red para bancos: sucursales con enlaces redundantes, segmentación de cajeros y POS, y wireless corporativo sobre Cisco.",
     estado: "ok",
-    detalle: "35 de 35 escritas · 34 dentro de 120–160",
+    detalle: "40 de 40 escritas · 37 dentro de 120–160 · 3 pasan los 160",
   },
   {
     campo: "H1",
     que: "El titular visible. Uno solo por página.",
-    ejemplo: "Redes bancarias que no se caen.",
+    ejemplo: "Conectamos operaciones que no pueden parar. para Bancos",
     estado: "ok",
-    detalle: "35 de 35 con H1 único",
+    detalle: "40 de 40 con H1 único",
   },
   {
     campo: "Canonical",
     que: "Cuál es la URL buena, para que no compitan duplicados entre sí.",
     ejemplo: "https://www.accedra.com.ar/soluciones/networking/bancos",
     estado: "ok",
-    detalle: "35 de 35 autorreferenciales",
+    detalle: "40 de 40 autorreferenciales",
   },
   {
     campo: "Breadcrumb",
     que: "La miga de pan que Google muestra en vez de la URL cruda.",
-    ejemplo: "Inicio › Soluciones › Networking › Bancos",
+    ejemplo: "Inicio › Conectividad Crítica › Bancos",
     estado: "ok",
-    detalle: "35 de 35 con BreadcrumbList",
+    detalle: "40 de 40 con BreadcrumbList",
   },
   {
     campo: "FAQ",
     que: "Preguntas de esa industria. Alimentan tanto el snippet como la IA.",
     ejemplo: "¿Por qué hay que separar la red de cajeros de la red administrativa?",
     estado: "parcial",
-    detalle: "4 por landing en las 30 · las 5 páginas de solución no tienen",
+    detalle: "4 por landing en las 35 · las 5 páginas de solución no tienen",
   },
   {
     campo: "Open Graph",
@@ -154,7 +166,8 @@ export const SENALES_GEO: SenalGeo[] = [
     ruta: "/llms.txt",
     que: "Un resumen del sitio en texto plano, escrito para que lo lea un modelo y no una persona. Evita que la IA tenga que adivinar entre el HTML.",
     estado: "ok",
-    detalle: "9,5 KB · las 35 páginas listadas con su descripción, agrupadas por industria",
+    detalle:
+      "11,9 KB · las 40 páginas listadas con su descripción, agrupadas por industria, más los tres casos de éxito con sus métricas",
   },
   {
     nombre: "Ficha de entidad",
@@ -170,9 +183,16 @@ export const SENALES_GEO: SenalGeo[] = [
   },
   {
     nombre: "Preguntas y respuestas",
-    que: "El formato que un modelo cita casi textual. 120 pares pregunta/respuesta con el marco normativo argentino de cada industria.",
+    que: "El formato que un modelo cita casi textual. 140 pares pregunta/respuesta con el marco normativo argentino de cada industria.",
     estado: "ok",
-    detalle: "30 landings × 4 FAQ = 120 respuestas indexables",
+    detalle: "35 landings × 4 FAQ = 140 respuestas indexables",
+  },
+  {
+    nombre: "Casos con métricas",
+    que: "El antecedente concreto es lo que un modelo cita cuando alguien pregunta quién hace esto en Argentina — pesa más que la descripción del servicio.",
+    estado: "ok",
+    detalle:
+      "Los 3 casos en llms.txt con cliente, industria, desafío y cifras. Salen de la misma fuente que las páginas de caso",
   },
   {
     nombre: "Perfiles verificables",
@@ -199,7 +219,7 @@ export const SCHEMAS = [
   { tipo: "WebSite", donde: "Todas", que: "El sitio como publicación" },
   { tipo: "BreadcrumbList", donde: "35 páginas", que: "La jerarquía de navegación" },
   { tipo: "Service", donde: "35 páginas", que: "El servicio que ofrece la página" },
-  { tipo: "FAQPage", donde: "30 landings", que: "Las preguntas de la industria" },
+  { tipo: "FAQPage", donde: "35 landings", que: "Las preguntas de la industria" },
 ]
 
 /* ── 4. Infraestructura técnica ───────────────────────────────────────────── */
@@ -390,7 +410,7 @@ export const ESTADO: { area: string; estado: Semaforo; comentario: string }[] = 
   {
     area: "GEO / búsqueda generativa",
     estado: "verde",
-    comentario: "llms.txt, entidad y 120 FAQ. Falta sólo medir si la IA cita",
+    comentario: "llms.txt con casos, entidad y 140 FAQ. Falta sólo medir si la IA cita",
   },
   {
     area: "SEO de contenido",
@@ -404,18 +424,18 @@ export const ESTADO: { area: string; estado: Semaforo; comentario: string }[] = 
   },
   {
     area: "SEO local / Google Business",
-    estado: "rojo",
-    comentario: "Sin empezar. El on-site ya lo respalda; falta crear la ficha",
+    estado: "amarillo",
+    comentario: "La ficha existe y fue el único canal que convirtió en 2026. Nadie la trabaja",
   },
-  { area: "Reseñas", estado: "rojo", comentario: "Sin empezar. Dependen de la ficha de GBP" },
+  { area: "Reseñas", estado: "rojo", comentario: "Sin trabajar, aunque la ficha ya está creada" },
   { area: "Backlinks", estado: "rojo", comentario: "Nada trabajado" },
 ]
 
 export const PENDIENTES = [
   {
-    titulo: "Google Business Profile",
+    titulo: "Trabajar el Google Business Profile, que ya existe",
     porque:
-      "Es lo único que gana las búsquedas de mapa y de zona. La verificación tarda semanas, así que arranca hoy aunque el resultado se vea en un mes.",
+      "La ficha está creada y es el único canal que efectivamente convirtió: las 7 conversiones del último año en Google Ads salieron de su chat, contra cero del formulario del sitio. Nadie la trabaja. Cargar fotos, servicios, publicaciones y atender las reseñas cuesta cero y ya demostró rendir mejor que $712.276 de pauta.",
     prioridad: "ahora" as const,
   },
   {
@@ -451,7 +471,7 @@ export const PENDIENTES = [
   {
     titulo: "FAQ en las 5 páginas de solución",
     porque:
-      "Las 30 landings de industria tienen 4 preguntas cada una; las páginas madre no tienen ninguna, y son las que compiten por el término genérico.",
+      "Las 35 landings de industria tienen 4 preguntas cada una; las páginas madre no tienen ninguna, y son las que compiten por el término genérico.",
     prioridad: "despues" as const,
   },
   {
@@ -469,7 +489,19 @@ export const PENDIENTES = [
   {
     titulo: "Conversión por landing",
     porque:
-      "El sitio ya guarda la landing de origen en `sessions` y `leads`. Falta cruzarlo para saber cuál de las 30 cierra y cuál sólo trae tráfico.",
+      "El sitio ya guarda la landing de origen en `sessions` y `leads`. Falta cruzarlo para saber cuál de las 35 cierra y cuál sólo trae tráfico.",
+    prioridad: "despues" as const,
+  },
+  {
+    titulo: "Revisar las referencias normativas de las landings de minería",
+    porque:
+      "Los cinco bloques nuevos citan el Decreto 249/2007 de Higiene y Seguridad minera, la Ley 25.506, la Ley 24.585 y el Registro Federal de Proveedores Mineros. Son lo que le da credibilidad al texto ante un lector técnico del sector: si una está mal citada, resta en vez de sumar. Tiene que mirarlo alguien del negocio, no marketing.",
+    prioridad: "ahora" as const,
+  },
+  {
+    titulo: "Escribir el copy de anuncios de las 3 soluciones restantes",
+    porque:
+      "El generador de campañas recorre las 5 soluciones pero sólo emite las que tienen copy cargado. Hoy están Firma Biométrica (7 industrias) y Conectividad Crítica (minería); faltan Consultoría, Seguridad IT y Software & AI. Sin eso, esas landings existen pero ninguna campaña las usa.",
     prioridad: "despues" as const,
   },
 ]
@@ -490,65 +522,74 @@ export type Pagina = {
 export const PAGINAS: Pagina[] = [
   {
     ruta: "/soluciones/networking",
-    solucion: "Networking",
+    solucion: "Conectividad Crítica",
     industria: null,
-    title: "Networking Empresarial: Cableado, Switching y WiFi | Accedra",
-    description: "Infraestructura de red de alta disponibilidad: cableado estructurado, switching, wireless y VoIP. Partner certificado Cisco, Aruba y más.",
-    h1: "Networking de alta disponibilidad.",
+    title: "Cableado Estructurado, Redes Cisco y WiFi Corporativo | Accedra",
+    description: "Infraestructura de red para empresas: cableado estructurado certificado, switching Cisco, WiFi corporativo y enlaces satelitales con SD-WAN para sitios remotos.",
+    h1: "Conectamos operaciones que no pueden parar.",
     faqs: 0,
   },
   {
     ruta: "/soluciones/networking/bancos",
-    solucion: "Networking",
+    solucion: "Conectividad Crítica",
     industria: "Bancos",
     title: "Redes para bancos y entidades financieras · Accedra",
     description: "Infraestructura de red para bancos: sucursales con enlaces redundantes, segmentación de cajeros y POS, y wireless corporativo sobre Cisco. Partner certificado.",
-    h1: "Networking de alta disponibilidad.para Bancos",
-    faqs: 4,
-  },
-  {
-    ruta: "/soluciones/networking/seguros",
-    solucion: "Networking",
-    industria: "Aseguradoras",
-    title: "Redes para aseguradoras y compañías de seguros · Accedra",
-    description: "Conectividad para aseguradoras: casa central, sucursales y productores con acceso remoto seguro, wireless corporativo y telefonía IP sobre Cisco.",
-    h1: "Networking de alta disponibilidad.para Aseguradoras",
+    h1: "Conectamos operaciones que no pueden parar. para Bancos",
     faqs: 4,
   },
   {
     ruta: "/soluciones/networking/juridicos",
-    solucion: "Networking",
+    solucion: "Conectividad Crítica",
     industria: "Estudios jurídicos",
     title: "Redes e infraestructura IT para estudios jurídicos · Accedra",
     description: "Infraestructura de red para estudios jurídicos: WiFi segmentado, cableado estructurado, resguardo documental y contingencia. Confidencialidad por diseño.",
-    h1: "Networking de alta disponibilidad.para Estudios jurídicos",
+    h1: "Conectamos operaciones que no pueden parar. para Estudios jurídicos",
     faqs: 4,
   },
   {
     ruta: "/soluciones/networking/laboratorios",
-    solucion: "Networking",
+    solucion: "Conectividad Crítica",
     industria: "Laboratorios y salud",
     title: "Redes para laboratorios y centros de salud · Accedra",
     description: "Infraestructura de red para laboratorios y salud: segmentación de equipamiento clínico, alta disponibilidad, wireless y contingencia sobre Cisco.",
-    h1: "Networking de alta disponibilidad.para Laboratorios y salud",
+    h1: "Conectamos operaciones que no pueden parar. para Laboratorios y salud",
     faqs: 4,
   },
   {
     ruta: "/soluciones/networking/logistica",
-    solucion: "Networking",
+    solucion: "Conectividad Crítica",
     industria: "Logística",
     title: "Redes para logística, plantas y depósitos · Accedra",
     description: "Conectividad para operaciones logísticas: WiFi industrial en depósitos, SD-WAN multisitio y enlaces satelitales. Caso Andreani: de 5 caídas por semana a menos de 1 por mes.",
-    h1: "Networking de alta disponibilidad.para Logística",
+    h1: "Conectamos operaciones que no pueden parar. para Logística",
+    faqs: 4,
+  },
+  {
+    ruta: "/soluciones/networking/mineria",
+    solucion: "Conectividad Crítica",
+    industria: "Minería",
+    title: "Conectividad para minería y yacimientos remotos · Accedra",
+    description: "Redes para yacimientos y sitios remotos: enlaces satelitales por SD-WAN, WiFi de exterior y cableado certificado. Caso Finning: 15+ sitios en cuatro provincias.",
+    h1: "Conectamos operaciones que no pueden parar. para Minería",
     faqs: 4,
   },
   {
     ruta: "/soluciones/networking/retail",
-    solucion: "Networking",
+    solucion: "Conectividad Crítica",
     industria: "Retail",
     title: "Redes multisucursal para retail y comercios · Accedra",
     description: "Infraestructura de red para retail: SD-WAN entre sucursales, segmentación de POS según PCI DSS y WiFi de clientes separado de la red de cobro.",
-    h1: "Networking de alta disponibilidad.para Retail",
+    h1: "Conectamos operaciones que no pueden parar. para Retail",
+    faqs: 4,
+  },
+  {
+    ruta: "/soluciones/networking/seguros",
+    solucion: "Conectividad Crítica",
+    industria: "Aseguradoras",
+    title: "Redes para aseguradoras y compañías de seguros · Accedra",
+    description: "Conectividad para aseguradoras: casa central, sucursales y productores con acceso remoto seguro, wireless corporativo y telefonía IP sobre Cisco.",
+    h1: "Conectamos operaciones que no pueden parar. para Aseguradoras",
     faqs: 4,
   },
   {
@@ -566,16 +607,7 @@ export const PAGINAS: Pagina[] = [
     industria: "Bancos",
     title: "Firma digital y biométrica para bancos · Accedra",
     description: "Firma biométrica en sucursales bancarias: onboarding y formularios sin papel, con identidad verificada y valor probatorio. Caso Banco Provincia: 400 sucursales.",
-    h1: "Firma electrónica, biométrica y digital.para Bancos",
-    faqs: 4,
-  },
-  {
-    ruta: "/soluciones/firma-biometrica/seguros",
-    solucion: "Firma Biométrica",
-    industria: "Aseguradoras",
-    title: "Firma digital para aseguradoras y pólizas · Accedra",
-    description: "Firma electrónica para compañías de seguros: pólizas, endosos y siniestros firmados a distancia, con validez legal y trazabilidad de punta a punta.",
-    h1: "Firma electrónica, biométrica y digital.para Aseguradoras",
+    h1: "Firma electrónica, biométrica y digital. para Bancos",
     faqs: 4,
   },
   {
@@ -584,7 +616,7 @@ export const PAGINAS: Pagina[] = [
     industria: "Estudios jurídicos",
     title: "Firma digital para estudios jurídicos y abogados · Accedra",
     description: "Firma digital para estudios jurídicos: contratos, poderes y escritos con validez legal según Ley 25.506, trazabilidad y resguardo documental. Sin papel.",
-    h1: "Firma electrónica, biométrica y digital.para Estudios jurídicos",
+    h1: "Firma electrónica, biométrica y digital. para Estudios jurídicos",
     faqs: 4,
   },
   {
@@ -593,7 +625,7 @@ export const PAGINAS: Pagina[] = [
     industria: "Laboratorios y salud",
     title: "Firma digital para laboratorios y salud · Accedra",
     description: "Firma electrónica en salud: consentimientos informados, informes y protocolos firmados digitalmente, con identidad verificada y trazabilidad documental.",
-    h1: "Firma electrónica, biométrica y digital.para Laboratorios y salud",
+    h1: "Firma electrónica, biométrica y digital. para Laboratorios y salud",
     faqs: 4,
   },
   {
@@ -602,7 +634,16 @@ export const PAGINAS: Pagina[] = [
     industria: "Logística",
     title: "Firma digital para logística: remitos y entregas · Accedra",
     description: "Firma electrónica en operaciones logísticas: conformidad de entrega y remitos firmados en el punto de destino, sin papel y con trazabilidad inmediata.",
-    h1: "Firma electrónica, biométrica y digital.para Logística",
+    h1: "Firma electrónica, biométrica y digital. para Logística",
+    faqs: 4,
+  },
+  {
+    ruta: "/soluciones/firma-biometrica/mineria",
+    solucion: "Firma Biométrica",
+    industria: "Minería",
+    title: "Firma digital para minería: remitos y proveedores · Accedra",
+    description: "Firma electrónica con validez legal para operaciones mineras: remitos de despacho, partes de turno, permisos de trabajo y alta de proveedores, sin papel en el yacimiento.",
+    h1: "Firma electrónica, biométrica y digital. para Minería",
     faqs: 4,
   },
   {
@@ -611,7 +652,16 @@ export const PAGINAS: Pagina[] = [
     industria: "Retail",
     title: "Firma digital para retail y comercios · Accedra",
     description: "Firma electrónica en retail: altas de cuenta, contratos de crédito y garantías firmados en el local, sin papel y con respaldo probatorio.",
-    h1: "Firma electrónica, biométrica y digital.para Retail",
+    h1: "Firma electrónica, biométrica y digital. para Retail",
+    faqs: 4,
+  },
+  {
+    ruta: "/soluciones/firma-biometrica/seguros",
+    solucion: "Firma Biométrica",
+    industria: "Aseguradoras",
+    title: "Firma digital para aseguradoras y pólizas · Accedra",
+    description: "Firma electrónica para compañías de seguros: pólizas, endosos y siniestros firmados a distancia, con validez legal y trazabilidad de punta a punta.",
+    h1: "Firma electrónica, biométrica y digital. para Aseguradoras",
     faqs: 4,
   },
   {
@@ -629,16 +679,7 @@ export const PAGINAS: Pagina[] = [
     industria: "Bancos",
     title: "Power BI y Microsoft 365 para bancos · Accedra",
     description: "Consultoría Microsoft para entidades financieras: tableros de Power BI, reporting regulatorio y gestión documental sobre SharePoint y Microsoft 365.",
-    h1: "Tus datos, convertidos en decisiones.para Bancos",
-    faqs: 4,
-  },
-  {
-    ruta: "/soluciones/consultoria/seguros",
-    solucion: "Consultoría Microsoft",
-    industria: "Aseguradoras",
-    title: "Power BI y Microsoft 365 para aseguradoras · Accedra",
-    description: "Consultoría Microsoft para seguros: tableros de siniestralidad y producción, gestión documental de expedientes y automatización sobre Power Platform.",
-    h1: "Tus datos, convertidos en decisiones.para Aseguradoras",
+    h1: "Tus datos, convertidos en decisiones. para Bancos",
     faqs: 4,
   },
   {
@@ -647,7 +688,7 @@ export const PAGINAS: Pagina[] = [
     industria: "Estudios jurídicos",
     title: "Microsoft 365 y gestión documental para estudios · Accedra",
     description: "Consultoría Microsoft para estudios jurídicos: gestión documental de expedientes en SharePoint, control de versiones, Teams y tableros de horas.",
-    h1: "Tus datos, convertidos en decisiones.para Estudios jurídicos",
+    h1: "Tus datos, convertidos en decisiones. para Estudios jurídicos",
     faqs: 4,
   },
   {
@@ -656,7 +697,7 @@ export const PAGINAS: Pagina[] = [
     industria: "Laboratorios y salud",
     title: "Power BI y Microsoft 365 para laboratorios · Accedra",
     description: "Consultoría Microsoft para laboratorios y salud: tableros de producción y tiempos de entrega, gestión documental de protocolos y automatización.",
-    h1: "Tus datos, convertidos en decisiones.para Laboratorios y salud",
+    h1: "Tus datos, convertidos en decisiones. para Laboratorios y salud",
     faqs: 4,
   },
   {
@@ -665,7 +706,16 @@ export const PAGINAS: Pagina[] = [
     industria: "Logística",
     title: "Power BI para logística: OTIF y flota · Accedra",
     description: "Consultoría Microsoft para logística: tableros de cumplimiento de entregas, costo por envío y disponibilidad de flota. Automatización con Power Platform.",
-    h1: "Tus datos, convertidos en decisiones.para Logística",
+    h1: "Tus datos, convertidos en decisiones. para Logística",
+    faqs: 4,
+  },
+  {
+    ruta: "/soluciones/consultoria/mineria",
+    solucion: "Consultoría Microsoft",
+    industria: "Minería",
+    title: "Power BI y gestión documental para minería · Accedra",
+    description: "Datos y documentos para minería: tableros de producción en Power BI, gestión documental de permisos ambientales y portales de contratistas sobre Microsoft 365.",
+    h1: "Tus datos, convertidos en decisiones. para Minería",
     faqs: 4,
   },
   {
@@ -674,7 +724,16 @@ export const PAGINAS: Pagina[] = [
     industria: "Retail",
     title: "Power BI para retail: ventas, stock y margen · Accedra",
     description: "Consultoría Microsoft para retail: tableros de venta por sucursal, rotación de stock y margen por categoría. Microsoft 365 y automatización de circuitos.",
-    h1: "Tus datos, convertidos en decisiones.para Retail",
+    h1: "Tus datos, convertidos en decisiones. para Retail",
+    faqs: 4,
+  },
+  {
+    ruta: "/soluciones/consultoria/seguros",
+    solucion: "Consultoría Microsoft",
+    industria: "Aseguradoras",
+    title: "Power BI y Microsoft 365 para aseguradoras · Accedra",
+    description: "Consultoría Microsoft para seguros: tableros de siniestralidad y producción, gestión documental de expedientes y automatización sobre Power Platform.",
+    h1: "Tus datos, convertidos en decisiones. para Aseguradoras",
     faqs: 4,
   },
   {
@@ -692,16 +751,7 @@ export const PAGINAS: Pagina[] = [
     industria: "Bancos",
     title: "Ciberseguridad para bancos y entidades financieras · Accedra",
     description: "Ciberseguridad bancaria: arquitectura Zero Trust, doble factor, protección de endpoints y seguridad de email con Cisco y Palo Alto. Partner certificado.",
-    h1: "Ciberseguridad de nivel corporativo.para Bancos",
-    faqs: 4,
-  },
-  {
-    ruta: "/soluciones/seguridad/seguros",
-    solucion: "Seguridad IT",
-    industria: "Aseguradoras",
-    title: "Ciberseguridad para aseguradoras · Accedra",
-    description: "Seguridad IT para compañías de seguros: protección contra ransomware, resguardo de datos de asegurados y acceso seguro de productores. Zero Trust.",
-    h1: "Ciberseguridad de nivel corporativo.para Aseguradoras",
+    h1: "Ciberseguridad de nivel corporativo. para Bancos",
     faqs: 4,
   },
   {
@@ -710,7 +760,7 @@ export const PAGINAS: Pagina[] = [
     industria: "Estudios jurídicos",
     title: "Ciberseguridad para estudios jurídicos · Accedra",
     description: "Seguridad IT para estudios jurídicos: protección contra ransomware, resguardo de expedientes y control de acceso. Confidencialidad y secreto profesional.",
-    h1: "Ciberseguridad de nivel corporativo.para Estudios jurídicos",
+    h1: "Ciberseguridad de nivel corporativo. para Estudios jurídicos",
     faqs: 4,
   },
   {
@@ -719,7 +769,7 @@ export const PAGINAS: Pagina[] = [
     industria: "Laboratorios y salud",
     title: "Ciberseguridad para laboratorios y salud · Accedra",
     description: "Seguridad IT en salud: protección de datos sensibles, aislamiento de equipamiento clínico y defensa contra ransomware. Continuidad de la operación.",
-    h1: "Ciberseguridad de nivel corporativo.para Laboratorios y salud",
+    h1: "Ciberseguridad de nivel corporativo. para Laboratorios y salud",
     faqs: 4,
   },
   {
@@ -728,7 +778,16 @@ export const PAGINAS: Pagina[] = [
     industria: "Logística",
     title: "Ciberseguridad para logística y operaciones 24/7 · Accedra",
     description: "Seguridad IT para logística: continuidad de operaciones críticas, protección de sistemas de gestión y defensa contra ransomware sin ventanas de parada.",
-    h1: "Ciberseguridad de nivel corporativo.para Logística",
+    h1: "Ciberseguridad de nivel corporativo. para Logística",
+    faqs: 4,
+  },
+  {
+    ruta: "/soluciones/seguridad/mineria",
+    solucion: "Seguridad IT",
+    industria: "Minería",
+    title: "Ciberseguridad para minería: IT y OT en yacimiento · Accedra",
+    description: "Seguridad para operaciones mineras: segmentación IT/OT, acceso remoto controlado a sitios y arquitectura Zero Trust sobre redes distribuidas en varias provincias.",
+    h1: "Ciberseguridad de nivel corporativo. para Minería",
     faqs: 4,
   },
   {
@@ -737,7 +796,16 @@ export const PAGINAS: Pagina[] = [
     industria: "Retail",
     title: "Ciberseguridad para retail y puntos de venta · Accedra",
     description: "Seguridad IT para retail: protección de terminales de pago, cumplimiento PCI DSS y defensa contra ransomware en operaciones multisucursal.",
-    h1: "Ciberseguridad de nivel corporativo.para Retail",
+    h1: "Ciberseguridad de nivel corporativo. para Retail",
+    faqs: 4,
+  },
+  {
+    ruta: "/soluciones/seguridad/seguros",
+    solucion: "Seguridad IT",
+    industria: "Aseguradoras",
+    title: "Ciberseguridad para aseguradoras · Accedra",
+    description: "Seguridad IT para compañías de seguros: protección contra ransomware, resguardo de datos de asegurados y acceso seguro de productores. Zero Trust.",
+    h1: "Ciberseguridad de nivel corporativo. para Aseguradoras",
     faqs: 4,
   },
   {
@@ -755,16 +823,7 @@ export const PAGINAS: Pagina[] = [
     industria: "Bancos",
     title: "Software a medida e IA para bancos · Accedra",
     description: "Desarrollo a medida e inteligencia artificial para entidades financieras: automatización de back office, lectura de documentos e integración con el core.",
-    h1: "Software a medida e inteligencia artificial.para Bancos",
-    faqs: 4,
-  },
-  {
-    ruta: "/soluciones/software-ai/seguros",
-    solucion: "Software & AI",
-    industria: "Aseguradoras",
-    title: "Software a medida e IA para aseguradoras · Accedra",
-    description: "Desarrollo e inteligencia artificial para seguros: automatización del circuito de siniestros, lectura de documentación y asistentes para el canal.",
-    h1: "Software a medida e inteligencia artificial.para Aseguradoras",
+    h1: "Software a medida e inteligencia artificial. para Bancos",
     faqs: 4,
   },
   {
@@ -773,7 +832,7 @@ export const PAGINAS: Pagina[] = [
     industria: "Estudios jurídicos",
     title: "Inteligencia artificial y software para estudios jurídicos · Accedra",
     description: "IA aplicada al trabajo legal: búsqueda semántica sobre documentación propia, análisis de contratos y automatización de tareas repetitivas del estudio.",
-    h1: "Software a medida e inteligencia artificial.para Estudios jurídicos",
+    h1: "Software a medida e inteligencia artificial. para Estudios jurídicos",
     faqs: 4,
   },
   {
@@ -782,7 +841,7 @@ export const PAGINAS: Pagina[] = [
     industria: "Laboratorios y salud",
     title: "Software a medida e IA para laboratorios y salud · Accedra",
     description: "Desarrollo e inteligencia artificial para laboratorios: integración con sistemas de gestión, procesamiento de informes y automatización de circuitos.",
-    h1: "Software a medida e inteligencia artificial.para Laboratorios y salud",
+    h1: "Software a medida e inteligencia artificial. para Laboratorios y salud",
     faqs: 4,
   },
   {
@@ -791,7 +850,16 @@ export const PAGINAS: Pagina[] = [
     industria: "Logística",
     title: "Software a medida e IA para logística · Accedra",
     description: "Desarrollo e inteligencia artificial para operaciones logísticas: optimización de rutas, predicción de demanda e integración con TMS y ERP.",
-    h1: "Software a medida e inteligencia artificial.para Logística",
+    h1: "Software a medida e inteligencia artificial. para Logística",
+    faqs: 4,
+  },
+  {
+    ruta: "/soluciones/software-ai/mineria",
+    solucion: "Software & AI",
+    industria: "Minería",
+    title: "Software a medida e IA para operaciones mineras · Accedra",
+    description: "Desarrollo a medida para minería: integración entre sistemas de operación y gestión, tableros de disponibilidad de flota y analítica aplicada al mantenimiento.",
+    h1: "Software a medida e inteligencia artificial. para Minería",
     faqs: 4,
   },
   {
@@ -800,7 +868,16 @@ export const PAGINAS: Pagina[] = [
     industria: "Retail",
     title: "Software a medida e IA para retail · Accedra",
     description: "Desarrollo e inteligencia artificial para comercios: previsión de demanda, reposición automática, atención al cliente e integración con el ERP.",
-    h1: "Software a medida e inteligencia artificial.para Retail",
+    h1: "Software a medida e inteligencia artificial. para Retail",
+    faqs: 4,
+  },
+  {
+    ruta: "/soluciones/software-ai/seguros",
+    solucion: "Software & AI",
+    industria: "Aseguradoras",
+    title: "Software a medida e IA para aseguradoras · Accedra",
+    description: "Desarrollo e inteligencia artificial para seguros: automatización del circuito de siniestros, lectura de documentación y asistentes para el canal.",
+    h1: "Software a medida e inteligencia artificial. para Aseguradoras",
     faqs: 4,
   },
 ]
@@ -841,12 +918,17 @@ export const CASOS: Ruta[] = [
   { path: "/casos/networking/0", titulo: "Red sin interrupciones para el líder logístico" },
   { path: "/casos/networking/1", titulo: "Conectividad crítica para minería, en todo el país" },
   {
+    path: "/casos/finning",
+    titulo: "Conectividad crítica para minería, en todo el país",
+    nota: "alias 307 → /casos/networking/1, para pegar en mails de prospección",
+  },
+  {
     path: "/casos/firma-biometrica/0",
     titulo: "Banco Provincia digitaliza la firma en toda su red de sucursales",
   },
 ]
 
-/** Las 43 URLs del sitemap, en el orden en el que se navegan. */
+/** Las URLs del sitio, en el orden en el que se navegan. */
 export const RUTAS: Ruta[] = [
   { path: "/", titulo: "Accedra | Infraestructura IT y Ciberseguridad para Empresas" },
   ...PAGINAS.map((p) => ({ path: p.ruta, titulo: p.title })),

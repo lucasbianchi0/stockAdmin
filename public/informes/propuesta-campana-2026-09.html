@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Propuesta de campaña · Accedra · Agosto–Septiembre 2026</title>
+<style>
+  @page { size: A4; margin: 14mm 13mm; }
+
+  :root{
+    --ink:#0F1724; --ink-2:#3B4757; --ink-3:#6B7787; --ink-4:#98A2B3;
+    --line:#E4E8EE; --line-2:#F0F3F7;
+    --brand:#1D4ED8; --brand-soft:#EEF3FF; --brand-line:#C7D8FF;
+    --ok:#059669; --ok-soft:#ECFDF5;
+    --warn:#B45309; --warn-soft:#FFFBEB;
+    --bad:#DC2626; --bad-soft:#FEF2F2;
+    --paper:#fff;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:"Inter","Helvetica Neue",Arial,sans-serif;
+    color:var(--ink); background:var(--paper);
+    font-size:9.6pt; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .page{ page-break-after:always; }
+  .page:last-child{ page-break-after:auto; }
+  h1,h2,h3{ margin:0; letter-spacing:-.015em; }
+  h1{ font-size:25pt; line-height:1.1; font-weight:700; }
+  h2{ font-size:14pt; font-weight:700; margin:0 0 3mm; }
+  h3{ font-size:10.5pt; font-weight:700; margin:0 0 1.5mm; }
+  p{ margin:0 0 2.5mm; }
+  strong{ font-weight:650; color:var(--ink); }
+  .eyebrow{ font-size:7pt; font-weight:700; letter-spacing:.16em;
+            text-transform:uppercase; color:var(--ink-4); }
+  .lead{ font-size:11pt; line-height:1.45; color:var(--ink-2); }
+  .muted{ color:var(--ink-3); }
+  .tiny{ font-size:7.6pt; line-height:1.45; color:var(--ink-3); }
+
+  /* ── portada ────────────────────────────────────────────── */
+  .cover{ display:flex; flex-direction:column; height:263mm; }
+  .cover-top{ border-bottom:2.5px solid var(--ink); padding-bottom:5mm; }
+  .cover-mid{ flex:1; display:flex; flex-direction:column; justify-content:center; }
+  .verdict{
+    border-left:3.5px solid var(--brand); background:var(--brand-soft);
+    padding:5mm 6mm; margin:6mm 0;
+  }
+  .verdict p:last-child{ margin-bottom:0; }
+
+  /* ── bloques ────────────────────────────────────────────── */
+  section{ margin-bottom:7mm; }
+  .sec-head{ display:flex; align-items:baseline; gap:3mm;
+             border-bottom:1px solid var(--ink); padding-bottom:1.5mm; margin-bottom:3.5mm; }
+  .sec-head .n{ font-size:8pt; font-weight:700; color:var(--brand); }
+
+  table{ width:100%; border-collapse:collapse; font-size:8.6pt; }
+  th{ text-align:left; font-weight:650; font-size:7pt; letter-spacing:.07em;
+      text-transform:uppercase; color:var(--ink-3);
+      border-bottom:1px solid var(--ink); padding:1.5mm 2mm; }
+  td{ padding:1.6mm 2mm; border-bottom:1px solid var(--line-2); vertical-align:top; }
+  tr:last-child td{ border-bottom:none; }
+  .num{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .total td{ border-top:1.5px solid var(--ink); border-bottom:none; font-weight:700; }
+  .dim td{ color:var(--ink-4); }
+
+  .tag{ display:inline-block; font-size:6.8pt; font-weight:700; letter-spacing:.05em;
+        padding:.6mm 1.6mm; border-radius:2px; white-space:nowrap; }
+  .t-up{ background:var(--ok-soft); color:var(--ok); }
+  .t-dn{ background:var(--bad-soft); color:var(--bad); }
+  .t-fl{ background:var(--line-2); color:var(--ink-3); }
+  .t-wr{ background:var(--warn-soft); color:var(--warn); }
+
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:5mm; }
+  .grid3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:4mm; }
+  .card{ border:1px solid var(--line); border-radius:3px; padding:4mm; }
+  .card.accent{ border-color:var(--brand-line); background:var(--brand-soft); }
+  .kpi{ font-size:19pt; font-weight:700; line-height:1; letter-spacing:-.02em; }
+  .kpi.bad{ color:var(--bad); } .kpi.ok{ color:var(--ok); }
+  .kpi-l{ font-size:7pt; font-weight:700; letter-spacing:.1em;
+          text-transform:uppercase; color:var(--ink-3); margin-bottom:1.5mm; }
+  .kpi-n{ font-size:7.4pt; color:var(--ink-3); margin-top:1.5mm; line-height:1.35; }
+
+  .callout{ border:1px solid var(--line); border-left:3px solid var(--warn);
+            background:var(--warn-soft); padding:3.5mm 4mm; margin:3mm 0; }
+  .callout.bad{ border-left-color:var(--bad); background:var(--bad-soft); }
+  .callout.ok{ border-left-color:var(--ok); background:var(--ok-soft); }
+  .callout p:last-child{ margin-bottom:0; }
+
+  ol,ul{ margin:0 0 2.5mm; padding-left:4.5mm; }
+  li{ margin-bottom:1.2mm; }
+
+  .foot{ border-top:1px solid var(--line); margin-top:4mm; padding-top:2mm; }
+  svg{ display:block; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ PORTADA ══════════════════ -->
+<div class="page cover">
+  <div class="cover-top">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <span class="eyebrow">Accedra IT Solutions · Propuesta de campaña</span>
+      <span class="eyebrow">24 de agosto de 2026</span>
+    </div>
+  </div>
+
+  <div class="cover-mid">
+    <div class="eyebrow" style="margin-bottom:4mm">Google Ads</div>
+    <h1>Campaña<br>agosto – septiembre 2026</h1>
+
+    <div class="verdict">
+      <p>Antes de decidir en qué invertir, medimos <strong>cómo busca la gente cada una de
+      nuestras soluciones</strong>: cuánta gente la busca por mes y —más importante— con qué
+      intención lo hace.</p>
+      <p>El resultado cambió el plan. Hay una solución con demanda enorme y creciendo, dos donde
+      casi nadie busca lo que vendemos, y una donde la demanda existe pero <strong>por un
+      producto distinto del que estábamos ofreciendo</strong>.</p>
+    </div>
+
+    <p class="lead">Este documento analiza las cuatro soluciones, una por una, y cierra con el
+    reparto de presupuesto propuesto y su justificación.</p>
+  </div>
+
+  <div class="grid3" style="margin-top:6mm">
+    <div class="card">
+      <div class="kpi-l">Búsquedas mensuales medidas</div>
+      <div class="kpi">35.870</div>
+      <div class="kpi-n">Sumando las cuatro soluciones, en Argentina</div>
+    </div>
+    <div class="card accent">
+      <div class="kpi-l">Concentradas en</div>
+      <div class="kpi">1</div>
+      <div class="kpi-n">Firma Biométrica se lleva el 96% del volumen</div>
+    </div>
+    <div class="card">
+      <div class="kpi-l">Términos analizados</div>
+      <div class="kpi">1.700+</div>
+      <div class="kpi-n">Entre volumen medido y variantes reales de búsqueda</div>
+    </div>
+  </div>
+
+  <div class="foot tiny">
+    Fuentes: Planificador de Palabras Clave de Google (Argentina, promedio mensual
+    ago 2025 – jul 2026) para los volúmenes, y autocompletado de Google Argentina para el
+    análisis de intención — 1.700+ variantes reales sobre 22 términos semilla.
+    Software &amp; AI queda fuera de este análisis por decisión de alcance.
+  </div>
+</div>
+
+<!-- ══════════════════ MÉTODO ══════════════════ -->
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">00</span><h2>Cómo se midió, y por qué de dos formas</h2></div>
+
+    <p>Un número de búsquedas por sí solo engaña. «Cableado estructurado» puede tener mucho
+    volumen y ser inútil si quien lo escribe es un estudiante buscando un PDF de la norma. Por eso
+    se midieron <strong>dos cosas distintas</strong>:</p>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="kpi-l">1 · Cuánta gente</div>
+        <h3 style="margin-top:1.5mm">Planificador de Google</h3>
+        <p style="font-size:8.8pt">El promedio de búsquedas mensuales de cada término en
+        Argentina, más su variación interanual y el nivel de competencia. Es el dato oficial de
+        Google y el que dice si hay mercado.</p>
+      </div>
+      <div class="card">
+        <div class="kpi-l">2 · Con qué intención</div>
+        <h3 style="margin-top:1.5mm">Autocompletado de Google</h3>
+        <p style="font-size:8.8pt">Cómo termina de escribir la gente cada búsqueda. Si las
+        variantes más frecuentes son «pdf», «curso» y «gratis», detrás de ese volumen no hay
+        clientes: hay estudiantes. Es el dato que evita comprar tráfico caro e inútil.</p>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:4mm">
+      <p><strong>Por qué esto importa en pesos.</strong> El año pasado la cuenta gastó
+      <strong>$224.498 en el término «cableado estructurado» sin generar una sola consulta</strong>.
+      El análisis de intención explica por qué: el 90% de las variantes que la gente escribe
+      alrededor de ese término son «pdf», «curso», «normas y estándares», «libro». Es una búsqueda
+      de estudio, no de compra. Con este método, ese error se detecta <em>antes</em> de gastar.</p>
+    </div>
+
+    <h3 style="margin-top:5mm">Una aclaración sobre los números</h3>
+    <p>A lo largo del documento se distingue entre <strong>volumen medido</strong> —el que devolvió
+    el Planificador— y <strong>volumen a confirmar</strong>, en los términos que el análisis de
+    intención reveló como prometedores pero que todavía no se midieron. Los segundos se marcan
+    explícitamente y no se usan para justificar presupuesto grande, sólo pilotos.</p>
+  </section>
+</div>
+
+<!-- ══════════════════ 1 · FIRMA ══════════════════ -->
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">01</span><h2>Firma Biométrica</h2></div>
+
+    <div class="grid3" style="margin-bottom:4mm">
+      <div class="card accent">
+        <div class="kpi-l">Búsquedas mensuales</div>
+        <div class="kpi">34.580</div>
+        <div class="kpi-n">El 96% de todo el volumen de la cuenta</div>
+      </div>
+      <div class="card">
+        <div class="kpi-l">Crecimiento interanual</div>
+        <div class="kpi ok">+173%</div>
+        <div class="kpi-n">El término principal casi triplicó</div>
+      </div>
+      <div class="card">
+        <div class="kpi-l">Nuestra presencia hoy</div>
+        <div class="kpi bad">&lt; 1%</div>
+        <div class="kpi-n">De cada cien búsquedas aparecemos en menos de una</div>
+      </div>
+    </div>
+
+    <h3>Cómo la busca la gente</h3>
+    <table style="font-size:8.4pt">
+      <thead>
+        <tr><th>Término</th><th class="num">Mensual</th><th class="num">Interanual</th>
+            <th>Competencia</th><th>Qué revela la intención</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--brand-soft)">
+          <td><strong>firma digital</strong></td><td class="num"><strong>33.100</strong></td>
+          <td class="num"><span class="tag t-up">+173%</span></td><td>Media</td>
+          <td>El gran volumen. <strong>Pero contaminado</strong>: entre las variantes más escritas
+              están «gratis», «en pdf», «en word gratis», «ilovepdf»</td></tr>
+        <tr>
+          <td>firma electrónica</td><td class="num">1.300</td>
+          <td class="num"><span class="tag t-fl">0%</span></td><td>Media</td>
+          <td>Misma contaminación: «gratis», «documento pdf», «ejemplos»</td></tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>onboarding digital</strong></td><td class="num">70</td>
+          <td class="num"><span class="tag t-dn">−71%</span></td><td>Media</td>
+          <td><strong>El más limpio de todos.</strong> Sólo 2% de variantes educativas y aparece
+              «onboarding digital para empresas». Nadie escribe esto sin ser una empresa</td></tr>
+        <tr>
+          <td>firma biométrica</td><td class="num">30</td>
+          <td class="num"><span class="tag t-fl">0%</span></td><td>Media</td>
+          <td>«cómo funciona», «qué es», «de bbva» — gente a la que su banco se la pidió</td></tr>
+        <tr>
+          <td>firma electrónica avanzada</td><td class="num">30</td>
+          <td class="num"><span class="tag t-fl">0%</span></td><td>Media</td>
+          <td>Término técnico-legal: quien lo escribe sabe lo que busca</td></tr>
+        <tr>
+          <td>firma digital contratos</td><td class="num">20</td>
+          <td class="num"><span class="tag t-up">+100%</span></td><td>Alta</td>
+          <td>Intención comercial pura, y creciendo</td></tr>
+        <tr>
+          <td>firma digital empresas</td><td class="num">20</td>
+          <td class="num"><span class="tag t-dn">−75%</span></td><td>Media</td>
+          <td>Explícitamente B2B</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout bad" style="margin-top:3mm">
+      <p><strong>El hallazgo que cambia cómo hay que comprar este término.</strong> «firma digital»
+      tiene 33.100 búsquedas mensuales, pero el análisis de las 260 variantes más escritas muestra
+      que la intención dominante es <em>«quiero firmar un documento, gratis, ahora»</em> — una
+      persona con un PDF, no una empresa con un proceso. Comprar ese término en bruto es pagar por
+      gente que nunca va a contratar nada.</p>
+    </div>
+
+    <div class="callout ok">
+      <p><strong>Qué conviene hacer.</strong> Es el motor y se le da el grueso del presupuesto,
+      pero comprado con precisión: <strong>concordancia exacta y de frase</strong> sobre los
+      términos B2B —onboarding digital, firma electrónica avanzada, firma digital contratos, y los
+      términos por industria—, más una lista de negativas que bloquee <code>gratis</code>,
+      <code>pdf</code>, <code>word</code>, <code>ilovepdf</code>, <code>online gratis</code> y
+      <code>curso</code>. Seis grupos de anuncios, uno por industria, cada uno a su propia página.</p>
+    </div>
+  </section>
+</div>
+
+<!-- ══════════════════ 2 · INFRAESTRUCTURA ══════════════════ -->
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">02</span><h2>Infraestructura IT · redes, instalación y equipamiento</h2></div>
+
+    <div class="grid3" style="margin-bottom:4mm">
+      <div class="card">
+        <div class="kpi-l">Búsquedas mensuales medidas</div>
+        <div class="kpi">50</div>
+        <div class="kpi-n">En toda la categoría</div>
+      </div>
+      <div class="card bad" style="border-color:var(--bad-soft)">
+        <div class="kpi-l">Gasto del último año</div>
+        <div class="kpi bad">$224.498</div>
+        <div class="kpi-n">Con cero consultas generadas</div>
+      </div>
+      <div class="card">
+        <div class="kpi-l">Variantes de «cableado» que son de estudio</div>
+        <div class="kpi bad">~90%</div>
+        <div class="kpi-n">pdf, curso, normas, libro, apuntes</div>
+      </div>
+    </div>
+
+    <h3>Cómo la busca la gente</h3>
+    <table style="font-size:8.4pt">
+      <thead>
+        <tr><th>Término</th><th class="num">Mensual</th><th>Qué revela la intención</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--bad-soft)">
+          <td><strong>cableado estructurado</strong></td><td class="num">alto</td>
+          <td><strong>Es una búsqueda de estudio, no de compra.</strong> De 203 variantes
+              analizadas, las más escritas son «pdf», «curso», «normas y estándares pdf», «libro
+              pdf», «curso Furukawa», «curso gratis». Son estudiantes de tecnicatura</td></tr>
+        <tr style="background:var(--bad-soft)">
+          <td><strong>redes / redes para empresas</strong></td><td class="num">—</td>
+          <td><strong>La palabra está quemada en español.</strong> Las variantes reales incluyen
+              «redes sociales para empresas», «redes eléctricas», «redes hidrosanitarias»,
+              «redes de acueducto y alcantarillado» y —literal— «redes para gatos»</td></tr>
+        <tr>
+          <td>soporte técnico empresas</td><td class="num">10</td>
+          <td>Dominado por telcos: «movistar», «claro», «tigo», «entel». Es gente buscando el
+              soporte de <em>su</em> proveedor, no contratando uno</td></tr>
+        <tr>
+          <td>integrador de redes</td><td class="num">—</td>
+          <td>Sólo 12 variantes en todo el autocompletado. <strong>Prácticamente nadie lo
+              escribe</strong></td></tr>
+        <tr>
+          <td>proveedor de servicios informáticos</td><td class="num">—</td>
+          <td>2 variantes. Nadie busca al integrador por su categoría</td></tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>wifi para empresas</strong></td><td class="num">a confirmar</td>
+          <td><strong>El más limpio de la categoría.</strong> «soluciones wifi para empresas»,
+              «wifi mesh», «router wifi para empresas», «antenas», «wifi 6», «empresas para
+              contratar wifi»</td></tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>servidores para empresas</strong></td><td class="num">a confirmar</td>
+          <td>Comercial y limpio: «precios», «pequeñas», «medianas», «grandes», «físicos».
+              Es alguien evaluando una compra</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout bad" style="margin-top:3mm">
+      <p><strong>El hallazgo.</strong> Nadie busca en Google a quién contratar para que le arme la
+      infraestructura. Se busca <strong>el producto puntual</strong> —un wifi, un servidor— o se
+      busca <strong>para estudiar</strong>. La demanda de este servicio existe y es el volumen del
+      negocio, pero no pasa por el buscador: pasa por licitaciones, registros de proveedores y
+      recomendación.</p>
+    </div>
+
+    <div class="callout">
+      <p><strong>Qué conviene hacer.</strong> Presupuesto chico y quirúrgico, sólo sobre los
+      términos-producto con intención comercial —wifi y servidores para empresas—, en concordancia
+      exacta. <strong>No pujar por «cableado estructurado» ni por nada que contenga «redes».</strong>
+      Y una lista de negativas específica que bloquee <code>pdf</code>, <code>curso</code>,
+      <code>normas</code>, <code>sociales</code>, <code>eléctricas</code>, <code>gatos</code>,
+      <code>movistar</code>, <code>claro</code>. El crecimiento de esta línea se busca fuera de
+      Google.</p>
+    </div>
+  </section>
+</div>
+
+<!-- ══════════════════ 3 · SEGURIDAD ══════════════════ -->
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">03</span><h2>Seguridad IT</h2></div>
+
+    <div class="grid3" style="margin-bottom:4mm">
+      <div class="card">
+        <div class="kpi-l">Búsquedas mensuales medidas</div>
+        <div class="kpi">310</div>
+        <div class="kpi-n">Sumando toda la categoría</div>
+      </div>
+      <div class="card">
+        <div class="kpi-l">Competencia</div>
+        <div class="kpi" style="font-size:14pt;line-height:1.2">Alta</div>
+        <div class="kpi-n">La puja más cara del análisis: hasta $8.196</div>
+      </div>
+      <div class="card">
+        <div class="kpi-l">Intención dominante</div>
+        <div class="kpi" style="font-size:14pt;line-height:1.2">Estudiar</div>
+        <div class="kpi-n">Carreras, cursos y certificaciones</div>
+      </div>
+    </div>
+
+    <h3>Cómo la busca la gente</h3>
+    <table style="font-size:8.4pt">
+      <thead>
+        <tr><th>Término</th><th class="num">Mensual</th><th class="num">Interanual</th>
+            <th>Qué revela la intención</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>zero trust</td><td class="num">210</td>
+          <td class="num"><span class="tag t-dn">−19%</span></td>
+          <td>Término técnico. Quien lo escribe sabe lo que busca, pero es un concepto,
+              no un pedido de presupuesto</td></tr>
+        <tr style="background:var(--bad-soft)">
+          <td><strong>ciberseguridad</strong></td><td class="num">50</td>
+          <td class="num"><span class="tag t-dn">−25%</span></td>
+          <td><strong>Dominado por estudiantes.</strong> Entre las variantes más escritas:
+              «licenciatura», «curso», «dónde estudiar gratis», «a distancia gratis», «carrera»</td></tr>
+        <tr style="background:var(--bad-soft)">
+          <td>seguridad informática</td><td class="num">—</td>
+          <td class="num">—</td>
+          <td>Igual o peor: «licenciatura», «carrera gratis», «pdf», «curso». Es una de las
+              categorías más contaminadas por búsqueda educativa en Argentina</td></tr>
+        <tr>
+          <td>ciberseguridad industrial</td><td class="num">40</td>
+          <td class="num"><span class="tag t-up">+150%</span></td>
+          <td>Chico pero <strong>creciendo fuerte</strong> y sin contaminación educativa.
+              Es el nicho OT, que conecta con minería e industria</td></tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>antivirus para empresas</strong></td><td class="num">a confirmar</td>
+          <td class="num">—</td>
+          <td><strong>Limpio y comercial.</strong> «precios», «pequeñas», «grandes», «mejores».
+              Sólo 24 variantes, o sea poco volumen, pero toda la intención es de compra</td></tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>firewall empresarial</strong></td><td class="num">a confirmar</td>
+          <td class="num">—</td>
+          <td>Aparecen «firewall empresarial» y «firewall precio» entre las variantes
+              comerciales</td></tr>
+        <tr>
+          <td>seguridad OT</td><td class="num">10</td>
+          <td class="num"><span class="tag t-fl">0%</span></td>
+          <td>Volumen mínimo, pero la puja llega a $27.212 — señal de que quien lo busca vale
+              mucho</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout bad" style="margin-top:3mm">
+      <p><strong>El hallazgo.</strong> Seguridad es la categoría con peor relación entre volumen y
+      calidad: poco mercado real, competencia Alta y la mayor parte del interés viene de gente que
+      quiere <em>estudiar</em> ciberseguridad, no contratarla. Es la combinación más cara posible.</p>
+    </div>
+
+    <div class="callout">
+      <p><strong>Qué conviene hacer.</strong> Presupuesto de contención, no de crecimiento. Sólo
+      términos-producto —antivirus y firewall para empresas— y el nicho de
+      <strong>ciberseguridad industrial</strong>, que es chico pero creció 150% y es el único con
+      intención limpia. Negativas obligatorias sobre <code>curso</code>, <code>carrera</code>,
+      <code>licenciatura</code>, <code>estudiar</code>, <code>gratis</code>, <code>pdf</code>.</p>
+    </div>
+  </section>
+</div>
+
+<!-- ══════════════════ 4 · CONSULTORÍA ══════════════════ -->
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">04</span><h2>Consultoría Microsoft</h2></div>
+
+    <div class="grid3" style="margin-bottom:4mm">
+      <div class="card">
+        <div class="kpi-l">Búsquedas mensuales medidas</div>
+        <div class="kpi">930</div>
+        <div class="kpi-n">Gestión documental y digitalización</div>
+      </div>
+      <div class="card accent">
+        <div class="kpi-l">Competencia</div>
+        <div class="kpi ok" style="font-size:14pt;line-height:1.2">Baja</div>
+        <div class="kpi-n">La única Baja de todo el análisis</div>
+      </div>
+      <div class="card">
+        <div class="kpi-l">Puja tope</div>
+        <div class="kpi">$582</div>
+        <div class="kpi-n">Contra $1.174 de zero trust</div>
+      </div>
+    </div>
+
+    <h3>Cómo la busca la gente</h3>
+    <table style="font-size:8.4pt">
+      <thead>
+        <tr><th>Término</th><th class="num">Mensual</th><th>Qué revela la intención</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>gestión documental</td><td class="num">720</td>
+          <td>Volumen decente y competencia <strong>Baja</strong>, pero el autocompletado muestra
+              «curso SENA», «libro pdf», «curso gratis» — hay contaminación educativa,
+              buena parte colombiana</td></tr>
+        <tr>
+          <td>digitalización de documentos</td><td class="num">210</td>
+          <td>Más limpio que el anterior y con intención de servicio</td></tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>power bi licencias / precios</strong></td><td class="num">a confirmar</td>
+          <td><strong>Intención de compra pura.</strong> Entre las variantes más escritas:
+              «licencias», «licencia pro», «precios», «pro precio»</td></tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>office 365 empresas · precio</strong></td><td class="num">a confirmar</td>
+          <td>«empresas», «precio», «basic precio». Alguien evaluando comprar licencias
+              para su empresa</td></tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>microsoft 365 empresas</strong></td><td class="num">a confirmar</td>
+          <td>99 variantes, casi todas comerciales: «básico», «estándar», «premium»,
+              «login». Gente decidiendo qué plan contratar</td></tr>
+        <tr>
+          <td>sharepoint</td><td class="num">a confirmar</td>
+          <td>«licencia», «precio» entre las comerciales; «qué es» y «cómo funciona» entre
+              las informativas</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout ok" style="margin-top:3mm">
+      <p><strong>La sorpresa del análisis, y la oportunidad más clara.</strong> La demanda real en
+      el ecosistema Microsoft <strong>no es de consultoría: es de licencias</strong>. La gente
+      busca «power bi licencias», «office 365 empresas precio», «microsoft 365 empresas estándar».
+      Están decidiendo qué comprar y cuánto cuesta.</p>
+      <p>Eso encaja exactamente con el negocio de aprovisionamiento que Accedra ya tiene, y hoy
+      <strong>no está siendo ofrecido en ningún lado del sitio ni de las campañas</strong>. Es
+      demanda comercial limpia, con competencia Baja, sobre un servicio que la empresa ya presta.</p>
+    </div>
+
+    <div class="callout">
+      <p><strong>Qué conviene hacer.</strong> Dos grupos: uno sobre gestión documental y
+      digitalización, que ya tiene volumen medido y competencia Baja; y un <strong>piloto sobre
+      licenciamiento Microsoft</strong>, que es la oportunidad nueva. El piloto arranca chico
+      porque su volumen todavía no está medido — es lo primero que hay que confirmar.</p>
+    </div>
+  </section>
+</div>
+
+<!-- ══════════════════ DESGLOSE ══════════════════ -->
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">05</span><h2>El desglose, campaña por campaña</h2></div>
+
+    <table style="font-size:8.1pt">
+      <thead>
+        <tr><th style="width:16%">Campaña</th><th style="width:20%">Grupos</th>
+            <th style="width:26%">Con qué búsquedas</th><th>A qué página llega</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--brand-soft)">
+          <td><strong>Firma Biométrica</strong><br><span class="tiny">$46.000 · 46%</span></td>
+          <td>6, uno por industria:<br>bancos · aseguradoras ·<br>jurídicos · salud ·<br>logística · retail</td>
+          <td><code>onboarding digital</code> · <code>firma electrónica avanzada</code> ·
+              <code>firma digital contratos</code> · <code>firma digital remitos</code> ·
+              <code>Ley 25.506 firma digital</code> · <code>consentimiento informado digital</code></td>
+          <td>Una landing propia por industria:<br>
+              <code>/soluciones/firma-biometrica/{industria}</code><br>
+              <span class="tiny">Las seis ya están construidas, con su marco normativo y sus
+              preguntas frecuentes</span></td></tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>Aprovisionamiento IT</strong><br><span class="tiny">$34.000 · 34%</span></td>
+          <td>4, por producto:<br>licencias Microsoft ·<br>Power BI ·<br>servidores y equipamiento ·<br>red y wifi</td>
+          <td><code>microsoft 365 empresas</code> · <code>office 365 empresas precio</code> ·
+              <code>power bi licencias</code> · <code>servidores para empresas</code> ·
+              <code>soluciones wifi para empresas</code> · <code>access point empresas</code></td>
+          <td><code>/soluciones/consultoria</code> y<br><code>/soluciones/networking</code><br>
+              <span class="tiny">El anuncio no compite por precio de licencia — compite por
+              «te lo proveo, te lo implemento y te lo dejo andando»</span></td></tr>
+        <tr>
+          <td><strong>Seguridad IT</strong><br><span class="tiny">$8.000 · 8%</span></td>
+          <td>2:<br>producto ·<br>industrial</td>
+          <td><code>antivirus para empresas</code> · <code>firewall empresarial</code> ·
+              <code>ciberseguridad industrial</code></td>
+          <td><code>/soluciones/seguridad</code> y su landing de industria</td></tr>
+        <tr>
+          <td><strong>Marca</strong><br><span class="tiny">$2.000 · 2%</span></td>
+          <td>1, sólo exacta</td>
+          <td><code>accedra</code> · <code>accedra it</code> · <code>accedra sa</code></td>
+          <td>Home</td></tr>
+        <tr>
+          <td><strong>Descubrimiento</strong><br><span class="tiny">$10.000 · 10%</span></td>
+          <td>Los términos «a confirmar»<br>de este informe</td>
+          <td>Los de aprovisionamiento y seguridad que nunca se pujaron</td>
+          <td>Según el término</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout" style="margin-top:3mm">
+      <p><strong>Qué es «Descubrimiento» y por qué es una línea aparte.</strong> Los términos de
+      aprovisionamiento nunca se pujaron en esta cuenta, así que <strong>no sabemos cuánto cuesta
+      su clic ni cuánta gente los busca</strong> — el Planificador todavía no los midió. Ese
+      presupuesto no compra sólo visitas: <strong>compra el dato</strong>. Es la única forma de
+      conocer el costo real de un término: pujarlo un mes y mirar qué pasó.</p>
+      <p>Existe como línea separada para que quede explícito que <strong>ese dinero puede no
+      producir consultas y aun así haber cumplido su función.</strong> En octubre desaparece: lo
+      que funcione pasa a su campaña, lo que no, se apaga.</p>
+    </div>
+
+    <div class="callout ok">
+      <p><strong>Minería no tiene campaña propia acá, y es a propósito.</strong> Medimos los
+      términos del sector —«conectividad minera», «servicios IT minería»— y no registran volumen.
+      También medimos los de producto —«starlink», «internet satelital»— y resultaron ser
+      búsquedas de <em>hogar</em>: entre las variantes más escritas están «hogar precio» y
+      «para auto». No hay demanda minera que comprar en Google.</p>
+      <p><strong>Entra por geografía, que no cuesta un peso extra:</strong> las campañas de Firma y
+      Aprovisionamiento se segmentan incluyendo San Juan, Catamarca, Salta, Jujuy y Santa Cruz
+      además de CABA y AMBA. Las mineras y sus contratistas también compran licencias, servidores
+      y firma digital — sólo que no lo buscan diciendo «minería». La apuesta fuerte del sector va
+      por LinkedIn, que es una inversión aparte de este presupuesto.</p>
+    </div>
+  </section>
+</div>
+
+<!-- ══════════════════ NÚMEROS ══════════════════ -->
+<div class="page">
+  <section>
+    <div class="sec-head"><span class="n">06</span><h2>Qué genera cada inversión</h2></div>
+
+    <p>Estimado con los costos por clic que devolvió el Planificador para cada término y el
+    histórico real de la cuenta. Son proyecciones, no promesas — el primer mes las confirma.</p>
+
+    <table style="font-size:8pt">
+      <thead>
+        <tr><th>Campaña</th><th class="num">Inversión</th><th class="num">Costo por<br>clic est.</th>
+            <th class="num">Visitas<br>al sitio</th><th class="num">Veces que<br>nos ven</th>
+            <th>Base del cálculo</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--brand-soft)">
+          <td><strong>Firma Biométrica</strong></td>
+          <td class="num">$46.000</td><td class="num">$500</td>
+          <td class="num"><strong>~92</strong></td><td class="num">~1.530</td>
+          <td>Pujas medidas de $236 a $652 en «firma digital» y de $384 a $1.694 en
+              «firma digital contratos»</td></tr>
+        <tr style="background:var(--ok-soft)">
+          <td><strong>Aprovisionamiento IT</strong></td>
+          <td class="num">$34.000</td><td class="num">$700</td>
+          <td class="num"><strong>~49</strong></td><td class="num">~970</td>
+          <td>Sin medir. Se estima alto porque se compite contra Microsoft y los
+              distribuidores grandes</td></tr>
+        <tr>
+          <td><strong>Seguridad IT</strong></td>
+          <td class="num">$8.000</td><td class="num">$1.200</td>
+          <td class="num">~7</td><td class="num">~130</td>
+          <td>Es la categoría más cara: la puja arranca en $1.006 y llega a $8.196</td></tr>
+        <tr>
+          <td><strong>Marca</strong></td>
+          <td class="num">$2.000</td><td class="num">$200</td>
+          <td class="num">~10</td><td class="num">~40</td>
+          <td>Dato real de la cuenta: $17.473 anuales por 83 clics</td></tr>
+        <tr>
+          <td><strong>Descubrimiento</strong></td>
+          <td class="num">$10.000</td><td class="num">$700</td>
+          <td class="num">~14</td><td class="num">~360</td>
+          <td>Términos nuevos, con menor efectividad hasta afinarlos</td></tr>
+        <tr class="total">
+          <td>Total mensual</td><td class="num">$100.000</td><td class="num">$583</td>
+          <td class="num">~172</td><td class="num">~3.000</td><td></td></tr>
+      </tbody>
+    </table>
+    <p class="tiny" style="margin-top:2mm">«Veces que nos ven» son impresiones: cuántas veces
+    aparece el anuncio en pantalla, se haga clic o no.</p>
+
+    <div class="callout bad" style="margin-top:4mm">
+      <p><strong>El número que hay que entender antes de aprobar esto.</strong></p>
+      <p>Con $100.000 mensuales vamos a comprar <strong>unas 172 visitas al mes</strong>.
+      El año pasado, con $59.356 mensuales, la cuenta compraba <strong>177</strong>.
+      Prácticamente las mismas.</p>
+      <p><strong>No estamos comprando más gente: estamos comprando gente distinta.</strong> Por eso
+      el costo por clic sube de $336 a $583. Ese salto no es un problema — es exactamente el
+      objetivo. Los clics de $336 eran de gente buscando «gde», un PDF gratis o un curso de
+      cableado. Los de $583 son de alguien que escribió «firma digital para remitos» o
+      «microsoft 365 empresas estándar».</p>
+      <p>Si al mes que viene alguien ve «menos clics y más caros», <strong>eso es la campaña
+      funcionando</strong>, no fallando.</p>
+    </div>
+
+    <div class="grid3" style="margin-top:3mm">
+      <div class="card">
+        <div class="kpi-l">Visitas al mes</div>
+        <div class="kpi">~172</div>
+        <div class="kpi-n">Casi las mismas que hoy, de gente distinta</div>
+      </div>
+      <div class="card accent">
+        <div class="kpi-l">Consultas esperadas</div>
+        <div class="kpi ok">5–7</div>
+        <div class="kpi-n">A una conversión del 3–4%. Hoy: 0 desde el sitio</div>
+      </div>
+      <div class="card">
+        <div class="kpi-l">Costo por consulta</div>
+        <div class="kpi">$14.600<br><span style="font-size:11pt">–$19.400</span></div>
+        <div class="kpi-n">Contra $110.595 de la campaña de cableado</div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <p><strong>Sobre invertir más de $100.000.</strong> Se puede y probablemente convenga, pero
+      recién en octubre: hoy el 34% del presupuesto va a términos cuyo volumen real no conocemos, y
+      escalarlos antes de medirlos sería repetir el error que costó $224.498.
+      <strong>Si aprovisionamiento responde, el aumento va casi entero ahí.</strong></p>
+    </div>
+
+    <div class="callout ok">
+      <p><strong>Cómo se juzga esta campaña el 24 de septiembre.</strong> No por cuántos clientes
+      trajo —el ciclo de venta es de 3 a 6 meses y prometerlo sería deshonesto— sino por el
+      <strong>porcentaje del gasto que va a búsquedas sin consulta: hoy 98,2%, meta por debajo del
+      40%</strong>. Es el único indicador que depende enteramente de nuestras decisiones y que
+      puede moverse en treinta días.</p>
+    </div>
+  </section>
+</div>
+
+</body>
+
+</html>

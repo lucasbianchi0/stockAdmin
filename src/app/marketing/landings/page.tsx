@@ -137,13 +137,14 @@ function Portada() {
         </code>{" "}
         que casi nadie tiene todavía. El home en mobile ya se resolvió: pasó de 60 a 87 al aligerar
         el video del hero. El hueco real que queda es de otra naturaleza: la ficha de Google
-        Business, que no existe.
+        Business existe y es el único canal que efectivamente convirtió el año pasado, pero
+        nadie la trabaja.
       </p>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Cifra valor={String(TOTAL_URLS)} label="URLs indexables" />
-        <Cifra valor="30" label="Landings por industria" />
-        <Cifra valor="120" label="Preguntas con respuesta" />
+        <Cifra valor={String(PAGINAS.filter((p) => p.industria).length)} label="Landings por industria" />
+        <Cifra valor={String(PAGINAS.reduce((a, p) => a + p.faqs, 0))} label="Preguntas con respuesta" />
         <Cifra valor="100" label="SEO en Lighthouse" tono="ok" />
       </div>
     </div>
@@ -327,7 +328,7 @@ function Arquitectura() {
     <Section
       num="01"
       titulo="Cómo está armado el sitio"
-      bajada="Cinco soluciones cruzadas con seis industrias dan 30 landings. Cada una es el destino de un grupo de anuncios, y ese 1:1:1 es lo que hace que el informe mensual se arme solo."
+      bajada={`Cinco soluciones cruzadas con ${INDUSTRIAS.length} industrias dan ${SOLUCIONES.length * INDUSTRIAS.length} landings. Cada una es el destino de un grupo de anuncios, y ese 1:1:1 es lo que hace que el informe mensual se arme solo.`}
     >
       <div className="space-y-4">
         <Panel>
@@ -353,7 +354,7 @@ function Arquitectura() {
         <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
           <Panel className="overflow-hidden p-0">
             <p className="eyebrow border-b border-line px-5 py-3">
-              La matriz · las 30 landings existen
+              {`La matriz · las ${SOLUCIONES.length * INDUSTRIAS.length} landings existen`}
             </p>
             <div className="overflow-x-auto">
               <table className="w-full border-separate border-spacing-0 text-[11.5px]">
@@ -777,7 +778,7 @@ function Inventario() {
   return (
     <Section
       num="05"
-      titulo="Inventario · las 35 páginas, con su texto real"
+      titulo={`Inventario · las ${PAGINAS.length} páginas, con su texto real`}
       bajada={`El title y la descripción que devuelve cada URL hoy. El contador marca en ámbar lo que Google va a cortar: ${LIMITES.title} caracteres el título, ${LIMITES.description} la descripción.`}
     >
       <Panel className="overflow-hidden p-0">
