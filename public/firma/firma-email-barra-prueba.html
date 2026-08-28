@@ -1,0 +1,101 @@
+<!--
+  VERSION DE PRUEBA - no es la definitiva.
+  El logo de Accedra va embebido en el propio HTML (base64) porque el archivo
+  accedra-firma-email.png todavia no esta desplegado en el sitio. Sirve para
+  probar hoy en Gmail: al pegar, Gmail sube la imagen a su propio servidor.
+  Cuando el sitio este desplegado, usa firma-email-barra.html, que apunta a la
+  URL real y pesa 5 KB menos.
+-->
+<!--
+  Firma de correo - ACCEDRA S.A.  |  variante BARRA
+  ================================================================
+  Misma informacion que la variante editorial, otra estructura: un filete
+  vertical de marca ancla todo el bloque por la izquierda y el contacto se
+  comprime en tres renglones. Ocupa menos alto, que es lo que se agradece
+  en una cadena de respuestas larga.
+
+  COMO SE USA: abrir en el navegador, Cmd+A, Cmd+C, pegar en Gmail/Outlook.
+  QUE SE EDITA: solo las lineas marcadas con la palabra EDITAR.
+
+  OJO: no escribas etiquetas ni la secuencia de cierre de comentario aca
+  adentro, o todo este texto termina impreso dentro de la firma.
+================================================================
+-->
+
+<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;width:560px;max-width:560px;font-family:'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background-color:#ffffff;">
+
+  <tr>
+    <td style="padding:0;">
+      <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;">
+        <tr>
+
+          <!-- El ancla: 2px de azul de marca corriendo por toda la altura del
+               bloque. Es el unico elemento decorativo de la firma, y por eso
+               puede permitirse ser el acento. Va como celda con background y
+               ancho fijo, no como border-left, porque Outlook redondea los
+               bordes finos y a veces los pierde. -->
+          <td width="2" style="width:2px;background-color:#2B56D4;font-size:0;line-height:0;">&nbsp;</td>
+
+          <td style="padding:1px 0 1px 18px;">
+
+            <img src="data:image/png;base64,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" alt="ACCEDRA" width="126" height="19" style="display:block;width:126px;height:19px;border:0;outline:none;text-decoration:none;">
+
+            <div style="margin-top:14px;font-size:16px;line-height:1.25;font-weight:600;color:#0D1F3A;letter-spacing:-0.3px;">
+              Carlos Bianchi <!-- EDITAR -->
+            </div>
+            <div style="margin-top:3px;font-size:12px;line-height:1.4;letter-spacing:0.3px;color:#7A8699;">
+              Director Comercial <!-- EDITAR -->
+              <span style="color:#C6CEDA;">&nbsp;·&nbsp;</span>
+              Infraestructura IT &amp; Ciberseguridad
+            </div>
+
+            <div style="margin-top:13px;font-size:12.5px;line-height:1.9;color:#0D1F3A;">
+              <a href="mailto:carlosbianchi@accedra.com.ar" style="color:#2B56D4;text-decoration:none;font-weight:500;">carlosbianchi@accedra.com.ar</a><!-- EDITAR -->
+              <br>
+              <a href="tel:+5491166202809" style="color:#0D1F3A;text-decoration:none;">+54 9 11 6620-2809</a><!-- EDITAR -->
+              <span style="color:#C6CEDA;">&nbsp;·&nbsp;</span>
+              <a href="tel:+541153659887" style="color:#0D1F3A;text-decoration:none;">+54 11 5365-9887</a>
+              <br>
+              <span style="color:#7A8699;">Irala 1950, 2° piso · C1276 · CABA</span>
+              <span style="color:#C6CEDA;">&nbsp;·&nbsp;</span>
+              <a href="https://www.accedra.com.ar" style="color:#2B56D4;text-decoration:none;font-weight:600;">accedra.com.ar</a>
+            </div>
+
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td style="padding:20px 0 0 0;">
+      <table cellpadding="0" cellspacing="0" border="0" role="presentation" width="560" style="border-collapse:collapse;width:560px;">
+        <tr><td height="1" style="height:1px;line-height:1px;font-size:0;background-color:#E5EAF2;">&nbsp;</td></tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:15px 0 0 20px;">
+            <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;">
+              <tr>
+                <td valign="middle" height="14" style="height:14px;padding:0 16px 0 0;"><img src="https://www.accedra.com.ar/logos/cisco-logo-blue-2016.png" alt="Cisco" width="25" height="13" style="display:block;width:25px;height:13px;border:0;"></td>
+                <td valign="middle" height="14" style="height:14px;padding:0 16px 0 0;"><img src="https://www.accedra.com.ar/logos/microsoft-logo-2012.png" alt="Microsoft" width="58" height="13" style="display:block;width:58px;height:13px;border:0;"></td>
+                <td valign="middle" height="14" style="height:14px;padding:0 16px 0 0;"><img src="https://www.accedra.com.ar/logos/palo-alto-networks-logo.png" alt="Palo Alto Networks" width="38" height="13" style="display:block;width:38px;height:13px;border:0;"></td>
+                <td valign="middle" height="14" style="height:14px;padding:0 16px 0 0;"><img src="https://www.accedra.com.ar/logos/hpe-aruba-networking-logo.png" alt="HPE Aruba Networking" width="57" height="13" style="display:block;width:57px;height:13px;border:0;"></td>
+                <td valign="middle" height="14" style="height:14px;padding:0 16px 0 0;"><img src="https://www.accedra.com.ar/logos/nutanix-logo-charcoal-gray-digital.png" alt="Nutanix" width="58" height="7" style="display:block;width:58px;height:7px;border:0;"></td>
+                <td valign="middle" height="14" style="height:14px;padding:0;"><img src="https://www.accedra.com.ar/logos/check-point-logo-2022.png" alt="Check Point" width="27" height="13" style="display:block;width:27px;height:13px;border:0;"></td>
+              </tr>
+              <tr><td colspan="6" height="11" style="height:11px;line-height:11px;font-size:0;">&nbsp;</td></tr>
+              <tr>
+                <td valign="middle" height="14" style="height:14px;padding:0 16px 0 0;"><img src="https://www.accedra.com.ar/logos/apc-by-schneider-electric.png" alt="APC by Schneider Electric" width="26" height="13" style="display:block;width:26px;height:13px;border:0;"></td>
+                <td valign="middle" height="14" style="height:14px;padding:0 16px 0 0;"><img src="https://www.accedra.com.ar/logos/dahua-technology-logo.png" alt="Dahua Technology" width="42" height="13" style="display:block;width:42px;height:13px;border:0;"></td>
+                <td valign="middle" height="14" style="height:14px;padding:0 16px 0 0;"><img src="https://www.accedra.com.ar/logos/hikvision-logo.png" alt="Hikvision" width="58" height="8" style="display:block;width:58px;height:8px;border:0;"></td>
+                <td valign="middle" height="14" style="height:14px;padding:0 16px 0 0;"><img src="https://www.accedra.com.ar/logos/commscope-logo.png" alt="CommScope" width="58" height="8" style="display:block;width:58px;height:8px;border:0;"></td>
+                <td valign="middle" height="14" style="height:14px;padding:0 16px 0 0;"><img src="https://www.accedra.com.ar/logos/pure-storage-vector-logo.png" alt="Pure Storage" width="58" height="10" style="display:block;width:58px;height:10px;border:0;"></td>
+                <td valign="middle" height="14" style="height:14px;padding:0;"><img src="https://www.accedra.com.ar/logos/wacom-logo-svg.png" alt="Wacom" width="58" height="10" style="display:block;width:58px;height:10px;border:0;"></td>
+              </tr>
+            </table>
+    </td>
+  </tr>
+
+</table>
