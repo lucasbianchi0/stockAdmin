@@ -6,6 +6,7 @@ import {
   Check,
   Copy,
   Download,
+  Eye,
   Loader2,
   Trash2,
   X,
@@ -16,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { VistaPrevia } from "@/components/contenido/vista-previa"
 import {
   BANCO_LABEL,
   CAMPOS_EDITABLES,
@@ -71,6 +73,7 @@ export function PiezaBancoDialog({
   const [descartando, setDescartando] = useState(false)
   const [fecha, setFecha] = useState("")
   const [copiado, setCopiado] = useState<string | null>(null)
+  const [previa, setPrevia] = useState(false)
 
   const piezaId = pieza?.id ?? null
 
@@ -97,10 +100,16 @@ export function PiezaBancoDialog({
   }, [piezaId])
 
   useEffect(() => {
+    // Con la previa abierta, Escape es de ella y no del diálogo. Sin este
+    // guardia los dos manejadores escuchan en `window` a la vez y una sola tecla
+    // cierra las dos capas: el usuario quería volver al copy y aparece en el
+    // banco, con la edición a medio hacer fuera de la vista.
+    if (previa) return
+
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCerrar()
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onCerrar])
+  }, [onCerrar, previa])
 
   const copiar = useCallback(async (clave: string, texto: string) => {
     if (!texto.trim()) return
@@ -322,6 +331,22 @@ export function PiezaBancoDialog({
             Descartar
           </Button>
 
+          {/* Cómo se ve publicada, con el copy que está en pantalla AHORA —el
+              borrador, no lo guardado—. Es lo que hace útil el botón: se edita
+              el caption, se mira cómo corta LinkedIn a los 140 caracteres, se
+              vuelve a editar. Con la versión guardada habría que guardar para
+              ver, que es el paso que hace que nadie mire. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setPrevia(true)}
+            disabled={!pieza.contenido}
+            title={pieza.contenido ? undefined : "Todavía no tiene copy que mostrar"}
+          >
+            <Eye />
+            Ver publicación
+          </Button>
+
           <div className="flex flex-wrap items-center gap-2">
             <label htmlFor="fecha-publicacion" className="text-[11.5px] text-ink-muted">
               Publicar el
@@ -360,6 +385,15 @@ export function PiezaBancoDialog({
           </div>
         </footer>
       </div>
+
+      {previa && pieza.contenido && (
+        <VistaPrevia
+          canal={pieza.canal}
+          contenido={{ ...pieza.contenido, ...borrador }}
+          imagen={pieza.imagenUrl}
+          onCerrar={() => setPrevia(false)}
+        />
+      )}
     </div>
   )
 }
