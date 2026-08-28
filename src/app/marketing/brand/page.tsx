@@ -1,7 +1,9 @@
 import type React from "react"
+import Image from "next/image"
 import {
   Ban,
   Check,
+  Download,
   ExternalLink,
   Minus,
   X,
@@ -9,6 +11,7 @@ import {
 
 import { PageHeader } from "@/components/ui/page-header"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   BrandNav,
   ColorChip,
@@ -43,6 +46,13 @@ import {
   TIPOGRAFIA,
   TONO,
 } from "@/lib/brand-kit"
+import {
+  MEDIDA_PORTADA,
+  PORTADAS_LINKEDIN,
+  promptPortada,
+  REGLAS_PORTADA,
+  ZONAS_PORTADA,
+} from "@/lib/brand-portadas"
 
 /**
  * Brand Kit de Accedra.
@@ -80,6 +90,7 @@ const NAV: NavGrupo[] = [
       { id: "tipografia", label: "Tipografía" },
       { id: "fotografia", label: "Fotografía e iconos" },
       { id: "composicion", label: "Sistema de piezas" },
+      { id: "portadas-linkedin", label: "Portadas LinkedIn" },
     ],
   },
   {
@@ -134,6 +145,7 @@ export default function BrandKitPage() {
           <Tipografia />
           <Fotografia />
           <Composicion />
+          <PortadasLinkedIn />
           <Personas />
           <Servicios />
           <PruebaSocial />
@@ -688,13 +700,111 @@ function Composicion() {
   )
 }
 
-/* ── 12 · Personas ────────────────────────────────────────────────────────── */
+/* ── 12 · Portadas de LinkedIn ────────────────────────────────────────────── */
+
+/**
+ * Las tres portadas ya generadas, no un generador.
+ *
+ * Una portada de perfil la sube una persona una vez y le queda puesta durante
+ * años. Si cada quien apretara un botón y se llevara la suya, en seis meses el
+ * equipo tendría quince banners distintos — que es exactamente el problema que
+ * este kit existe para evitar. Acá se elige entre tres archivos versionados y se
+ * baja el elegido. El prompt está a la vista igual, para poder regenerarlos con
+ * `scripts/portadas-linkedin.mjs` cuando la marca cambie.
+ */
+function PortadasLinkedIn() {
+  return (
+    <Section
+      id="portadas-linkedin"
+      num="12"
+      titulo="Portadas de LinkedIn"
+      bajada={`Tres modelos del mismo sistema para el perfil de cada persona del equipo, en ${MEDIDA_PORTADA.ancho} × ${MEDIDA_PORTADA.alto} px y con el logotipo oficial ya compuesto. Se baja una y se sube tal cual.`}
+    >
+      <div className="space-y-6">
+        {PORTADAS_LINKEDIN.map((portada) => (
+          <div key={portada.id} className="space-y-2">
+            <figure className="overflow-hidden rounded-xl border border-line bg-surface shadow-e1">
+              {/* La proporción es la real: una portada que se previsualiza en
+                  otro alto no muestra lo único que importa acá, que es cuánto
+                  entra en una banda tan baja. */}
+              <div className="relative">
+                <Image
+                  src={portada.archivo}
+                  alt={`Portada de LinkedIn — ${portada.nombre}`}
+                  width={MEDIDA_PORTADA.ancho}
+                  height={MEDIDA_PORTADA.alto}
+                  className="block w-full"
+                  unoptimized
+                />
+                {/* Dónde cae la foto de perfil. Es la mitad del trabajo de esta
+                    sección: sin la marca, cualquiera elige mirando una imagen
+                    que LinkedIn le va a tapar. */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute left-[6%] top-[38%] aspect-square w-[13%] rounded-full border border-dashed border-white/35"
+                />
+              </div>
+
+              <figcaption className="flex flex-wrap items-start justify-between gap-3 border-t border-line px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-ink">{portada.nombre}</p>
+                  <p className="mt-0.5 max-w-xl text-[11.5px] leading-relaxed text-ink-muted">
+                    {portada.cuando}
+                  </p>
+                </div>
+                <Button asChild variant="outline" size="xs">
+                  <a href={portada.archivo} download={portada.archivo.split("/").pop()}>
+                    <Download />
+                    JPG
+                  </a>
+                </Button>
+              </figcaption>
+            </figure>
+
+            <PromptCard
+              nombre={`Prompt · ${portada.nombre}`}
+              cuando="El texto completo con el que se generó. Se regenera con scripts/portadas-linkedin.mjs."
+              texto={promptPortada(portada)}
+            />
+          </div>
+        ))}
+
+        <Panel>
+          <p className="eyebrow mb-3">Zonas que LinkedIn tapa</p>
+          <ul className="space-y-2">
+            {ZONAS_PORTADA.map((z) => (
+              <li key={z.zona} className="flex gap-2.5 text-[12.5px] leading-[1.6]">
+                <Ban className="mt-[3px] h-3.5 w-3.5 shrink-0 text-danger-text" strokeWidth={2.4} />
+                <span className="text-ink-secondary">
+                  <span className="font-medium text-ink">{z.zona}.</span> {z.porque}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Panel>
+            <p className="eyebrow mb-3">Se hace</p>
+            <Lista items={REGLAS_PORTADA.si} tono="si" />
+          </Panel>
+          <Panel>
+            <p className="eyebrow mb-3">No se hace</p>
+            <Lista items={REGLAS_PORTADA.no} tono="no" />
+          </Panel>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+/* ── 13 · Personas ────────────────────────────────────────────────────────── */
 
 function Personas() {
   return (
     <Section
       id="personas"
-      num="12"
+      num="13"
       titulo="Buyer personas"
       bajada="Tres personas, no una. En una venta B2B de infraestructura casi nunca decide quien la sufre, y quien la sufre casi nunca firma. Los dolores y las objeciones están tomados de los textos de las landings, que son los que ya se validaron contra clientes reales."
     >
@@ -741,13 +851,13 @@ function Personas() {
   )
 }
 
-/* ── 13 · Servicios ───────────────────────────────────────────────────────── */
+/* ── 14 · Servicios ───────────────────────────────────────────────────────── */
 
 function Servicios() {
   return (
     <Section
       id="servicios"
-      num="13"
+      num="14"
       titulo="Catálogo de servicios"
       bajada="El nombre canónico y la descripción aprobada de cada línea. Sin esto, cada post y cada landing inventa su forma de nombrar lo mismo — y son estas cinco soluciones cruzadas con seis industrias las que arman las 30 páginas del sitio."
     >
@@ -793,13 +903,13 @@ function Servicios() {
   )
 }
 
-/* ── 14 · Prueba social ───────────────────────────────────────────────────── */
+/* ── 15 · Prueba social ───────────────────────────────────────────────────── */
 
 function PruebaSocial() {
   return (
     <Section
       id="prueba-social"
-      num="14"
+      num="15"
       titulo="Prueba social"
       bajada="Los nombres que se pueden mencionar y con qué respaldo. Todo lo que está acá ya figura públicamente en accedra.com.ar: cualquier cliente que no esté en esta lista necesita autorización escrita antes de aparecer en una pieza."
     >
@@ -844,13 +954,13 @@ function PruebaSocial() {
   )
 }
 
-/* ── 15 · Casos ───────────────────────────────────────────────────────────── */
+/* ── 16 · Casos ───────────────────────────────────────────────────────────── */
 
 function Casos() {
   return (
     <Section
       id="casos"
-      num="15"
+      num="16"
       titulo="Casos de éxito"
       bajada="Los tres casos publicables, con sus métricas verificables. Es el activo más fuerte que tiene la marca: un número con nombre propio convence más que cualquier eslogan. Las cifras de acá son las únicas que se pueden publicar."
     >
@@ -897,7 +1007,7 @@ function Casos() {
   )
 }
 
-/* ── 16 · Canales ─────────────────────────────────────────────────────────── */
+/* ── 17 · Canales ─────────────────────────────────────────────────────────── */
 
 const TONO_CANAL = {
   prioritario: "brand",
@@ -911,7 +1021,7 @@ function Canales() {
   return (
     <Section
       id="canales"
-      num="16"
+      num="17"
       titulo="Canales oficiales"
       bajada="Dónde vive la marca y qué rol cumple cada canal. Suena administrativo hasta que aparecen dos domicilios distintos entre la web y LinkedIn: una lista única es lo que lo previene."
     >
@@ -945,7 +1055,7 @@ function Canales() {
   )
 }
 
-/* ── 17 · Ficha ───────────────────────────────────────────────────────────── */
+/* ── 18 · Ficha ───────────────────────────────────────────────────────────── */
 
 function Ficha() {
   const filas: { label: string; valor: string; copiar?: boolean }[] = [
@@ -968,7 +1078,7 @@ function Ficha() {
   return (
     <Section
       id="ficha"
-      num="17"
+      num="18"
       titulo="Ficha de datos"
       bajada="Los datos duros, en un solo lugar. Tienen que ser idénticos en la web, en LinkedIn y en Google Business: cualquier variación resta señal de SEO local."
     >
