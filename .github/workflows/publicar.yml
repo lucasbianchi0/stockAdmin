@@ -1,0 +1,32 @@
+name: Publicar contenido
+
+# Cada quince minutos. La precisión que se le puede pedir a GitHub Actions es
+# esa y no más: las corridas programadas se demoran cuando hay cola, a veces
+# varios minutos. Para un posteo de marca no importa; si algún día importa, esto
+# se muda a un cron de verdad.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: # para forzar una corrida desde la pestaña Actions
+
+# Dos corridas simultáneas no romperían nada —el claim en Postgres las ordena—
+# pero tampoco sirven de nada. Se cancela la vieja.
+concurrency:
+  group: publicar-contenido
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tick de publicación
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        # --fail-with-body: sin esto, curl devuelve 0 ante un 500 y el workflow
+        # sale en verde mientras las publicaciones se caen en silencio.
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 120 \
+            -X POST "$APP_URL/api/contenido/publicar/tick" \
+            -H "Authorization: Bearer $CRON_SECRET"
