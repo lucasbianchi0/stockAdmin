@@ -51,3 +51,6 @@ docs/*.pdf
 # guardadas a mano para poder depurar la COMPOSICION sin pagar una llamada por
 # intento; pesan ~1 MB y no son parte del sistema, asi que no viajan en el repo.
 fixtures/
+
+# fuentes cacheadas para componer el titular de las portadas de LinkedIn
+/scripts/.fuentes

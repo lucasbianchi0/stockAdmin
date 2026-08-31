@@ -33,6 +33,8 @@ export const EMPRESA = {
   whatsappE164: "541133001233",
   dominio: "accedra.com.ar",
   sitio: "https://www.accedra.com.ar",
+  linkedin: "https://www.linkedin.com/company/accedra-s.a.",
+  instagram: "https://www.instagram.com/accedra_sa/",
   horario: "Lunes a viernes, 9:00 a 18:00",
   areaServida: "Argentina",
   domicilio: "Irala 1950, 2° piso · C1276 · CABA",
@@ -345,11 +347,11 @@ export type Color = {
 export const PALETA: Color[] = [
   {
     nombre: "Azul Accedra",
-    hex: "#2B56D4",
+    hex: "#2B6FD4",
     textoSobre: "#FFFFFF",
     uso: "El acento de marca. Botones, links, highlights, el triángulo del isotipo. Uno solo por pieza.",
     rol: "primario",
-    nota: "Es el azul del logo. Cuando haya duda entre azules, gana este.",
+    nota: "Es el azul del sitio en producción (--blue-primary de globals.css). Cuando haya duda entre azules, gana este. Los SVG del logo en public/brand todavía traen un #2B56D4 apenas más oscuro: se decidió que manda el sitio, así que falta actualizarlos.",
   },
   {
     nombre: "Navy Accedra",
@@ -741,14 +743,14 @@ export const CANALES = [
   {
     nombre: "LinkedIn",
     handle: "accedra-s.a.",
-    url: "https://www.linkedin.com/company/accedra-s.a.",
+    url: EMPRESA.linkedin,
     estado: "prioritario" as const,
     rol: "El canal de ventas natural de un negocio B2B. 526 seguidores es muy poco para la calidad de la cartera: es la mayor oportunidad abierta.",
   },
   {
     nombre: "Instagram",
     handle: "@accedra_sa",
-    url: "https://www.instagram.com/accedra_sa/",
+    url: EMPRESA.instagram,
     estado: "secundario" as const,
     rol: "Cultura, equipo y obra. No es canal de venta: es prueba de que atrás hay gente.",
   },

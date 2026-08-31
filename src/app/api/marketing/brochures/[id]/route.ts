@@ -8,7 +8,6 @@ import { nombreDeUsuario } from "@/lib/usuario"
 import {
   LIMITES,
   TAMANO_MAX,
-  esIndustria,
   esSolucion,
   problemaDelArchivo,
 } from "@/lib/marketing/brochures"
@@ -16,7 +15,6 @@ import {
   COLUMNAS_BROCHURE,
   borrarDelBucket,
   conUrls,
-  etiquetasDelForm,
   subirPdf,
   textoDelForm,
 } from "@/lib/marketing/brochures-server"
@@ -38,9 +36,9 @@ type Ctx = { params: Promise<{ id: string }> }
  * REEMPLAZAR EL PDF ES LO MISMO QUE EDITARLO
  *
  * No hay un endpoint aparte para el archivo. El caso real es "actualicé el
- * brochure": cambia el PDF y casi siempre alguna palabra del texto, y partirlo
- * en dos pedidos abre la ventana en la que el archivo ya es el nuevo y la
- * descripción todavía es la vieja.
+ * brochure": cambia el PDF y a veces el título, y partirlo en dos pedidos abre
+ * la ventana en la que el archivo ya es el nuevo y el título todavía es el
+ * viejo.
  *
  * El PDF viejo se borra del bucket recién después de que la fila quedó guardada
  * apuntando al nuevo. Al revés —borrar primero— un error del update dejaría la
@@ -83,22 +81,6 @@ export const PATCH = ruta("brochures PATCH", async (req: Request, ctx: Ctx) => {
 
   const solucion = form.get("solucion")
   if (esSolucion(solucion)) cambios.solucion = solucion
-
-  // La industria es el único campo donde el vacío es una respuesta —transversal—
-  // y no un "no lo toques". Por eso se mira si el campo vino, no si tiene valor.
-  if (form.has("industria")) {
-    const industria = form.get("industria")
-    cambios.industria = esIndustria(industria) ? industria : null
-  }
-
-  const descripcion = textoDelForm(form, "descripcion", LIMITES.descripcion)
-  if (descripcion !== null) cambios.descripcion = descripcion || null
-
-  const cuandoUsar = textoDelForm(form, "cuandoUsar", LIMITES.cuandoUsar)
-  if (cuandoUsar !== null) cambios.cuando_usar = cuandoUsar || null
-
-  const etiquetas = etiquetasDelForm(form)
-  if (etiquetas !== null) cambios.etiquetas = etiquetas
 
   /* ── El PDF nuevo, si lo hay ────────────────────────────────────────────── */
 

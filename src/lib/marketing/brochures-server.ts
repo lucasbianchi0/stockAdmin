@@ -9,12 +9,7 @@
  */
 
 import { supabase } from "@/lib/supabase"
-import {
-  esIndustria,
-  esSolucion,
-  normalizarEtiquetas,
-  type Brochure,
-} from "@/lib/marketing/brochures"
+import { esSolucion, type Brochure } from "@/lib/marketing/brochures"
 
 /** El bucket, privado. Ver el comentario de la migración. */
 export const BUCKET_BROCHURES = "brochures"
@@ -33,11 +28,9 @@ const VENCIMIENTO_S = 3600
 // como literal para inferir la forma de la fila, y un `"a" + "b"` la degrada a
 // `string` — con lo que `data` pasa a ser un error genérico y no una fila.
 export const COLUMNAS_BROCHURE =
-  "id, titulo, solucion, industria, descripcion, cuando_usar, etiquetas, archivo_ruta, archivo_nombre, archivo_tamano, version, autor_id, autor_nombre, editor_nombre, descargas, created_at, updated_at"
+  "id, titulo, solucion, archivo_ruta, archivo_nombre, archivo_tamano, version"
 
 type Fila = Record<string, unknown>
-
-const texto = (v: unknown): string | null => (typeof v === "string" && v ? v : null)
 
 /** La fila sin la URL. La ruta se devuelve aparte porque es lo que se firma y lo
  *  que se borra, pero nunca sale hacia el cliente: es la dirección real del
@@ -52,21 +45,8 @@ function aBrochureSinUrl(fila: Fila): { brochure: Omit<Brochure, "url">; ruta: s
       // entre desplegar una solución nueva y desplegar el código que la conoce,
       // que es donde la pantalla se rompería.
       solucion: esSolucion(fila.solucion) ? fila.solucion : "otra",
-      industria: esIndustria(fila.industria) ? fila.industria : null,
-      descripcion: texto(fila.descripcion),
-      cuandoUsar: texto(fila.cuando_usar),
-      etiquetas: Array.isArray(fila.etiquetas)
-        ? fila.etiquetas.filter((e): e is string => typeof e === "string")
-        : [],
       archivoNombre: String(fila.archivo_nombre ?? "brochure.pdf"),
       archivoTamano: typeof fila.archivo_tamano === "number" ? fila.archivo_tamano : null,
-      version: Number(fila.version) || 1,
-      autorId: texto(fila.autor_id),
-      autorNombre: String(fila.autor_nombre ?? "Alguien"),
-      editorNombre: texto(fila.editor_nombre),
-      descargas: Number(fila.descargas) || 0,
-      createdAt: String(fila.created_at),
-      updatedAt: String(fila.updated_at ?? fila.created_at),
     },
   }
 }
@@ -134,26 +114,13 @@ export async function subirPdf(archivo: File): Promise<{ ruta: string } | { erro
  * alternativa —subir el archivo primero y después crear la fila— deja un objeto
  * huérfano en el bucket cada vez que alguien cierra el diálogo a mitad de camino.
  *
- * El precio es que todo llega como texto, incluidas las etiquetas, que viajan
- * como JSON dentro de un campo. De ahí este lector compartido: con dos copias,
- * una ruta recortaría el título a 120 caracteres y la otra no.
+ * El precio es que todo llega como texto. De ahí este lector compartido: con dos
+ * copias, una ruta recortaría el título a 120 caracteres y la otra no.
  */
 export function textoDelForm(form: FormData, campo: string, max: number): string | null {
   const v = form.get(campo)
   if (typeof v !== "string") return null
   return v.trim().slice(0, max)
-}
-
-/** Las etiquetas del form, que viajan como JSON. Un campo ausente devuelve
- *  `null` (no tocar) y uno presente pero ilegible, lista vacía. */
-export function etiquetasDelForm(form: FormData): string[] | null {
-  const v = form.get("etiquetas")
-  if (typeof v !== "string") return null
-  try {
-    return normalizarEtiquetas(JSON.parse(v))
-  } catch {
-    return []
-  }
 }
 
 /** Borra objetos del bucket sin hacer fallar a quien llama: si queda basura en

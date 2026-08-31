@@ -8,16 +8,13 @@ import { nombreDeUsuario } from "@/lib/usuario"
 import {
   LIMITES,
   TAMANO_MAX,
-  esIndustria,
   esSolucion,
   problemaDelArchivo,
-  type Yo,
 } from "@/lib/marketing/brochures"
 import {
   COLUMNAS_BROCHURE,
   borrarDelBucket,
   conUrls,
-  etiquetasDelForm,
   subirPdf,
   textoDelForm,
 } from "@/lib/marketing/brochures-server"
@@ -28,18 +25,13 @@ import {
  * La lista entera, sin paginar y con las URL de los PDF ya firmadas.
  *
  * Son decenas de filas de texto corto: el viaje pesa menos que la fuente de la
- * página, y a cambio buscar y filtrar es instantáneo y abrir una ficha no
- * dispara una segunda request. Los PDF no viajan acá —solo su enlace firmado—,
- * así que el peso del material no entra en esta cuenta.
+ * página, y a cambio filtrar por categoría es instantáneo. Los PDF no viajan
+ * acá —solo su enlace firmado—, así que el peso del material no entra en esta
+ * cuenta.
  */
 export const GET = ruta("brochures GET", async () => {
   const sinPermiso = await exigirModulo("marketing")
   if (sinPermiso) return sinPermiso
-
-  const supabaseUsuario = await createSupabaseServer()
-  const {
-    data: { user },
-  } = await supabaseUsuario.auth.getUser()
 
   const { data, error } = await supabase
     .from("brochures")
@@ -54,11 +46,7 @@ export const GET = ruta("brochures GET", async () => {
     )
   }
 
-  // El nombre viaja junto con la lista para que la pantalla pueda decir "vos" en
-  // vez del nombre propio, y para precargar la firma del formulario.
-  const yo: Yo = { id: user?.id ?? null, nombre: nombreDeUsuario(user) }
-
-  return NextResponse.json({ brochures: await conUrls(data ?? []), yo })
+  return NextResponse.json({ brochures: await conUrls(data ?? []) })
 })
 
 /* ── POST · brochure nuevo ────────────────────────────────────────────────── */
@@ -114,18 +102,12 @@ export const POST = ruta("brochures POST", async (req: Request) => {
   } = await supabaseUsuario.auth.getUser()
 
   const solucion = form.get("solucion")
-  const industria = form.get("industria")
 
   const { data, error } = await supabase
     .from("brochures")
     .insert({
       titulo,
       solucion: esSolucion(solucion) ? solucion : "institucional",
-      // Vacío es transversal, no un dato faltante — ver la migración.
-      industria: esIndustria(industria) ? industria : null,
-      descripcion: textoDelForm(form, "descripcion", LIMITES.descripcion) || null,
-      cuando_usar: textoDelForm(form, "cuandoUsar", LIMITES.cuandoUsar) || null,
-      etiquetas: etiquetasDelForm(form) ?? [],
       archivo_ruta: subida.ruta,
       archivo_nombre: archivo.name.slice(0, LIMITES.nombreArchivo),
       archivo_tamano: archivo.size,

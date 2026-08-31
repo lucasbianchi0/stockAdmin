@@ -12,6 +12,7 @@ import {
 import { PageHeader } from "@/components/ui/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { FirmaCorreoGenerador } from "@/components/marketing/firma-correo-ui"
 import {
   BrandNav,
   ColorChip,
@@ -47,6 +48,7 @@ import {
   TONO,
 } from "@/lib/brand-kit"
 import {
+  ESCALA_PORTADA,
   MEDIDA_PORTADA,
   PORTADAS_LINKEDIN,
   promptPortada,
@@ -106,6 +108,7 @@ const NAV: NavGrupo[] = [
     titulo: "Operación",
     items: [
       { id: "canales", label: "Canales oficiales" },
+      { id: "firma", label: "Pie de firma" },
       { id: "ficha", label: "Ficha de datos" },
     ],
   },
@@ -151,6 +154,7 @@ export default function BrandKitPage() {
           <PruebaSocial />
           <Casos />
           <Canales />
+          <PieDeFirma />
           <Ficha />
         </div>
       </div>
@@ -731,8 +735,8 @@ function PortadasLinkedIn() {
                 <Image
                   src={portada.archivo}
                   alt={`Portada de LinkedIn — ${portada.nombre}`}
-                  width={MEDIDA_PORTADA.ancho}
-                  height={MEDIDA_PORTADA.alto}
+                  width={MEDIDA_PORTADA.ancho * ESCALA_PORTADA}
+                  height={MEDIDA_PORTADA.alto * ESCALA_PORTADA}
                   className="block w-full"
                   unoptimized
                 />
@@ -1056,6 +1060,26 @@ function Canales() {
 }
 
 /* ── 18 · Ficha ───────────────────────────────────────────────────────────── */
+
+/* ── 19 · Pie de firma ────────────────────────────────────────────────────── */
+
+/**
+ * La firma de correo es la pieza de marca que más se ve: sale en cada mail que
+ * manda cada persona. Por eso está acá y es un generador y no una imagen de
+ * ejemplo — una firma que hay que armar a mano termina distinta en cada casilla.
+ */
+function PieDeFirma() {
+  return (
+    <Section
+      id="firma"
+      num="19"
+      titulo="Pie de firma"
+      bajada="Completá tus datos una vez y las dos opciones se arman abajo con ellos. Van con tablas y estilo inline porque Gmail y Outlook borran el <style> de las firmas; las imágenes salen del sitio, nunca incrustadas."
+    >
+      <FirmaCorreoGenerador />
+    </Section>
+  )
+}
 
 function Ficha() {
   const filas: { label: string; valor: string; copiar?: boolean }[] = [

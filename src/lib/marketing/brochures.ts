@@ -1,5 +1,13 @@
 /**
- * Brochures — tipos, catálogos y las reglas del archivo.
+ * Brochures — tipos, catálogo y las reglas del archivo.
+ *
+ * Un brochure son tres cosas: una categoría, un título y el PDF. Nada más.
+ *
+ * Hubo una versión con industria, descripción, "cuándo usar" y etiquetas. Se
+ * sacó: cargar un material pasaba por seis campos de texto que casi siempre
+ * quedaban vacíos o repetían el título, y la pantalla mostraba tanto alrededor
+ * del PDF que costaba encontrar el PDF. Lo que se viene a hacer acá es agarrar
+ * el archivo y mandarlo — todo lo que no ayude a eso estorba.
  *
  * Sin imports de servidor a propósito: lo usan el formulario, la lista y los
  * handlers de API. Teniendo las reglas acá, las dos puntas validan igual porque
@@ -7,17 +15,11 @@
  * cliente, el endpoint aceptaría el PDF de 80 MB que el navegador rechazó.
  */
 
-import {
-  LIMITE_ETIQUETA,
-  MAX_ETIQUETAS,
-  fechaCorta,
-  formatearTamano,
-} from "@/lib/marketing/formato"
+import { formatearTamano } from "@/lib/marketing/formato"
 
-export { fechaCorta as fechaDeBrochure, formatearTamano }
-export { normalizarEtiquetas } from "@/lib/marketing/formato"
+export { formatearTamano }
 
-/* ── Solución ─────────────────────────────────────────────────────────────── */
+/* ── Categoría ────────────────────────────────────────────────────────────── */
 
 /**
  * Las cinco soluciones de Accedra más dos casilleros de servicio.
@@ -68,87 +70,27 @@ export function esSolucion(v: unknown): v is Solucion {
   return typeof v === "string" && (SOLUCIONES as readonly string[]).includes(v)
 }
 
-/* ── Industria ────────────────────────────────────────────────────────────── */
-
-/**
- * Las seis industrias objetivo. `null` —transversal— no está en esta lista: no
- * es una industria más, es la ausencia de una, y meterla acá haría que apareciera
- * como un filtro de igual peso que "Bancos".
- */
-export const INDUSTRIAS = [
-  "bancos",
-  "aseguradoras",
-  "juridicos",
-  "salud",
-  "logistica",
-  "retail",
-] as const
-
-export type Industria = (typeof INDUSTRIAS)[number]
-
-export const INDUSTRIA_LABEL: Record<Industria, string> = {
-  bancos: "Bancos",
-  aseguradoras: "Aseguradoras",
-  juridicos: "Estudios jurídicos",
-  salud: "Laboratorios y salud",
-  logistica: "Logística",
-  retail: "Retail",
-}
-
-/** Lo que se muestra cuando `industria` es `null`. Es una respuesta, no un
- *  dato faltante: el institucional sirve para cualquiera. */
-export const INDUSTRIA_TRANSVERSAL = "Todas las industrias"
-
-export function esIndustria(v: unknown): v is Industria {
-  return typeof v === "string" && (INDUSTRIAS as readonly string[]).includes(v)
-}
-
-export function industriaLabel(i: Industria | null): string {
-  return i ? INDUSTRIA_LABEL[i] : INDUSTRIA_TRANSVERSAL
-}
-
 /* ── El brochure ──────────────────────────────────────────────────────────── */
 
 export type Brochure = {
   id: string
   titulo: string
   solucion: Solucion
-  industria: Industria | null
-  descripcion: string | null
-  cuandoUsar: string | null
-  etiquetas: string[]
 
   archivoNombre: string
   archivoTamano: number | null
-  /** Sube de a uno cada vez que se reemplaza el PDF. */
-  version: number
   /**
    * URL firmada, con vencimiento. No se guarda en la base: vence, y guardar algo
    * que deja de servir es peor que no guardarlo. Se pide cada vez que se lista.
    */
   url: string | null
-
-  autorId: string | null
-  autorNombre: string
-  editorNombre: string | null
-  descargas: number
-  createdAt: string
-  updatedAt: string
 }
-
-/** Quién está mirando la pantalla. Sirve para una sola cosa: marcar cuáles subió
- *  esta persona. No es un permiso — reemplazar puede cualquiera. */
-export type Yo = { id: string | null; nombre: string }
 
 /* ── Límites ──────────────────────────────────────────────────────────────── */
 
 export const LIMITES = {
   titulo: 120,
-  descripcion: 600,
-  cuandoUsar: 400,
   nombreArchivo: 200,
-  etiqueta: LIMITE_ETIQUETA,
-  etiquetas: MAX_ETIQUETAS,
 } as const
 
 /* ── El archivo ───────────────────────────────────────────────────────────── */
@@ -189,24 +131,16 @@ export function problemaDelArchivo(archivo: {
   return null
 }
 
-/* ── Normalización ────────────────────────────────────────────────────────── */
+/* ── El formulario ────────────────────────────────────────────────────────── */
 
 export type BorradorBrochure = {
   titulo: string
   solucion: Solucion
-  industria: Industria | null
-  descripcion: string
-  cuandoUsar: string
-  etiquetas: string[]
 }
 
 export const BORRADOR_VACIO: BorradorBrochure = {
   titulo: "",
   solucion: "institucional",
-  industria: null,
-  descripcion: "",
-  cuandoUsar: "",
-  etiquetas: [],
 }
 
 /**
@@ -246,11 +180,4 @@ export function urlDeDescarga(b: Brochure): string | null {
   } catch {
     return b.url
   }
-}
-
-/** Las primeras líneas de la descripción, para la fila de la lista. */
-export function resumenDe(texto: string | null, max = 110): string {
-  if (!texto) return ""
-  const plano = texto.replace(/\s+/g, " ").trim()
-  return plano.length > max ? `${plano.slice(0, max - 1).trimEnd()}…` : plano
 }

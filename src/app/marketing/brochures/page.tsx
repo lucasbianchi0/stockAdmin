@@ -4,10 +4,10 @@ import { BrochuresClient } from "@/components/marketing/brochures-client"
 /**
  * El material que se le manda al cliente.
  *
- * La descripción de la cabecera es la que fija para qué es esta pantalla: acá
- * está la versión vigente, y es la que se manda. Todo lo que hay adentro —el
- * número de versión, el contador de envíos, el "cuándo usar"— existe para
- * sostener esa frase.
+ * La descripción de la cabecera fija para qué es esta pantalla: acá está la
+ * versión vigente de cada PDF, y es la que se manda. Un brochure son tres cosas
+ * —categoría, título y archivo— y la pantalla no muestra nada más, porque todo
+ * lo demás se interponía entre la persona y el archivo que vino a buscar.
  */
 export const metadata = { title: "Brochures · Accedra" }
 
@@ -16,7 +16,7 @@ export default function BrochuresPage() {
     <main className="flex min-h-full flex-col">
       <PageHeader
         title="Brochures"
-        description="Las propuestas y el material institucional en PDF, en su versión vigente. Cualquiera sube uno nuevo y cualquiera reemplaza el que quedó viejo."
+        description="El material institucional en PDF, en su versión vigente. Cualquiera sube uno nuevo y cualquiera reemplaza el que quedó viejo."
         back={{ href: "/marketing", label: "Marketing" }}
       />
       <PageBody>
