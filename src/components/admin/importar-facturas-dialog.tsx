@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react"
 import {
   AlertTriangle,
+  Banknote,
   Building2,
   Check,
   FileInput,
@@ -96,14 +97,27 @@ type Fila = {
   mensaje?: string
 }
 
+/**
+ * La moneda de esta pantalla.
+ *
+ * No es un campo: es una constante. La carga masiva registra en pesos y punto,
+ * que es lo que entra por acá — un lote de facturas de proveedores locales. La
+ * factura en dólares es la excepción y se carga de a una, donde además hay que
+ * decidir el tipo de cambio, que es una decisión y no un dato del papel.
+ *
+ * Antes esto era un desplegable por factura con "Pesos" preseleccionado, y ese
+ * es exactamente el campo que nadie mira: alcanzaba con que la extracción leyera
+ * "USD" en un renglón para que una factura entrara valuada en dólares sin que
+ * nadie lo hubiera decidido.
+ */
+const MONEDA_CARGA: Moneda = "ARS"
+
 type Campos = {
   clase: string
   numeroCompleto: string
   fecha: string
   fechaVencimiento: string
   cuentaContableId: string
-  moneda: Moneda
-  tc: string
   netoGravado: string
   alicuotaIva: string
   iva: string
@@ -151,8 +165,6 @@ function aCampos(b: Borrador): Campos {
     // traía; acá solo se muestra lo que propuso.
     fechaVencimiento: b.fechaVencimiento ?? e?.fechaVencimiento ?? "",
     cuentaContableId: b.cuentaContableId ?? "",
-    moneda: e?.moneda ?? "ARS",
-    tc: n(e?.tc),
     netoGravado: n(e?.netoGravado),
     alicuotaIva: e?.alicuotaIva !== null && e?.alicuotaIva !== undefined ? String(e.alicuotaIva) : "0.21",
     iva: n(e?.iva),
@@ -317,8 +329,11 @@ export function ImportarFacturasDialog({
             puntoVenta,
             numero,
             detalle: c.detalle,
-            moneda: c.moneda,
-            tc: parsearImporte(c.tc) ?? null,
+            moneda: MONEDA_CARGA,
+            // El TC no se manda: en una factura en pesos no valúa nada, y
+            // mandarlo dejaría guardado el que la extracción leyó de un renglón
+            // que hablaba de otra cosa.
+            tc: null,
             // Lo leído de un PDF entra como borrador, siempre. El modelo puede
             // haber leído mal un dígito, y una factura confirmada ya suma al
             // saldo del cliente y genera su asiento. Se revisan las seis en el
@@ -448,6 +463,20 @@ export function ImportarFacturasDialog({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
+          {/* La regla de la pantalla, arriba de todo y no como una nota al pie
+              de cada factura: define lo que va a pasar con TODO lo que se
+              adjunte abajo, y leerla después de haber cargado seis archivos ya
+              no sirve para decidir nada. */}
+          <div className="flex items-start gap-2.5 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
+            <Banknote className="mt-px h-4 w-4 shrink-0 text-brand-600" strokeWidth={1.9} />
+            <p className="text-[12.5px] leading-relaxed text-brand-800">
+              <strong className="font-semibold">Todo lo que se carga acá se registra en pesos.</strong>{" "}
+              Los importes que se leen del documento se toman como pesos y así quedan guardados.
+              Una factura en dólares hay que cargarla de a una desde el formulario, que es donde
+              se elige el tipo de cambio.
+            </p>
+          </div>
+
           {/* Zona de carga */}
           <div
             onDragOver={(e) => {
@@ -706,17 +735,6 @@ function TarjetaBorrador({
             />
           </Campo>
 
-          <Campo rotulo="Moneda">
-            <select
-              value={c.moneda}
-              onChange={(e) => onCampo("moneda", e.target.value)}
-              disabled={guardada}
-              className="h-8 w-full rounded-md border border-line-strong bg-surface px-2 text-[12px] text-ink disabled:opacity-60"
-            >
-              <option value="ARS">Pesos</option>
-              <option value="USD">Dólares</option>
-            </select>
-          </Campo>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-4">
@@ -736,21 +754,7 @@ function TarjetaBorrador({
               disabled={guardada}
             />
           </Campo>
-          {c.moneda === "USD" && (
-            <Campo rotulo="Tipo de cambio" dudoso={dudosos.has("tc")}>
-              <MiniInput
-                value={c.tc}
-                onChange={(v) => onCampo("tc", v)}
-                disabled={guardada}
-                placeholder="1435,00"
-              />
-            </Campo>
-          )}
-          <Campo
-            rotulo="Detalle"
-            dudoso={dudosos.has("detalle")}
-            className={c.moneda === "USD" ? "" : "sm:col-span-2"}
-          >
+          <Campo rotulo="Detalle" dudoso={dudosos.has("detalle")} className="sm:col-span-2">
             <MiniInput
               value={c.detalle}
               onChange={(v) => onCampo("detalle", v)}
@@ -871,6 +875,18 @@ function TarjetaBorrador({
           </Campo>
         </div>
 
+        {/* Cuando el papel dice dólares.
+            La carga masiva la va a guardar en pesos igual —esa es la regla de la
+            pantalla— pero callarlo sería justamente el error que la regla trata
+            de evitar: una factura de USD 2.800 guardada como $ 2.800 y nadie
+            mirando. Se avisa acá, en la factura, y no en el cartel de arriba. */}
+        {b.extraccion?.moneda === "USD" && (
+          <p className="rounded-lg border border-warning-line bg-warning-soft px-3 py-2 text-[11.5px] text-warning-text">
+            El documento parece estar en dólares y acá se va a guardar en pesos. Si de verdad
+            es en dólares, sacala del lote y cargala de a una.
+          </p>
+        )}
+
         {/* El total no se edita: es la suma. Al lado va el que leyó el modelo,
             para poder contrastar contra el papel de un vistazo. */}
         <div className="flex items-center justify-between rounded-lg bg-surface-subtle px-3 py-2">
@@ -880,12 +896,12 @@ function TarjetaBorrador({
               <span className="num">
                 {" "}
                 · en el documento dice{" "}
-                {formatearImporte(b.extraccion.total, c.moneda)}
+                {formatearImporte(b.extraccion.total, MONEDA_CARGA)}
               </span>
             )}
           </div>
           <span className="num text-[15px] font-bold text-ink">
-            {formatearImporte(total, c.moneda)}
+            {formatearImporte(total, MONEDA_CARGA)}
           </span>
         </div>
       </div>
