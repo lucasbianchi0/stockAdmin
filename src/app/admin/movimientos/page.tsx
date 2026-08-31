@@ -1,4 +1,4 @@
-import { MovimientosClient } from "@/components/admin/movimientos-client"
+import { CargaMovimientoClient } from "@/components/admin/carga-movimiento-client"
 import { PageBody, PageHeader } from "@/components/ui/page-header"
 
 /**
@@ -9,6 +9,10 @@ import { PageBody, PageHeader } from "@/components/ui/page-header"
  * misma pregunta —«¿qué plata salió?»— con y sin factura de por medio. Quien
  * paga los sueldos y quien paga a los proveedores es la misma persona en el
  * mismo rato.
+ *
+ * Como las otras cinco pantallas de carga del módulo, la pantalla es el
+ * formulario. Lo cargado se mira en el extracto de cada cuenta —que es donde
+ * corre el saldo— o en `/admin/movimientos/listado`, que cruza todas.
  */
 export const metadata = { title: "Otros movimientos · Accedra" }
 
@@ -21,7 +25,7 @@ export default function MovimientosPage() {
         back={{ href: "/admin", label: "Administración" }}
       />
       <PageBody>
-        <MovimientosClient />
+        <CargaMovimientoClient />
       </PageBody>
     </main>
   )

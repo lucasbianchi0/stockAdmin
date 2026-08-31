@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { AlertTriangle, HandCoins, Loader2, Plus, Trash2, X } from "lucide-react"
 
+import { MarcoFormulario } from "@/components/admin/marco-formulario"
 import { SelectorEntidad } from "@/components/admin/selector-entidad"
 import { SemaforoVencimiento } from "@/components/admin/semaforo-vencimiento"
 import { Badge } from "@/components/ui/badge"
@@ -68,6 +69,7 @@ export function PagoDialog({
   tipo,
   abierto,
   cobro,
+  embebido = false,
   onCerrar,
   onGuardado,
 }: {
@@ -78,6 +80,10 @@ export function PagoDialog({
    *  precarga todo —entidad, facturas tildadas, retenciones, medios— y se manda
    *  un PATCH en vez de un POST, conservando el id del recibo. */
   cobro?: Cobro | null
+  /** En la pantalla de pagos el formulario no es un modal sino la pantalla:
+   *  sin fondo, sin cruz, y «Cancelar» pasa a ser «Limpiar» porque no hay nada
+   *  atrás a donde volver. Ver `MarcoFormulario`. */
+  embebido?: boolean
   onCerrar: () => void
   onGuardado: () => void
 }) {
@@ -321,34 +327,29 @@ export function PagoDialog({
   if (!abierto) return null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Registrar ${tipo}`}
+    <MarcoFormulario
+      embebido={embebido}
+      etiqueta={`Registrar ${tipo}`}
+      alto="max-h-[94vh] sm:max-h-[92vh]"
+      onFondo={() => !guardando && onCerrar()}
     >
-      <div
-        className="absolute inset-0 bg-navy-950/55 backdrop-blur-[3px] animate-in fade-in-0 duration-200"
-        onClick={() => !guardando && onCerrar()}
-      />
-
-      <div className="relative flex max-h-[94vh] w-full flex-col rounded-t-2xl border border-line bg-surface shadow-e4 animate-in slide-in-from-bottom-6 fade-in-0 duration-250 sm:max-h-[92vh] sm:max-w-3xl sm:rounded-2xl">
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-5 py-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
-              <HandCoins className="h-[18px] w-[18px]" strokeWidth={1.9} />
-            </div>
-            <div>
-              <h2 className="text-[15px] font-semibold tracking-[-0.015em] text-ink">
-                Registrar {tipo}
-              </h2>
-              <p className="mt-0.5 text-[11.5px] text-ink-muted">
-                {esCobro
-                  ? "Elegí qué facturas cancela y por dónde entró la plata"
-                  : "Elegí qué comprobantes cancela y de dónde salió la plata"}
-              </p>
-            </div>
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-5 py-4 sm:px-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+            <HandCoins className="h-[18px] w-[18px]" strokeWidth={1.9} />
           </div>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-[-0.015em] text-ink">
+              Registrar {tipo}
+            </h2>
+            <p className="mt-0.5 text-[11.5px] text-ink-muted">
+              {esCobro
+                ? "Elegí qué facturas cancela y por dónde entró la plata"
+                : "Elegí qué comprobantes cancela y de dónde salió la plata"}
+            </p>
+          </div>
+        </div>
+        {!embebido && (
           <button
             onClick={onCerrar}
             disabled={guardando}
@@ -357,402 +358,402 @@ export function PagoDialog({
           >
             <X className="h-4 w-4" />
           </button>
-        </div>
+        )}
+      </div>
 
-        <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
-          {/* Cliente y fecha */}
-          <section className="space-y-4">
-            <SelectorEntidad
-              id="cliente-cobro"
-              tipo={tipo === "cobro" ? "cliente" : "proveedor"}
-              valor={cliente?.id ?? ""}
-              nombre={cliente?.razonSocial ?? ""}
-              disabled={guardando}
-              onElegir={(c) => {
-                setCliente(c)
-                setImputado({})
-                cargarPendientes(c.id)
-              }}
-            />
+      <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
+        {/* Cliente y fecha */}
+        <section className="space-y-4">
+          <SelectorEntidad
+            id="cliente-cobro"
+            tipo={tipo === "cobro" ? "cliente" : "proveedor"}
+            valor={cliente?.id ?? ""}
+            nombre={cliente?.razonSocial ?? ""}
+            disabled={guardando}
+            onElegir={(c) => {
+              setCliente(c)
+              setImputado({})
+              cargarPendientes(c.id)
+            }}
+          />
 
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Campo id="fecha" rotulo={`Fecha del ${tipo}`}>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Campo id="fecha" rotulo={`Fecha del ${tipo}`}>
+              <Input
+                id="fecha"
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="num"
+                disabled={guardando}
+              />
+            </Campo>
+
+            <Campo id="moneda" rotulo="Moneda del recibo">
+              <div className="flex gap-2">
+                {MONEDAS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={guardando}
+                    onClick={() => setMoneda(m)}
+                    aria-pressed={moneda === m}
+                    className={cn(
+                      "flex-1 rounded-lg border px-2 py-2 text-[12px] font-medium transition-colors disabled:opacity-60",
+                      moneda === m
+                        ? "border-brand-300 bg-brand-50 text-brand-700"
+                        : "border-line bg-surface text-ink-secondary hover:border-line-strong"
+                    )}
+                  >
+                    {NOMBRE_MONEDA[m]}
+                  </button>
+                ))}
+              </div>
+            </Campo>
+
+            {necesitaTc && (
+              <Campo
+                id="tc"
+                rotulo="Tipo de cambio"
+                ayuda={cotizacion.venta ? `Hoy: ${formatearTc(cotizacion.venta)}` : undefined}
+              >
                 <Input
-                  id="fecha"
-                  type="date"
-                  value={fecha}
-                  onChange={(e) => setFecha(e.target.value)}
-                  className="num"
+                  id="tc"
+                  value={tc}
+                  onChange={(e) => setTc(e.target.value)}
+                  className={cn("num text-right", faltaTc && "border-danger-line")}
                   disabled={guardando}
                 />
               </Campo>
-
-              <Campo id="moneda" rotulo="Moneda del recibo">
-                <div className="flex gap-2">
-                  {MONEDAS.map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      disabled={guardando}
-                      onClick={() => setMoneda(m)}
-                      aria-pressed={moneda === m}
-                      className={cn(
-                        "flex-1 rounded-lg border px-2 py-2 text-[12px] font-medium transition-colors disabled:opacity-60",
-                        moneda === m
-                          ? "border-brand-300 bg-brand-50 text-brand-700"
-                          : "border-line bg-surface text-ink-secondary hover:border-line-strong"
-                      )}
-                    >
-                      {NOMBRE_MONEDA[m]}
-                    </button>
-                  ))}
-                </div>
-              </Campo>
-
-              {necesitaTc && (
-                <Campo
-                  id="tc"
-                  rotulo="Tipo de cambio"
-                  ayuda={cotizacion.venta ? `Hoy: ${formatearTc(cotizacion.venta)}` : undefined}
-                >
-                  <Input
-                    id="tc"
-                    value={tc}
-                    onChange={(e) => setTc(e.target.value)}
-                    className={cn("num text-right", faltaTc && "border-danger-line")}
-                    disabled={guardando}
-                  />
-                </Campo>
-              )}
-            </div>
-          </section>
-
-          {/* Facturas a cancelar */}
-          <section>
-            <p className="eyebrow mb-2.5">
-              {esCobro ? "Facturas a cancelar" : "Comprobantes a cancelar"}
-            </p>
-
-            {!cliente ? (
-              <div className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-[12.5px] text-ink-muted">
-                Elegí un {rotuloEntidad.toLowerCase()} para ver sus comprobantes pendientes
-              </div>
-            ) : cargandoPendientes ? (
-              <div className="flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-8 text-[12.5px] text-ink-muted">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Buscando pendientes…
-              </div>
-            ) : pendientes.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-[12.5px] text-ink-muted">
-                {cliente.razonSocial} no tiene comprobantes pendientes.
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-line">
-                {pendientes.map((p, i) => (
-                  <FilaPendiente
-                    key={p.id}
-                    p={p}
-                    valor={imputado[p.id] ?? ""}
-                    monedaRecibo={moneda}
-                    tc={tcNum}
-                    primera={i === 0}
-                    disabled={guardando}
-                    onValor={(v) => setImputado((prev) => ({ ...prev, [p.id]: v }))}
-                    onSaldar={() => saldarTodo(p)}
-                  />
-                ))}
-              </div>
             )}
-          </section>
+          </div>
+        </section>
 
-          {/* Retenciones */}
-          <section>
-            <div className="mb-1 flex items-center justify-between">
-              <p className="eyebrow">
-                {esCobro ? "Retenciones sufridas" : "Retenciones practicadas"}
-              </p>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setRetenciones((prev) => [
-                    ...prev,
-                    { tipo: "ganancias", jurisdiccion: null, importe: "", numeroCertificado: "" },
-                  ])
-                }
-                disabled={guardando}
-              >
-                <Plus className="h-3 w-3" />
-                Agregar retención
-              </Button>
+        {/* Facturas a cancelar */}
+        <section>
+          <p className="eyebrow mb-2.5">
+            {esCobro ? "Facturas a cancelar" : "Comprobantes a cancelar"}
+          </p>
+
+          {!cliente ? (
+            <div className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-[12.5px] text-ink-muted">
+              Elegí un {rotuloEntidad.toLowerCase()} para ver sus comprobantes pendientes
             </div>
+          ) : cargandoPendientes ? (
+            <div className="flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-8 text-[12.5px] text-ink-muted">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Buscando pendientes…
+            </div>
+          ) : pendientes.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-[12.5px] text-ink-muted">
+              {cliente.razonSocial} no tiene comprobantes pendientes.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-line">
+              {pendientes.map((p, i) => (
+                <FilaPendiente
+                  key={p.id}
+                  p={p}
+                  valor={imputado[p.id] ?? ""}
+                  monedaRecibo={moneda}
+                  tc={tcNum}
+                  primera={i === 0}
+                  disabled={guardando}
+                  onValor={(v) => setImputado((prev) => ({ ...prev, [p.id]: v }))}
+                  onSaldar={() => saldarTodo(p)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
 
-            <p className="mb-2.5 text-[11.5px] text-ink-muted">
-              {esCobro
-                ? "Cancelan la factura pero no entran a la caja: son crédito fiscal."
-                : "Cancelan el comprobante pero no salen de la caja: se depositan a AFIP aparte."}
+        {/* Retenciones */}
+        <section>
+          <div className="mb-1 flex items-center justify-between">
+            <p className="eyebrow">
+              {esCobro ? "Retenciones sufridas" : "Retenciones practicadas"}
             </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setRetenciones((prev) => [
+                  ...prev,
+                  { tipo: "ganancias", jurisdiccion: null, importe: "", numeroCertificado: "" },
+                ])
+              }
+              disabled={guardando}
+            >
+              <Plus className="h-3 w-3" />
+              Agregar retención
+            </Button>
+          </div>
 
-            {retenciones.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-line px-3 py-2.5 text-[12px] text-ink-faint">
-                Sin retenciones.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {retenciones.map((r, i) => {
-                  const cambiar = (cambios: Partial<RenglonRetencion>) =>
-                    setRetenciones((prev) =>
-                      prev.map((x, j) => (j === i ? { ...x, ...cambios } : x))
-                    )
+          <p className="mb-2.5 text-[11.5px] text-ink-muted">
+            {esCobro
+              ? "Cancelan la factura pero no entran a la caja: son crédito fiscal."
+              : "Cancelan el comprobante pero no salen de la caja: se depositan a AFIP aparte."}
+          </p>
 
-                  return (
-                    <div
-                      key={i}
-                      className="grid items-end gap-2 rounded-lg border border-line bg-surface-subtle p-2.5 sm:grid-cols-[140px_minmax(0,1fr)_120px_36px]"
-                    >
-                      <Campo id={`ret-tipo-${i}`} rotulo="Impuesto">
+          {retenciones.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-line px-3 py-2.5 text-[12px] text-ink-faint">
+              Sin retenciones.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {retenciones.map((r, i) => {
+                const cambiar = (cambios: Partial<RenglonRetencion>) =>
+                  setRetenciones((prev) =>
+                    prev.map((x, j) => (j === i ? { ...x, ...cambios } : x))
+                  )
+
+                return (
+                  <div
+                    key={i}
+                    className="grid items-end gap-2 rounded-lg border border-line bg-surface-subtle p-2.5 sm:grid-cols-[140px_minmax(0,1fr)_120px_36px]"
+                  >
+                    <Campo id={`ret-tipo-${i}`} rotulo="Impuesto">
+                      <select
+                        id={`ret-tipo-${i}`}
+                        value={r.tipo}
+                        onChange={(e) => {
+                          const tipo = e.target.value as Retencion
+                          // Al dejar de ser IIBB la jurisdicción no aplica, y
+                          // dejarla puesta haría que el servidor la rechace.
+                          cambiar({
+                            tipo,
+                            jurisdiccion: tipo === "iibb" ? (r.jurisdiccion ?? "caba") : null,
+                          })
+                        }}
+                        disabled={guardando}
+                        className="h-8 w-full rounded-lg border border-line-strong bg-surface px-2 text-[12px] text-ink"
+                      >
+                        {RETENCIONES.map((k) => (
+                          <option key={k} value={k}>
+                            {RETENCION_LABEL[k]}
+                          </option>
+                        ))}
+                      </select>
+                    </Campo>
+
+                    {/* Solo Ingresos Brutos es provincial. Es la apertura que
+                        pidieron: IIBB CABA e IIBB Bs As como dos renglones. */}
+                    {r.tipo === "iibb" ? (
+                      <Campo id={`ret-jur-${i}`} rotulo="Jurisdicción">
                         <select
-                          id={`ret-tipo-${i}`}
-                          value={r.tipo}
-                          onChange={(e) => {
-                            const tipo = e.target.value as Retencion
-                            // Al dejar de ser IIBB la jurisdicción no aplica, y
-                            // dejarla puesta haría que el servidor la rechace.
-                            cambiar({
-                              tipo,
-                              jurisdiccion: tipo === "iibb" ? (r.jurisdiccion ?? "caba") : null,
-                            })
-                          }}
+                          id={`ret-jur-${i}`}
+                          value={r.jurisdiccion ?? "caba"}
+                          onChange={(e) =>
+                            cambiar({ jurisdiccion: e.target.value as Jurisdiccion })
+                          }
                           disabled={guardando}
                           className="h-8 w-full rounded-lg border border-line-strong bg-surface px-2 text-[12px] text-ink"
                         >
-                          {RETENCIONES.map((k) => (
-                            <option key={k} value={k}>
-                              {RETENCION_LABEL[k]}
+                          {JURISDICCIONES.map((j) => (
+                            <option key={j} value={j}>
+                              {JURISDICCION_LABEL[j]}
                             </option>
                           ))}
                         </select>
                       </Campo>
-
-                      {/* Solo Ingresos Brutos es provincial. Es la apertura que
-                          pidieron: IIBB CABA e IIBB Bs As como dos renglones. */}
-                      {r.tipo === "iibb" ? (
-                        <Campo id={`ret-jur-${i}`} rotulo="Jurisdicción">
-                          <select
-                            id={`ret-jur-${i}`}
-                            value={r.jurisdiccion ?? "caba"}
-                            onChange={(e) =>
-                              cambiar({ jurisdiccion: e.target.value as Jurisdiccion })
-                            }
-                            disabled={guardando}
-                            className="h-8 w-full rounded-lg border border-line-strong bg-surface px-2 text-[12px] text-ink"
-                          >
-                            {JURISDICCIONES.map((j) => (
-                              <option key={j} value={j}>
-                                {JURISDICCION_LABEL[j]}
-                              </option>
-                            ))}
-                          </select>
-                        </Campo>
-                      ) : (
-                        <Campo id={`ret-cert-${i}`} rotulo="Certificado" opcional>
-                          <Input
-                            id={`ret-cert-${i}`}
-                            value={r.numeroCertificado}
-                            onChange={(e) => cambiar({ numeroCertificado: e.target.value })}
-                            placeholder="N° de certificado"
-                            className="h-8 text-[12px]"
-                            disabled={guardando}
-                          />
-                        </Campo>
-                      )}
-
-                      <Campo id={`ret-imp-${i}`} rotulo="Importe">
+                    ) : (
+                      <Campo id={`ret-cert-${i}`} rotulo="Certificado" opcional>
                         <Input
-                          id={`ret-imp-${i}`}
-                          value={r.importe}
-                          onChange={(e) => cambiar({ importe: e.target.value })}
-                          placeholder="0,00"
-                          inputMode="decimal"
-                          className="num h-8 text-right text-[12px]"
+                          id={`ret-cert-${i}`}
+                          value={r.numeroCertificado}
+                          onChange={(e) => cambiar({ numeroCertificado: e.target.value })}
+                          placeholder="N° de certificado"
+                          className="h-8 text-[12px]"
                           disabled={guardando}
                         />
                       </Campo>
+                    )}
 
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => setRetenciones((prev) => prev.filter((_, j) => j !== i))}
+                    <Campo id={`ret-imp-${i}`} rotulo="Importe">
+                      <Input
+                        id={`ret-imp-${i}`}
+                        value={r.importe}
+                        onChange={(e) => cambiar({ importe: e.target.value })}
+                        placeholder="0,00"
+                        inputMode="decimal"
+                        className="num h-8 text-right text-[12px]"
                         disabled={guardando}
-                        aria-label="Quitar la retención"
-                        className="mb-0.5 text-ink-faint hover:bg-danger-soft hover:text-danger-text"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </section>
+                      />
+                    </Campo>
 
-          {/* Medios de pago */}
-          <section>
-            <div className="mb-2.5 flex items-center justify-between">
-              <p className="eyebrow">{esCobro ? "Por dónde entró" : "De dónde salió"}</p>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setMedios((prev) => [...prev, { cuentaId: "", importe: "", referencia: "" }])
-                }
-                disabled={guardando}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Otro medio
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              {medios.map((m, i) => (
-                <div key={i} className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={m.cuentaId}
-                    onChange={(e) =>
-                      setMedios((prev) =>
-                        prev.map((x, j) => (j === i ? { ...x, cuentaId: e.target.value } : x))
-                      )
-                    }
-                    disabled={guardando}
-                    className="h-9 flex-1 rounded-lg border border-line-strong bg-surface px-3 text-[12.5px] text-ink disabled:opacity-60"
-                  >
-                    <option value="">Elegí la cuenta…</option>
-                    {cuentas.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre} ({c.moneda})
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="flex items-center gap-1">
-                    <Input
-                      value={m.importe}
-                      onChange={(e) =>
-                        setMedios((prev) =>
-                          prev.map((x, j) => (j === i ? { ...x, importe: e.target.value } : x))
-                        )
-                      }
-                      placeholder="0,00"
-                      inputMode="decimal"
-                      className="num w-32 text-right"
-                      disabled={guardando}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => completarMedio(i)}
-                      disabled={guardando}
-                      title="Completar con lo que falta"
-                    >
-                      Resto
-                    </Button>
-                  </div>
-
-                  <Input
-                    value={m.referencia}
-                    onChange={(e) =>
-                      setMedios((prev) =>
-                        prev.map((x, j) => (j === i ? { ...x, referencia: e.target.value } : x))
-                      )
-                    }
-                    placeholder="Nº transferencia o cheque"
-                    className="w-full sm:w-56"
-                    disabled={guardando}
-                  />
-
-                  {medios.length > 1 && (
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      onClick={() => setMedios((prev) => prev.filter((_, j) => j !== i))}
+                      onClick={() => setRetenciones((prev) => prev.filter((_, j) => j !== i))}
                       disabled={guardando}
-                      aria-label="Quitar medio"
+                      aria-label="Quitar la retención"
+                      className="mb-0.5 text-ink-faint hover:bg-danger-soft hover:text-danger-text"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <Campo
-            id="observaciones"
-            rotulo="Observaciones"
-            opcional
-            // Lo que se escriba acá baja al detalle de cada movimiento, así que
-            // aparece en el extracto de la cuenta al lado del importe. Decirlo
-            // cambia lo que se escribe: sabiendo que se va a leer conciliando
-            // contra el resumen del banco, sale el número de transferencia y no
-            // una nota para uno mismo.
-            ayuda="Aparece en el detalle del extracto de la cuenta"
-          >
-            <Textarea
-              id="observaciones"
-              value={observaciones}
-              onChange={(e) => setObservaciones(e.target.value.slice(0, 1000))}
-              className="min-h-[56px]"
-              disabled={guardando}
-            />
-          </Campo>
-        </div>
-
-        {/* La ecuación, siempre a la vista */}
-        <div className="shrink-0 border-t border-line bg-surface-subtle px-5 py-4 sm:px-6">
-          <div
-            className={cn(
-              "mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-lg border px-3.5 py-2.5",
-              balance.cuadra
-                ? "border-success-line bg-success-soft/50"
-                : "border-warning-line bg-warning-soft/50"
-            )}
-          >
-            <Cifra rotulo="Cancela" valor={balance.imputado} moneda={moneda} />
-            <span className="text-ink-faint">=</span>
-            <Cifra rotulo={esCobro ? "Entró" : "Salió"} valor={balance.medios} moneda={moneda} />
-            <span className="text-ink-faint">+</span>
-            <Cifra rotulo="Retenciones" valor={balance.retenciones} moneda={moneda} />
-
-            <span className="ml-auto text-[12px] font-semibold">
-              {balance.cuadra ? (
-                <span className="text-success-text">El recibo cuadra</span>
-              ) : (
-                <span className="num text-warning-text">
-                  Diferencia {formatearImporte(balance.diferencia, moneda)}
-                </span>
-              )}
-            </span>
-          </div>
-
-          {error && (
-            <div className="mb-3 flex items-start gap-2 rounded-lg border border-danger-line bg-danger-soft px-3 py-2">
-              <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0 text-danger-text" />
-              <p className="text-[12px] text-danger-text">{error}</p>
+                  </div>
+                )
+              })}
             </div>
           )}
+        </section>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={onCerrar} disabled={guardando}>
-              Cancelar
-            </Button>
-            <Button onClick={guardar} disabled={!puedeGuardar}>
-              {guardando && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Registrar {tipo}
+        {/* Medios de pago */}
+        <section>
+          <div className="mb-2.5 flex items-center justify-between">
+            <p className="eyebrow">{esCobro ? "Por dónde entró" : "De dónde salió"}</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setMedios((prev) => [...prev, { cuentaId: "", importe: "", referencia: "" }])
+              }
+              disabled={guardando}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Otro medio
             </Button>
           </div>
+
+          <div className="space-y-2">
+            {medios.map((m, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-2">
+                <select
+                  value={m.cuentaId}
+                  onChange={(e) =>
+                    setMedios((prev) =>
+                      prev.map((x, j) => (j === i ? { ...x, cuentaId: e.target.value } : x))
+                    )
+                  }
+                  disabled={guardando}
+                  className="h-9 flex-1 rounded-lg border border-line-strong bg-surface px-3 text-[12.5px] text-ink disabled:opacity-60"
+                >
+                  <option value="">Elegí la cuenta…</option>
+                  {cuentas.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre} ({c.moneda})
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex items-center gap-1">
+                  <Input
+                    value={m.importe}
+                    onChange={(e) =>
+                      setMedios((prev) =>
+                        prev.map((x, j) => (j === i ? { ...x, importe: e.target.value } : x))
+                      )
+                    }
+                    placeholder="0,00"
+                    inputMode="decimal"
+                    className="num w-32 text-right"
+                    disabled={guardando}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => completarMedio(i)}
+                    disabled={guardando}
+                    title="Completar con lo que falta"
+                  >
+                    Resto
+                  </Button>
+                </div>
+
+                <Input
+                  value={m.referencia}
+                  onChange={(e) =>
+                    setMedios((prev) =>
+                      prev.map((x, j) => (j === i ? { ...x, referencia: e.target.value } : x))
+                    )
+                  }
+                  placeholder="Nº transferencia o cheque"
+                  className="w-full sm:w-56"
+                  disabled={guardando}
+                />
+
+                {medios.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setMedios((prev) => prev.filter((_, j) => j !== i))}
+                    disabled={guardando}
+                    aria-label="Quitar medio"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <Campo
+          id="observaciones"
+          rotulo="Observaciones"
+          opcional
+          // Lo que se escriba acá baja al detalle de cada movimiento, así que
+          // aparece en el extracto de la cuenta al lado del importe. Decirlo
+          // cambia lo que se escribe: sabiendo que se va a leer conciliando
+          // contra el resumen del banco, sale el número de transferencia y no
+          // una nota para uno mismo.
+          ayuda="Aparece en el detalle del extracto de la cuenta"
+        >
+          <Textarea
+            id="observaciones"
+            value={observaciones}
+            onChange={(e) => setObservaciones(e.target.value.slice(0, 1000))}
+            className="min-h-[56px]"
+            disabled={guardando}
+          />
+        </Campo>
+      </div>
+
+      {/* La ecuación, siempre a la vista */}
+      <div className="shrink-0 border-t border-line bg-surface-subtle px-5 py-4 sm:px-6">
+        <div
+          className={cn(
+            "mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-lg border px-3.5 py-2.5",
+            balance.cuadra
+              ? "border-success-line bg-success-soft/50"
+              : "border-warning-line bg-warning-soft/50"
+          )}
+        >
+          <Cifra rotulo="Cancela" valor={balance.imputado} moneda={moneda} />
+          <span className="text-ink-faint">=</span>
+          <Cifra rotulo={esCobro ? "Entró" : "Salió"} valor={balance.medios} moneda={moneda} />
+          <span className="text-ink-faint">+</span>
+          <Cifra rotulo="Retenciones" valor={balance.retenciones} moneda={moneda} />
+
+          <span className="ml-auto text-[12px] font-semibold">
+            {balance.cuadra ? (
+              <span className="text-success-text">El recibo cuadra</span>
+            ) : (
+              <span className="num text-warning-text">
+                Diferencia {formatearImporte(balance.diferencia, moneda)}
+              </span>
+            )}
+          </span>
+        </div>
+
+        {error && (
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-danger-line bg-danger-soft px-3 py-2">
+            <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0 text-danger-text" />
+            <p className="text-[12px] text-danger-text">{error}</p>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onCerrar} disabled={guardando}>
+            {embebido ? "Limpiar" : "Cancelar"}
+          </Button>
+          <Button onClick={guardar} disabled={!puedeGuardar}>
+            {guardando && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Registrar {tipo}
+          </Button>
         </div>
       </div>
-    </div>
+    </MarcoFormulario>
   )
 }
 

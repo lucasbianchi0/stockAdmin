@@ -260,7 +260,7 @@ export function FichaEntidadClient({
             ["resumen", "Resumen"],
             ["comprobantes", `${voz.comprobantes}${comprobantes.total ? ` (${comprobantes.total})` : ""}`],
             ["pagos", `${voz.pagos}${pagos.total ? ` (${pagos.total})` : ""}`],
-            ["cuenta", "Estado de cuenta"],
+            ["cuenta", "Cuenta corriente"],
             ["datos", "Datos"],
           ] as const
         ).map(([v, etiqueta]) => (
@@ -587,7 +587,7 @@ function TablaPagos({
   )
 }
 
-/* ── Estado de cuenta ─────────────────────────────────────────────────────── */
+/* ── Cuenta corriente ─────────────────────────────────────────────────────── */
 
 function EstadoCuenta({ tipo, entidadId }: { tipo: TipoEntidad; entidadId: string }) {
   const [filas, setFilas] = useState<FilaCuenta[]>([])

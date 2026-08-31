@@ -68,8 +68,15 @@ const ESTADOS: { valor: Estado; etiqueta: string }[] = [
  * —condición de IVA, provincia, domicilio— y ninguna de esas columnas cambia lo
  * que alguien hace después de leerlas: son datos que se consultan al facturar,
  * de a uno, no escaneando una lista. Lo que sí se escanea es la plata, así que
- * ahora las dos columnas del medio son cuánto debe y cuánto de eso está vencido.
- * El resto de la ficha está a un click, en el panel de detalle.
+ * en clientes las dos columnas del medio son cuánto debe y cuánto de eso está
+ * vencido. El resto de la ficha está a un click, en el panel de detalle.
+ *
+ * **En proveedores no hay plata.** Este maestro es la ficha y nada más: alta,
+ * consulta, edición y baja. Cuánto le debemos y qué está vencido se mira donde
+ * se opera —compras, pagos, reportes—, que es donde además se puede actuar;
+ * repetirlo acá invitaba a usar el maestro como tablero de deuda y a leer un
+ * saldo sin el comprobante al lado. Por eso, con `tipo="proveedor"`, se caen
+ * las columnas de saldo, vencido y plazo, y con ellas el filtro por deuda.
  */
 export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
   const esProveedor = tipo === "proveedor"
@@ -86,9 +93,9 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
     () => ({
       estado,
       categoriaId: categoriaId || undefined,
-      conDeuda: conDeuda ? "1" : undefined,
+      conDeuda: !esProveedor && conDeuda ? "1" : undefined,
     }),
-    [estado, categoriaId, conDeuda]
+    [esProveedor, estado, categoriaId, conDeuda]
   )
 
   const tabla = useTablaAdmin<EntidadConResumen>({
@@ -247,18 +254,20 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
             <option value="sin">— Sin categoría —</option>
           </select>
 
-          <button
-            onClick={() => setConDeuda((v) => !v)}
-            aria-pressed={conDeuda}
-            className={cn(
-              "h-9 rounded-lg border px-3 text-[11.5px] font-medium transition-colors",
-              conDeuda
-                ? "border-brand-300 bg-brand-50 text-brand-700"
-                : "border-line bg-surface text-ink-muted hover:border-line-strong hover:text-ink"
-            )}
-          >
-            {esProveedor ? "Con deuda" : "Que deben"}
-          </button>
+          {!esProveedor && (
+            <button
+              onClick={() => setConDeuda((v) => !v)}
+              aria-pressed={conDeuda}
+              className={cn(
+                "h-9 rounded-lg border px-3 text-[11.5px] font-medium transition-colors",
+                conDeuda
+                  ? "border-brand-300 bg-brand-50 text-brand-700"
+                  : "border-line bg-surface text-ink-muted hover:border-line-strong hover:text-ink"
+              )}
+            >
+              Que deben
+            </button>
+          )}
 
           <div className="flex items-center gap-2 sm:ml-auto">
             <Button variant="outline" onClick={() => setLeyendo(true)}>
@@ -291,12 +300,14 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
                     <TableHead>Razón social</TableHead>
                     <TableHead>Categoría</TableHead>
                     <TableHead>Contacto</TableHead>
-                    <TableHead className="text-right">
-                      {esProveedor ? "Le debemos" : "Nos debe"}
-                    </TableHead>
-                    <TableHead className="text-right">Vencido</TableHead>
-                    <TableHead className="text-right">Plazo</TableHead>
-                    {!esProveedor && <TableHead>Vendedor</TableHead>}
+                    {!esProveedor && (
+                      <>
+                        <TableHead className="text-right">Nos debe</TableHead>
+                        <TableHead className="text-right">Vencido</TableHead>
+                        <TableHead className="text-right">Plazo</TableHead>
+                        <TableHead>Vendedor</TableHead>
+                      </>
+                    )}
                     <TableHead className="w-[150px]" />
                   </TableRow>
                 </TableHeader>
@@ -308,7 +319,7 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
                         cliente={c}
                         ocupado={ocupado === c.id}
                         href={`/admin/${esProveedor ? "proveedores" : "clientes"}/${c.id}`}
-                        mostrarVendedor={!esProveedor}
+                        mostrarSaldos={!esProveedor}
                         onVer={() => setVerId(c.id)}
                         onEditar={() => setDialogo({ abierto: true, cliente: c })}
                         onCambiarEstado={(activo) => cambiarEstado(c, activo)}
@@ -317,7 +328,7 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={esProveedor ? 7 : 8} className="p-0">
+                      <TableCell colSpan={esProveedor ? 4 : 8} className="p-0">
                         <EmptyState
                           icon={Users}
                           title={
@@ -424,7 +435,7 @@ function Fila({
   cliente: c,
   ocupado,
   href,
-  mostrarVendedor,
+  mostrarSaldos,
   onVer,
   onEditar,
   onCambiarEstado,
@@ -435,7 +446,10 @@ function Fila({
   /** A dónde lleva el nombre. Lo arma el listado, que es quien sabe de qué
    *  maestro son estas filas. */
   href: string
-  mostrarVendedor: boolean
+  /** Las columnas de plata —pendiente, vencido, plazo— y el vendedor. Van
+   *  juntas en una sola bandera porque son la mitad comercial de la fila, y en
+   *  el maestro de proveedores no existe ninguna. */
+  mostrarSaldos: boolean
   onVer: () => void
   onEditar: () => void
   onCambiarEstado: (activo: boolean) => void
@@ -506,68 +520,76 @@ function Fila({
         )}
       </TableCell>
 
-      {/* Pendiente y vencido, cada moneda en su renglón y nunca sumadas: para
-          consolidarlas habría que elegir un tipo de cambio y el saldo cambiaría
-          solo de un día para el otro. */}
-      <TableCell className="text-right">
-        {r.pendienteArs === 0 && r.pendienteUsd === 0 ? (
-          <span className="text-ink-faint">—</span>
-        ) : (
-          <div>
-            {r.pendienteArs !== 0 && (
-              <span className="num block font-semibold text-ink">
-                {formatearImporte(r.pendienteArs, "ARS")}
-              </span>
+      {mostrarSaldos && (
+        <>
+          {/* Pendiente y vencido, cada moneda en su renglón y nunca sumadas:
+              para consolidarlas habría que elegir un tipo de cambio y el saldo
+              cambiaría solo de un día para el otro. */}
+          <TableCell className="text-right">
+            {r.pendienteArs === 0 && r.pendienteUsd === 0 ? (
+              <span className="text-ink-faint">—</span>
+            ) : (
+              <div>
+                {r.pendienteArs !== 0 && (
+                  <span className="num block font-semibold text-ink">
+                    {formatearImporte(r.pendienteArs, "ARS")}
+                  </span>
+                )}
+                {r.pendienteUsd !== 0 && (
+                  <span className="num block text-[11.5px] font-medium text-ink-secondary">
+                    {formatearImporte(r.pendienteUsd, "USD")}
+                  </span>
+                )}
+              </div>
             )}
-            {r.pendienteUsd !== 0 && (
-              <span className="num block text-[11.5px] font-medium text-ink-secondary">
-                {formatearImporte(r.pendienteUsd, "USD")}
-              </span>
-            )}
-          </div>
-        )}
-      </TableCell>
+          </TableCell>
 
-      <TableCell className="text-right">
-        {r.vencidas === 0 ? (
-          <span className="text-ink-faint">—</span>
-        ) : (
-          <div>
-            {r.vencidoArs !== 0 && (
-              <span className="num block font-semibold text-danger-text">
-                {formatearImporte(r.vencidoArs, "ARS")}
-              </span>
+          <TableCell className="text-right">
+            {r.vencidas === 0 ? (
+              <span className="text-ink-faint">—</span>
+            ) : (
+              <div>
+                {r.vencidoArs !== 0 && (
+                  <span className="num block font-semibold text-danger-text">
+                    {formatearImporte(r.vencidoArs, "ARS")}
+                  </span>
+                )}
+                {r.vencidoUsd !== 0 && (
+                  <span className="num block text-[11.5px] font-medium text-danger-text">
+                    {formatearImporte(r.vencidoUsd, "USD")}
+                  </span>
+                )}
+                <span className="text-[10.5px] text-ink-muted">
+                  {r.vencidas} comprobante{r.vencidas !== 1 ? "s" : ""}
+                </span>
+              </div>
             )}
-            {r.vencidoUsd !== 0 && (
-              <span className="num block text-[11.5px] font-medium text-danger-text">
-                {formatearImporte(r.vencidoUsd, "USD")}
-              </span>
+          </TableCell>
+
+          <TableCell className="num text-right text-ink-secondary">
+            {c.condicionPagoDias !== null ? (
+              `${c.condicionPagoDias} d`
+            ) : (
+              <span className="text-ink-faint">—</span>
             )}
-            <span className="text-[10.5px] text-ink-muted">
-              {r.vencidas} comprobante{r.vencidas !== 1 ? "s" : ""}
-            </span>
-          </div>
-        )}
-      </TableCell>
+          </TableCell>
 
-      <TableCell className="num text-right text-ink-secondary">
-        {c.condicionPagoDias !== null ? (
-          `${c.condicionPagoDias} d`
-        ) : (
-          <span className="text-ink-faint">—</span>
-        )}
-      </TableCell>
-
-      {mostrarVendedor && (
-        <TableCell className="text-ink-secondary">
-          {c.vendedorNombre ?? <span className="text-ink-faint">—</span>}
-        </TableCell>
+          <TableCell className="text-ink-secondary">
+            {c.vendedorNombre ?? <span className="text-ink-faint">—</span>}
+          </TableCell>
+        </>
       )}
 
       <TableCell onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-end gap-0.5">
-          <Button variant="ghost" size="icon-sm" onClick={onVer} aria-label="Ver detalle">
-            <Eye className="h-3.5 w-3.5" />
+          {/* El ojo lleva a la ficha completa, igual que el nombre. Antes abría
+              el panel lateral, que era un rodeo: se espiaba, y lo que se
+              quería ver casi siempre estaba una pantalla más adentro. El panel
+              sigue existiendo para el click en la fila. */}
+          <Button variant="ghost" size="icon-sm" asChild aria-label="Ver ficha">
+            <Link href={href}>
+              <Eye className="h-3.5 w-3.5" />
+            </Link>
           </Button>
           <Button variant="ghost" size="icon-sm" onClick={onEditar} aria-label="Editar">
             <Pencil className="h-3.5 w-3.5" />

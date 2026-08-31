@@ -1,9 +1,10 @@
-import { ComprobantesClient } from "@/components/admin/comprobantes-client"
+import { CargaComprobanteClient } from "@/components/admin/carga-comprobante-client"
 import { PageBody, PageHeader } from "@/components/ui/page-header"
 
 /**
- * Facturas de compra. Misma pantalla y mismo motor que ventas — comparten tabla
- * y componente — con el signo invertido: acá el saldo es lo que debemos.
+ * Alta de facturas de compra. La pantalla es el formulario: se entra a cargar
+ * la factura que acaba de llegar, con la carga inteligente al lado por si viene
+ * en PDF. Lo ya cargado se revisa en `/admin/compras/listado`.
  */
 export const metadata = { title: "Facturas de compras · Accedra" }
 
@@ -12,11 +13,11 @@ export default function ComprasPage() {
     <main className="flex min-h-full flex-col">
       <PageHeader
         title="Facturas de compras"
-        description="Comprobantes recibidos de proveedores, con percepciones y saldo pendiente"
+        description="Cargá el comprobante recibido del proveedor, a mano o desde el PDF"
         back={{ href: "/admin", label: "Administración" }}
       />
       <PageBody>
-        <ComprobantesClient tipo="compra" />
+        <CargaComprobanteClient tipo="compra" />
       </PageBody>
     </main>
   )

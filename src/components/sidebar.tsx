@@ -28,6 +28,11 @@ type NavItem = {
   exact?: boolean
   /** Prefijos extra que también encienden el ítem (ej.: /product/ es Inventario). */
   also?: string[]
+  /** Prefijos que lo apagan aunque su `href` coincida. Para el maestro que tiene
+   *  una pantalla hermana colgando de su propia ruta —/admin/proveedores y
+   *  /admin/proveedores/cuenta-corriente—: sin esto se encienden los dos y el
+   *  menú deja de decir dónde estás. */
+  salvo?: string[]
   /** Las pantallas que cuelgan de este submódulo. */
   hijos?: NavItem[]
 }
@@ -83,8 +88,8 @@ const GRUPOS: Grupo[] = [
      * Cuando alguien dice "el 2.3", tiene que haber un 2.3.
      *
      *   1 Datos maestros
-     *   2 Proveedores → alta · facturas de compras · pagos · otros movimientos
-     *   3 Clientes    → alta · facturas de ventas  · cobros
+     *   2 Proveedores → maestro · cuenta corriente · compras · pagos · movimientos
+     *   3 Clientes    → maestro · cuenta corriente · ventas · cobros
      *   4 Caja y bancos · 5 Contabilidad · 6 Reportes
      *
      * La única libertad que se tomó: el 2.3 "Pagos" del organigrama agrupa dos
@@ -98,7 +103,17 @@ const GRUPOS: Grupo[] = [
         name: "Proveedores",
         available: true,
         hijos: [
-          { name: "Alta de proveedores", href: "/admin/proveedores", available: true },
+          {
+            name: "Proveedores",
+            href: "/admin/proveedores",
+            available: true,
+            salvo: ["/admin/proveedores/cuenta-corriente"],
+          },
+          {
+            name: "Cuenta corriente",
+            href: "/admin/proveedores/cuenta-corriente",
+            available: true,
+          },
           { name: "Facturas de compras", href: "/admin/compras", available: true },
           { name: "Pagos de facturas", href: "/admin/pagos", available: true },
           { name: "Otros movimientos", href: "/admin/movimientos", available: true },
@@ -108,7 +123,17 @@ const GRUPOS: Grupo[] = [
         name: "Clientes",
         available: true,
         hijos: [
-          { name: "Alta de clientes", href: "/admin/clientes", available: true },
+          {
+            name: "Clientes",
+            href: "/admin/clientes",
+            available: true,
+            salvo: ["/admin/clientes/cuenta-corriente"],
+          },
+          {
+            name: "Cuenta corriente",
+            href: "/admin/clientes/cuenta-corriente",
+            available: true,
+          },
           { name: "Facturas de ventas", href: "/admin/ventas", available: true },
           { name: "Cobros de facturas", href: "/admin/cobros", available: true },
         ],
@@ -123,6 +148,7 @@ const GRUPOS: Grupo[] = [
 function esActivo(item: NavItem, pathname: string): boolean {
   if (!item.available) return false
   if (item.hijos) return item.hijos.some((h) => esActivo(h, pathname))
+  if (item.salvo?.some((p) => pathname.startsWith(p))) return false
   if (item.also?.some((p) => pathname.startsWith(p))) return true
   if (!item.href) return false
   return item.exact ? pathname === item.href : pathname.startsWith(item.href)
@@ -325,8 +351,9 @@ function GrupoNav({
  * el grupo: es la misma regla en los dos niveles, así que el menú se comporta de
  * una sola manera en vez de dos.
  *
- * El rótulo no navega —no hay una pantalla "Proveedores" distinta de "Alta de
- * proveedores"—, así que el click abre y cierra en vez de ir a ningún lado.
+ * El rótulo no navega: es el módulo entero, y la pantalla que lleva su mismo
+ * nombre —el maestro— cuelga adentro. Así que el click abre y cierra en vez de
+ * ir a ningún lado.
  */
 function SubGrupoNav({ item, pathname }: { item: NavItem; pathname: string }) {
   const activo = esActivo(item, pathname)
@@ -380,7 +407,7 @@ function SubGrupoNav({ item, pathname }: { item: NavItem; pathname: string }) {
         <div className="overflow-hidden">
           {/* Las pantallas del submódulo van 18px más adentro que su rótulo, con
               su propia guía —más tenue que la del grupo, porque es un escalón
-              menor—. Sin la sangría, "Alta de proveedores" queda alineada con
+              menor—. Sin la sangría, "Facturas de compras" queda alineada con
               "Caja y bancos" y las dos se leen como hermanas cuando una está un
               nivel más abajo.
 

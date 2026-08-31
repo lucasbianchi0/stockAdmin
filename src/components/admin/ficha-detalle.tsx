@@ -106,12 +106,12 @@ export function FichaDetalle({
             variant="outline"
             onClick={() =>
               router.push(
-                `/admin/reportes?solapa=cuenta&tipo=${tipo}&entidadId=${entidadId ?? ""}`
+                `/admin/${esCliente ? "clientes" : "proveedores"}/cuenta-corriente?entidadId=${entidadId ?? ""}`
               )
             }
           >
             <FileSpreadsheet className="h-3.5 w-3.5" />
-            Estado de cuenta
+            Cuenta corriente
           </Button>
           <Button onClick={onEditar}>
             <Pencil className="h-3.5 w-3.5" />
