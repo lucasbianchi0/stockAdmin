@@ -113,6 +113,41 @@ export type CuentaFinanciera = {
   entradasMes?: number
   salidasMes?: number
   sinConciliar?: number
+  /** Solo con `?todas=1`: las dadas de baja también vienen, para poder
+   *  reactivarlas. En el resto de las pantallas todas las que llegan son activas. */
+  activo?: boolean
+}
+
+/**
+ * La cuenta entera, como la edita su formulario.
+ *
+ * Es un tipo aparte y no campos opcionales sobre `CuentaFinanciera` porque son
+ * dos cosas distintas: `CuentaFinanciera` es lo que un selector necesita para
+ * ofrecer "Galicia (ARS)", y esto es la ficha. Mezclarlas obligaría a cada
+ * selector a cargar con quince campos que no mira.
+ */
+export type CuentaFinancieraDetalle = {
+  id: string
+  nombre: string
+  tipo: "caja" | "banco" | "billetera"
+  moneda: Moneda
+  banco: string | null
+  numeroCuenta: string | null
+  cbu: string | null
+  alias: string | null
+  /** Contra qué cuenta del plan se asientan sus movimientos. Sin esto, ningún
+   *  movimiento de la cuenta llega al libro diario. */
+  cuentaContableId: string | null
+  cuentaContableNombre: string | null
+  /** Lo que había el día que arrancó el sistema. Es el "saldo anterior" del
+   *  extracto y el punto de partida de todos los saldos de la cuenta. */
+  saldoInicial: number
+  fechaSaldoInicial: string | null
+  activo: boolean
+  orden: number
+  /** Si ya tiene movimientos cargados. Lo decide qué se puede seguir cambiando:
+   *  la moneda, no. */
+  tieneMovimientos: boolean
 }
 
 /** Una factura pendiente, como la ve el panel de imputación. */

@@ -1,6 +1,6 @@
 "use client"
 
-import { Check, Trash2 } from "lucide-react"
+import { Check, Pencil, Trash2 } from "lucide-react"
 
 import { Bloque, Cifra, Dato, DetalleDialog, ListaDatos } from "@/components/admin/detalle-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -27,12 +27,15 @@ export function MovimientoDetalle({
   movimiento: m,
   onCerrar,
   onConciliar,
+  onEditar,
   onBorrar,
 }: {
   abierto: boolean
   movimiento: Movimiento | null
   onCerrar: () => void
   onConciliar: () => void
+  /** Opcional: abre el mismo movimiento en el formulario para corregirlo. */
+  onEditar?: () => void
   /** Opcional: el extracto solo deja borrar lo que no cuelga de un recibo. */
   onBorrar?: () => void
 }) {
@@ -58,6 +61,16 @@ export function MovimientoDetalle({
               <Check className="h-3.5 w-3.5" />
               {m.conciliado ? "Desmarcar" : "Marcar conciliado"}
             </Button>
+            {/* Editar aparece también en los que vienen de un recibo: ahí se
+                corrigen la referencia y el detalle, que es lo que hace falta
+                para poder conciliar contra el resumen del banco. El formulario
+                dice qué no se puede tocar y por qué. */}
+            {onEditar && (
+              <Button variant="outline" onClick={onEditar}>
+                <Pencil className="h-3.5 w-3.5" />
+                Editar
+              </Button>
+            )}
             {/* Los que cuelgan de un recibo se anulan desde el recibo: borrar
                 acá dejaría la factura cancelada sin la plata que la respalda. */}
             {esEditable(m.origen) && (

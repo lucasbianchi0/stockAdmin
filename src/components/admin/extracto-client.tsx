@@ -1,17 +1,22 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Check,
   Download,
   Loader2,
+  Pencil,
   Plus,
+  Settings2,
   Search,
   Wallet,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
 
+import { ConfirmarDialog } from "@/components/admin/confirmar-dialog"
+import { CuentaDialog } from "@/components/admin/cuenta-dialog"
 import { MovimientoDetalle } from "@/components/admin/movimiento-detalle"
 import { MovimientoDialog } from "@/components/admin/movimiento-dialog"
 import { Button } from "@/components/ui/button"
@@ -25,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import type { CuentaFinanciera } from "@/lib/admin/cobros"
+import type { CuentaFinanciera, CuentaFinancieraDetalle } from "@/lib/admin/cobros"
 import {
   PERIODOS,
   PERIODO_LABEL,
@@ -36,7 +41,12 @@ import {
 } from "@/lib/admin/extracto"
 import { formatearFecha } from "@/lib/admin/fecha"
 import { formatearImporte } from "@/lib/admin/moneda"
-import { ORIGENES_MOVIMIENTO, ORIGEN_LABEL, type Movimiento } from "@/lib/admin/movimientos"
+import {
+  ORIGENES_MOVIMIENTO,
+  ORIGEN_LABEL,
+  esEditable,
+  type Movimiento,
+} from "@/lib/admin/movimientos"
 import { cn } from "@/lib/utils"
 
 /**
@@ -55,6 +65,12 @@ import { cn } from "@/lib/utils"
  * no querría decir nada.
  */
 export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
+  /* El encabezado de la página —el nombre de la cuenta y sus datos bancarios—
+     lo arma el servidor, así que después de editar la ficha hay que pedirle que
+     lo rehaga: sin esto la cuenta se renombra y el título sigue diciendo el
+     nombre viejo hasta que alguien recargue. */
+  const router = useRouter()
+
   const [datos, setDatos] = useState<Extracto | null>(null)
   const [cuentas, setCuentas] = useState<CuentaFinanciera[]>([])
   const [cargando, setCargando] = useState(true)
@@ -68,6 +84,12 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
 
   const [ver, setVer] = useState<FilaExtracto | null>(null)
   const [nuevo, setNuevo] = useState<null | "gasto" | "ajuste">(null)
+  const [editando, setEditando] = useState<Movimiento | null>(null)
+  const [abriendo, setAbriendo] = useState<string | null>(null)
+  const [aBorrar, setABorrar] = useState<FilaExtracto | null>(null)
+  const [borrando, setBorrando] = useState(false)
+  const [ficha, setFicha] = useState<CuentaFinancieraDetalle | null>(null)
+  const [abriendoFicha, setAbriendoFicha] = useState(false)
   const [ocupado, setOcupado] = useState<string | null>(null)
 
   // Se espera a que deje de tipear: una consulta por tecla contra una tabla de
@@ -128,6 +150,70 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
       toast.error(e instanceof Error ? e.message : "No se pudo actualizar")
     } finally {
       setOcupado(null)
+    }
+  }
+
+  /**
+   * La ficha de la cuenta.
+   *
+   * Se llega desde acá y no solo desde el listado porque es acá donde se nota
+   * que algo está mal: el "SALDO ANTERIOR" del extracto ES el saldo inicial de
+   * la cuenta, y cuando no coincide con el resumen del banco, lo que hay que
+   * corregir no es ningún movimiento.
+   */
+  const abrirFicha = useCallback(async () => {
+    setAbriendoFicha(true)
+    try {
+      const res = await fetch(`/api/admin/cuentas/${cuentaId}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "No se pudo abrir la cuenta")
+      setFicha(data.cuenta as CuentaFinancieraDetalle)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo abrir la cuenta")
+    } finally {
+      setAbriendoFicha(false)
+    }
+  }, [cuentaId])
+
+  /**
+   * Abre un renglón para corregirlo.
+   *
+   * Se pide la fila entera al servidor en vez de usar la del extracto: la del
+   * extracto tiene lo que la tabla dibuja, y el formulario necesita además el
+   * tipo de cambio, la categoría y la cuenta contable. Traer esas tres columnas
+   * en cada extracto —dos mil filas— para que las use un diálogo que se abre de
+   * a una sería pagar el dato mil novecientas noventa y nueve veces de más.
+   */
+  const abrirEdicion = useCallback(async (id: string) => {
+    setAbriendo(id)
+    try {
+      const res = await fetch(`/api/admin/movimientos/${id}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "No se pudo abrir el movimiento")
+      setVer(null)
+      setEditando(data.movimiento as Movimiento)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo abrir el movimiento")
+    } finally {
+      setAbriendo(null)
+    }
+  }, [])
+
+  const borrar = async () => {
+    if (!aBorrar) return
+    setBorrando(true)
+    try {
+      const res = await fetch(`/api/admin/movimientos/${aBorrar.id}`, { method: "DELETE" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "No se pudo borrar")
+      toast.success("Movimiento borrado")
+      setABorrar(null)
+      setVer(null)
+      cargar()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo borrar")
+    } finally {
+      setBorrando(false)
     }
   }
 
@@ -209,6 +295,14 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
             </div>
 
             <div className="ml-auto flex items-center gap-2">
+              <Button variant="outline" onClick={abrirFicha} disabled={abriendoFicha}>
+                {abriendoFicha ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Settings2 className="h-3.5 w-3.5" />
+                )}
+                Editar la cuenta
+              </Button>
               <Button variant="outline" onClick={exportar} disabled={filas.length === 0}>
                 <Download className="h-3.5 w-3.5" />
                 Exportar
@@ -309,7 +403,7 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
                 <TableHead className="text-right">Créditos</TableHead>
                 <TableHead className="text-right">Saldo</TableHead>
                 <TableHead>Detalle</TableHead>
-                <TableHead className="w-[80px]" />
+                <TableHead className="w-[104px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -398,6 +492,24 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
 
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end">
+                          {/* Corregir al lado de conciliar y no escondido en el
+                              detalle: los dos son lo que se hace renglón por
+                              renglón con el resumen del banco al lado. */}
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            disabled={abriendo === f.id}
+                            onClick={() => abrirEdicion(f.id)}
+                            aria-label="Editar el movimiento"
+                            title="Editar el movimiento"
+                          >
+                            {abriendo === f.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Pencil className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+
                           <Button
                             variant="ghost"
                             size="icon-sm"
@@ -473,19 +585,51 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
             setVer(null)
           }
         }}
+        onEditar={ver ? () => abrirEdicion(ver.id) : undefined}
+        onBorrar={ver && esEditable(ver.origen) ? () => setABorrar(ver) : undefined}
       />
 
       <MovimientoDialog
         modo={nuevo}
+        edicion={editando}
         cuentas={cuentas}
         cuentaFijaId={cuentaId}
         borrador={null}
-        onCerrar={() => setNuevo(null)}
-        onGuardado={() => {
+        onCerrar={() => {
           setNuevo(null)
-          toast.success("Movimiento registrado")
+          setEditando(null)
+        }}
+        onGuardado={() => {
+          const corregia = editando !== null
+          setNuevo(null)
+          setEditando(null)
+          toast.success(corregia ? "Movimiento corregido" : "Movimiento registrado")
           cargar()
         }}
+      />
+
+      <CuentaDialog
+        abierto={ficha !== null}
+        cuenta={ficha}
+        onCerrar={() => setFicha(null)}
+        onGuardada={() => {
+          setFicha(null)
+          toast.success("Cuenta actualizada")
+          // El extracto entero depende de la ficha: el saldo inicial es su
+          // primer renglón y la moneda, la de cada importe.
+          cargar()
+          router.refresh()
+        }}
+      />
+
+      <ConfirmarDialog
+        abierto={aBorrar !== null}
+        titulo="Borrar el movimiento"
+        descripcion="El saldo de la cuenta y el asiento que generó se deshacen con él."
+        confirmar="Borrar"
+        trabajando={borrando}
+        onCerrar={() => setABorrar(null)}
+        onConfirmar={borrar}
       />
     </>
   )

@@ -7,12 +7,16 @@ import {
   ChevronRight,
   FileInput,
   Landmark,
+  Loader2,
+  Pencil,
+  Plus,
   Receipt,
   Wallet,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import { AvisoSinAsiento } from "@/components/admin/aviso-sin-asiento"
+import { CuentaDialog } from "@/components/admin/cuenta-dialog"
 import { LecturaGastoDialog } from "@/components/admin/lectura-gasto-dialog"
 import {
   MovimientoDialog,
@@ -21,7 +25,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
-import type { CuentaFinanciera } from "@/lib/admin/cobros"
+import type { CuentaFinanciera, CuentaFinancieraDetalle } from "@/lib/admin/cobros"
 import { formatearImporte } from "@/lib/admin/moneda"
 import { cn } from "@/lib/utils"
 
@@ -61,12 +65,17 @@ export function CuentasClient() {
   const [dialogo, setDialogo] = useState<null | "gasto" | "transferencia" | "ajuste">(null)
   const [leyendo, setLeyendo] = useState(false)
   const [borrador, setBorrador] = useState<BorradorMovimiento | null>(null)
+  const [ficha, setFicha] = useState<CuentaFinancieraDetalle | null>(null)
+  const [fichaAbierta, setFichaAbierta] = useState(false)
+  const [abriendo, setAbriendo] = useState<string | null>(null)
 
   const cargar = useCallback(async () => {
     setCargando(true)
     setError(null)
     try {
-      const res = await fetch("/api/admin/cuentas?detalle=1")
+      // `todas=1`: las dadas de baja también. Es la única lista que las muestra,
+      // y sin ellas desactivar una cuenta sería un viaje de ida.
+      const res = await fetch("/api/admin/cuentas?detalle=1&todas=1")
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar las cuentas")
       setCuentas(data.cuentas ?? [])
@@ -88,10 +97,32 @@ export function CuentasClient() {
     cargar()
   }, [cargar])
 
+  /** La ficha entera, que la tarjeta no tiene: CBU, cuenta contable, saldo
+   *  inicial y si ya tiene movimientos. */
+  const abrirFicha = useCallback(async (id: string) => {
+    setAbriendo(id)
+    try {
+      const res = await fetch(`/api/admin/cuentas/${id}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "No se pudo abrir la cuenta")
+      setFicha(data.cuenta as CuentaFinancieraDetalle)
+      setFichaAbierta(true)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo abrir la cuenta")
+    } finally {
+      setAbriendo(null)
+    }
+  }, [])
+
+  /* Las activas. La lista de tarjetas muestra también las dadas de baja —para
+     poder volver a activarlas— pero ni los totales ni el selector de un
+     movimiento nuevo tienen nada que hacer con una cuenta cerrada. */
+  const activas = cuentas.filter((c) => c.activo !== false)
+
   /* Los totales por moneda, nunca consolidados: sumar pesos y dólares en un
      número obliga a elegir un tipo de cambio, y cualquiera que se elija engaña
      para algún uso. */
-  const totales = cuentas.reduce(
+  const totales = activas.reduce(
     (acc, c) => {
       if (c.moneda === "ARS") acc.ars += c.saldo ?? 0
       else acc.usd += c.saldo ?? 0
@@ -143,6 +174,16 @@ export function CuentasClient() {
             <FileInput className="h-3.5 w-3.5" />
             Carga inteligente
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setFicha(null)
+              setFichaAbierta(true)
+            }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Nueva cuenta
+          </Button>
           <Button onClick={() => setDialogo("gasto")}>
             <Receipt className="h-3.5 w-3.5" />
             Otro movimiento
@@ -167,23 +208,51 @@ export function CuentasClient() {
             const saldo = c.saldo ?? 0
             const movio = (c.entradasMes ?? 0) > 0 || (c.salidasMes ?? 0) > 0
 
+            const inactiva = c.activo === false
+
+            /* El lápiz va superpuesto y no dentro del enlace: una tarjeta que es
+               un `<a>` no puede contener un `<button>` que haga otra cosa sin
+               que el navegador termine navegando igual. */
             return (
-              <Link
-                key={c.id}
-                href={`/admin/cuentas/${c.id}`}
-                className={cn(
-                  "group flex flex-col rounded-xl border border-line bg-surface p-4 shadow-e1",
-                  "transition-all duration-150 hover:border-brand-200 hover:shadow-e2",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
-                )}
-              >
+              <div key={c.id} className="relative">
+                <button
+                  type="button"
+                  onClick={() => abrirFicha(c.id)}
+                  disabled={abriendo === c.id}
+                  aria-label={`Editar ${c.nombre}`}
+                  title="Editar la cuenta"
+                  className="absolute right-2.5 top-2.5 z-10 flex h-7 w-7 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-40"
+                >
+                  {abriendo === c.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Pencil className="h-3.5 w-3.5" />
+                  )}
+                </button>
+
+                <Link
+                  href={`/admin/cuentas/${c.id}`}
+                  className={cn(
+                    "group flex h-full flex-col rounded-xl border border-line bg-surface p-4 shadow-e1",
+                    "transition-all duration-150 hover:border-brand-200 hover:shadow-e2",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200",
+                    inactiva && "opacity-60"
+                  )}
+                >
                 <div className="flex items-start gap-3">
                   <span className="mt-0.5 rounded-lg bg-surface-muted p-2 text-ink-muted">
                     <Icono className="h-4 w-4" />
                   </span>
 
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-semibold text-ink">{c.nombre}</p>
+                  <div className="min-w-0 flex-1 pr-14">
+                    <p className="truncate text-[14px] font-semibold text-ink">
+                      {c.nombre}
+                      {inactiva && (
+                        <Badge size="sm" className="ml-1.5 align-middle">
+                          Inactiva
+                        </Badge>
+                      )}
+                    </p>
                     <p className="text-[11.5px] text-ink-muted">
                       {TIPO_LABEL[c.tipo]} · {c.moneda}
                       {c.numeroCuenta && <span className="num"> · {c.numeroCuenta}</span>}
@@ -225,8 +294,9 @@ export function CuentasClient() {
                       {c.sinConciliar} sin conciliar
                     </Badge>
                   )}
-                </div>
-              </Link>
+                  </div>
+                </Link>
+              </div>
             )
           })}
         </div>
@@ -244,13 +314,24 @@ export function CuentasClient() {
 
       <MovimientoDialog
         modo={dialogo}
-        cuentas={cuentas}
+        cuentas={activas}
         borrador={borrador}
         onCerrar={() => {
           setDialogo(null)
           setBorrador(null)
         }}
         onGuardado={alGuardar}
+      />
+
+      <CuentaDialog
+        abierto={fichaAbierta}
+        cuenta={ficha}
+        onCerrar={() => setFichaAbierta(false)}
+        onGuardada={() => {
+          setFichaAbierta(false)
+          toast.success(ficha ? "Cuenta actualizada" : "Cuenta creada")
+          cargar()
+        }}
       />
     </>
   )

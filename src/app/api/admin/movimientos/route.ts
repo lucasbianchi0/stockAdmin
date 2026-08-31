@@ -5,31 +5,18 @@ import { supabase } from "@/lib/supabase"
 import { createSupabaseServer } from "@/lib/supabase-server"
 import { ruta } from "@/lib/admin/ruta"
 import { POR_PAGINA_MAX, escaparParaOr } from "@/lib/admin/entidades-server"
-import { esMoneda, redondear } from "@/lib/admin/moneda"
+import { esMoneda } from "@/lib/admin/moneda"
 import { CATEGORIAS_GASTO, type CategoriaGasto } from "@/lib/admin/movimientos"
-import { SELECT_MOVIMIENTO, aMovimiento } from "@/lib/admin/movimientos-server"
+import {
+  SELECT_MOVIMIENTO,
+  aMovimiento,
+  esFechaISO,
+  monedasDeCuentas,
+  numeroPositivo,
+  resolverImporte,
+  textoCorto,
+} from "@/lib/admin/movimientos-server"
 import { cotizacionHasta } from "@/lib/admin/cotizaciones-server"
-
-/**
- * La moneda de cada cuenta financiera, leída de la base.
- *
- * No se confía en la que manda el navegador: desde la migración del TC, un
- * movimiento tiene que estar en la moneda de SU cuenta —un Galicia en pesos no
- * recibe dólares— y eso lo garantiza un trigger. Preguntarle a la base antes de
- * insertar convierte lo que haya que convertir y evita que el trigger tenga que
- * saltar con un error que nadie entendería.
- */
-async function monedasDeCuentas(ids: string[]): Promise<Map<string, "ARS" | "USD">> {
-  const limpios = ids.filter((v) => v.length > 0)
-  if (limpios.length === 0) return new Map()
-
-  const { data } = await supabase
-    .from("cuentas_financieras")
-    .select("id, moneda")
-    .in("id", limpios)
-
-  return new Map((data ?? []).map((c) => [c.id as string, c.moneda as "ARS" | "USD"]))
-}
 
 /* ── GET · listado ────────────────────────────────────────────────────────── */
 
@@ -121,8 +108,7 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
   const raw = body as Record<string, unknown>
   const origen = typeof raw.origen === "string" ? raw.origen : "manual"
 
-  const fecha =
-    typeof raw.fecha === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.fecha) ? raw.fecha : null
+  const fecha = esFechaISO(raw.fecha) ? raw.fecha : null
   if (!fecha) return NextResponse.json({ error: "La fecha es obligatoria" }, { status: 400 })
 
   const supabaseUsuario = await createSupabaseServer()
@@ -248,27 +234,14 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
     return NextResponse.json({ error: "La cuenta elegida ya no existe" }, { status: 409 })
   }
 
-  const monedaCargada = esMoneda(raw.moneda) ? raw.moneda : monedaCuenta
-  const cruzada = monedaCargada !== monedaCuenta
-
-  let tc = numeroPositivo(raw.tc)
-  if (cruzada && tc === null) {
-    return NextResponse.json(
-      {
-        error: `Cargaste el importe en ${monedaCargada} y la cuenta está en ${monedaCuenta}: falta el tipo de cambio.`,
-      },
-      { status: 400 }
-    )
-  }
-  // Sin TC explícito se archiva el del día, para que el movimiento quede valuado
-  // en las dos monedas sin que nadie tipee nada.
-  if (tc === null) tc = await cotizacionHasta(fecha)
-
-  const importeEnLaCuenta = cruzada
-    ? monedaCargada === "USD"
-      ? redondear(importe * (tc as number))
-      : redondear(importe / (tc as number))
-    : importe
+  const plata = await resolverImporte({
+    importe,
+    monedaCargada: esMoneda(raw.moneda) ? raw.moneda : monedaCuenta,
+    monedaCuenta,
+    tc: numeroPositivo(raw.tc),
+    fecha,
+  })
+  if ("error" in plata) return NextResponse.json({ error: plata.error }, { status: 400 })
 
   const categoria =
     typeof raw.categoria === "string" &&
@@ -282,11 +255,13 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
       cuenta_id: cuentaId,
       fecha,
       tipo,
-      importe: importeEnLaCuenta,
-      moneda: monedaCuenta,
-      tc,
-      importe_origen: cruzada ? importe : null,
-      moneda_origen: cruzada ? monedaCargada : null,
+      importe: plata.importe,
+      moneda: plata.moneda,
+      // Sin cotización se omite y manda el default de la columna: es un
+      // movimiento en pesos, donde el TC no cambia ninguna valuación.
+      ...(plata.tc !== null && { tc: plata.tc }),
+      importe_origen: plata.importeOrigen,
+      moneda_origen: plata.monedaOrigen,
       origen: origen === "gasto" ? "gasto" : "manual",
       cuenta_contable_id:
         typeof raw.cuentaContableId === "string" && raw.cuentaContableId
@@ -307,16 +282,3 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
 
   return NextResponse.json({ movimiento: aMovimiento(data) }, { status: 201 })
 })
-
-/* ── Utilidades ───────────────────────────────────────────────────────────── */
-
-function numeroPositivo(v: unknown): number | null {
-  const n = Number(v)
-  return Number.isFinite(n) && n > 0 ? redondear(n, 4) : null
-}
-
-function textoCorto(v: unknown, max = 200): string | null {
-  if (typeof v !== "string") return null
-  const t = v.trim().slice(0, max)
-  return t.length > 0 ? t : null
-}

@@ -77,6 +77,7 @@ export function MovimientosClient() {
   const [leyendo, setLeyendo] = useState(false)
   const [borrador, setBorrador] = useState<BorradorMovimiento | null>(null)
   const [ver, setVer] = useState<Movimiento | null>(null)
+  const [editando, setEditando] = useState<Movimiento | null>(null)
   const [aBorrar, setABorrar] = useState<Movimiento | null>(null)
   const [borrando, setBorrando] = useState(false)
 
@@ -89,12 +90,15 @@ export function MovimientosClient() {
       .catch(() => setCuentas([]))
   }, [])
 
-  const alGuardar = useCallback(() => {
-    setDialogo(null)
-    setBorrador(null)
-    toast.success("Movimiento registrado")
-    recargar()
-  }, [recargar])
+  const alGuardar = useCallback(
+    (corregido = false) => {
+      setDialogo(null)
+      setBorrador(null)
+      toast.success(corregido ? "Movimiento corregido" : "Movimiento registrado")
+      recargar()
+    },
+    [recargar]
+  )
 
   const conciliar = async (m: Movimiento) => {
     try {
@@ -296,15 +300,23 @@ export function MovimientosClient() {
         }}
       />
 
+      {/* El listado ya trae el movimiento entero, así que corregirlo no necesita
+          pedirlo de nuevo como en el extracto. */}
       <MovimientoDialog
         modo={dialogo}
+        edicion={editando}
         cuentas={cuentas}
         borrador={borrador}
         onCerrar={() => {
           setDialogo(null)
           setBorrador(null)
+          setEditando(null)
         }}
-        onGuardado={alGuardar}
+        onGuardado={() => {
+          const corregia = editando !== null
+          setEditando(null)
+          alGuardar(corregia)
+        }}
       />
 
       <MovimientoDetalle
@@ -312,6 +324,14 @@ export function MovimientosClient() {
         movimiento={ver}
         onCerrar={() => setVer(null)}
         onConciliar={() => ver && conciliar(ver)}
+        onEditar={
+          ver
+            ? () => {
+                setEditando(ver)
+                setVer(null)
+              }
+            : undefined
+        }
         onBorrar={ver && esEditable(ver.origen) ? () => setABorrar(ver) : undefined}
       />
 

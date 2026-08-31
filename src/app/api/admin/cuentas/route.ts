@@ -4,6 +4,12 @@ import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
 import { redondear } from "@/lib/admin/moneda"
+import {
+  SELECT_CUENTA,
+  aCuentaDetalle,
+  camposDeCuenta,
+  esNombreRepetido,
+} from "@/lib/admin/cuentas-server"
 import type { CuentaFinanciera } from "@/lib/admin/cobros"
 
 /**
@@ -19,20 +25,28 @@ import type { CuentaFinanciera } from "@/lib/admin/cobros"
  * movimientos quedan sin conciliar. Va detrás de un parámetro porque los
  * selectores de los formularios de cobro no necesitan nada de eso y sería una
  * consulta extra en cada apertura de diálogo.
+ *
+ * Con `?todas=1` vienen también las dadas de baja. Solo lo pide la pantalla de
+ * Caja y Bancos: una cuenta desactivada tiene que poder volver, y si la única
+ * lista que la muestra la filtra, dar de baja es un viaje de ida.
  */
 export const GET = ruta("cuentas GET", async (req: Request) => {
   const sinPermiso = await exigirModulo("administracion")
   if (sinPermiso) return sinPermiso
 
-  const conDetalle = new URL(req.url).searchParams.get("detalle") === "1"
+  const parametros = new URL(req.url).searchParams
+  const conDetalle = parametros.get("detalle") === "1"
+  const todas = parametros.get("todas") === "1"
 
-  const { data, error } = await supabase
+  let consulta = supabase
     .from("cuentas_saldo")
     .select(
       "id, nombre, tipo, moneda, banco, numero_cuenta, alias, saldo, saldo_inicial, activo, orden"
     )
-    .eq("activo", true)
-    .order("orden", { ascending: true })
+
+  if (!todas) consulta = consulta.eq("activo", true)
+
+  const { data, error } = await consulta.order("orden", { ascending: true })
 
   if (error) {
     console.error("[cuentas GET]", error)
@@ -48,6 +62,7 @@ export const GET = ruta("cuentas GET", async (req: Request) => {
     banco: (c.banco as string | null) ?? null,
     numeroCuenta: (c.numero_cuenta as string | null) ?? null,
     alias: (c.alias as string | null) ?? null,
+    activo: Boolean(c.activo),
   }))
 
   if (!conDetalle || cuentas.length === 0) {
@@ -99,4 +114,51 @@ export const GET = ruta("cuentas GET", async (req: Request) => {
       }
     }),
   })
+})
+
+/* ── POST · una cuenta nueva ──────────────────────────────────────────────── */
+
+/**
+ * Dar de alta una caja, un banco o una billetera.
+ *
+ * Antes esto se hacía por SQL, que es la razón por la que abrir una cuenta nueva
+ * en el banco dejaba al sistema sin dónde registrarla hasta que alguien corriera
+ * un insert a mano.
+ */
+export const POST = ruta("cuentas POST", async (req: Request) => {
+  const sinPermiso = await exigirModulo("administracion")
+  if (sinPermiso) return sinPermiso
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: "Body inválido" }, { status: 400 })
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Body inválido" }, { status: 400 })
+  }
+
+  const campos = camposDeCuenta(body as Record<string, unknown>, "alta")
+  if ("error" in campos) return NextResponse.json({ error: campos.error }, { status: 400 })
+
+  const { data, error } = await supabase
+    .from("cuentas_financieras")
+    .insert(campos)
+    .select(SELECT_CUENTA)
+    .single()
+
+  if (error || !data) {
+    if (esNombreRepetido(error)) {
+      return NextResponse.json(
+        { error: "Ya hay otra cuenta con ese nombre en esa moneda" },
+        { status: 409 }
+      )
+    }
+    console.error("[cuentas POST]", error)
+    return NextResponse.json({ error: "No se pudo crear la cuenta" }, { status: 500 })
+  }
+
+  // Recién creada: no puede tener movimientos.
+  return NextResponse.json({ cuenta: aCuentaDetalle(data, false) }, { status: 201 })
 })
