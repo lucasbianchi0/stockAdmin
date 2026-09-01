@@ -24,6 +24,8 @@ import tempfile
 from PIL import Image
 
 SALIDA = pathlib.Path('/Users/lucasbianchi/Desktop/projects/accedra/public/logos')
+# Y una copia en el admin, que es de donde los toma la previa del brand kit.
+COPIA = pathlib.Path(__file__).resolve().parents[1] / 'logos'
 CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 LADO = 24          # lado de la ficha, en px de pantalla
@@ -94,6 +96,8 @@ def rasterizar(marcado, destino):
                         '--screenshot=%s' % tiro, pagina.as_uri()],
                        check=True, capture_output=True)
         Image.open(tiro).convert('RGBA').resize((FINAL, FINAL), Image.LANCZOS).save(destino)
+        COPIA.mkdir(exist_ok=True)
+        (COPIA / destino.name).write_bytes(destino.read_bytes())
 
 
 for nombre, glifo in GLIFOS.items():

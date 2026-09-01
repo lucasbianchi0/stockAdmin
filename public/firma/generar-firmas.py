@@ -3,7 +3,7 @@
    Editar los datos o los bloques de aca y correr:  python3 generar-firmas.py"""
 import base64, pathlib
 from PIL import Image
-from tira_partners import PARTNERS, ESCALA as ESCALA_PARTNERS, escribir as escribir_tira
+from tira_partners import PARTNERS, escribir as escribir_tira
 
 AQUI = pathlib.Path(__file__).parent
 LOGO_PNG = pathlib.Path('/Users/lucasbianchi/Desktop/projects/accedra/public/logos/accedra-firma-email.png')
@@ -68,35 +68,8 @@ def identidad(dir_incluida=True):
     return '\n '.join(f)
 
 def grilla_partners(items, por_fila=6, ancho=558, gap=16, alto_fila=None):
-    """Una sola imagen en vez de doce.
-
-    Cada logo suelto es un pedido HTTP que Gmail ademas proxea la primera vez: doce logos
-    son doce viajes, y por eso la firma aparecia de a pedazos. Compuestos en una tira, es uno.
-
-    La tira completa la arma tira_partners.py, que es la que sirve el brand kit: aca
-    se delega para que correr este script no la vuelva a la grilla de columnas fijas.
-    """
-    if len(items) == len(PARTNERS):
-        ancho, alto = escribir_tira()
-        return ('<img src="%saccedra-firma-partners-%d.png" alt="Partners de Accedra" width="%d" height="%d" '
-                'style="display:block;width:%dpx;height:%dpx;border:0;">'
-                % (CDN, len(items), ancho, alto, ancho, alto))
-    e = ESCALA_PARTNERS
-    items = [(a, alt, max(1, round(w * e)), max(1, round(h * e))) for a, alt, w, h in items]
-    alto_fila = alto_fila or max(h for _, _, _, h in items)
-    filas = (len(items) + por_fila - 1) // por_fila
-    col = ancho // por_fila
-    alto = filas * alto_fila + (filas - 1) * gap
-    lienzo = Image.new('RGBA', (ancho * 2, alto * 2), (0, 0, 0, 0))
-    for i, (archivo, alt, w, h) in enumerate(items):
-        origen = Image.open(LOGO_PNG.parent / archivo).convert('RGBA')
-        escalado = origen.resize((w * 2, h * 2), Image.LANCZOS)
-        x = (i % por_fila) * col
-        y = (i // por_fila) * (alto_fila + gap) + (alto_fila - h) // 2
-        lienzo.paste(escalado, (x * 2, y * 2), escalado)
-    nombre = 'accedra-firma-partners-%d.png' % len(items)
-    # PNG8 con alfa: son logos planos, no fotos. Baja el peso a un tercio sin diferencia visible.
-    lienzo.quantize(colors=200, method=Image.FASTOCTREE).save(LOGO_PNG.parent / nombre, optimize=True)
+    """La tira la dibuja tira_partners.py, que es la que usa el brand kit."""
+    nombre, ancho, alto = escribir_tira(items, ancho)
     return ('<img src="%s%s" alt="Partners de Accedra" width="%d" height="%d" '
             'style="display:block;width:%dpx;height:%dpx;border:0;">'
             % (CDN, nombre, ancho, alto, ancho, alto))

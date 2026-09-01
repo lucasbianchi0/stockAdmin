@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   FIRMA_DEFAULT,
+  LOGOS_PREVIA,
   MODELOS,
   firmaHtml,
   firmaTexto,
@@ -25,6 +26,10 @@ import {
  * No hay nada que guardar: los campos viven en el estado del componente y se
  * pierden al recargar, a propósito — es una herramienta de un solo uso, no un
  * padrón de empleados.
+ *
+ * Lo que se dibuja acá abajo trae las imágenes de `public/logos/` y lo que se
+ * copia las trae del sitio: son los mismos archivos, pero la previa no tiene por
+ * qué esperar a un deploy para mostrarlas.
  */
 
 const CAMPOS: { k: keyof DatosFirma; label: string; ph: string }[] = [
@@ -40,7 +45,6 @@ export function FirmaCorreoGenerador() {
   const [datos, setDatos] = React.useState<DatosFirma>(FIRMA_DEFAULT)
   /** Qué botón acaba de copiar, como `modelo:firma` o `modelo:html`. */
   const [copiado, setCopiado] = React.useState("")
-  const previas = React.useRef<Partial<Record<ModeloFirma, HTMLDivElement | null>>>({})
 
   React.useEffect(() => {
     if (!copiado) return
@@ -53,8 +57,12 @@ export function FirmaCorreoGenerador() {
 
   /**
    * Se copia el HTML con formato, no el texto. Si el navegador no deja escribir
-   * `text/html` en el portapapeles, se cae a seleccionar la previa y copiar la
-   * selección, que es lo que hacen los generadores viejos y funciona en todos.
+   * `text/html` en el portapapeles, se cae a seleccionar y copiar, que es lo que
+   * hacen los generadores viejos y funciona en todos.
+   *
+   * Lo que se selecciona en ese caso no es la previa sino un nodo aparte, fuera
+   * de pantalla: la previa apunta a las imágenes locales, y copiarla dejaría una
+   * firma con URLs de localhost adentro del mail.
    */
   async function copiarFirma(modelo: ModeloFirma) {
     const html = firmaHtml(datos, modelo)
@@ -66,15 +74,18 @@ export function FirmaCorreoGenerador() {
         }),
       ])
     } catch {
-      const nodo = previas.current[modelo]
-      if (!nodo) return
+      const fuera = document.createElement("div")
+      fuera.style.cssText = "position:fixed;left:-9999px;top:0;width:600px;"
+      fuera.innerHTML = html
+      document.body.appendChild(fuera)
       const rango = document.createRange()
-      rango.selectNode(nodo)
+      rango.selectNode(fuera)
       const sel = window.getSelection()
       sel?.removeAllRanges()
       sel?.addRange(rango)
       document.execCommand("copy")
       sel?.removeAllRanges()
+      fuera.remove()
     }
     setCopiado(`${modelo}:firma`)
   }
@@ -142,12 +153,7 @@ export function FirmaCorreoGenerador() {
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-line bg-white p-6 shadow-e1">
-            <div
-              ref={(el) => {
-                previas.current[m.id] = el
-              }}
-              dangerouslySetInnerHTML={{ __html: firmaHtml(datos, m.id) }}
-            />
+            <div dangerouslySetInnerHTML={{ __html: firmaHtml(datos, m.id, LOGOS_PREVIA) }} />
           </div>
         </div>
       ))}

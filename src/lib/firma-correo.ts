@@ -13,7 +13,17 @@ import { EMPRESA } from "@/lib/brand-kit"
  * `data:` de la firma guardada en Configuración.
  */
 
-const CDN = "https://www.accedra.com.ar/logos/"
+/**
+ * De dónde salen las imágenes.
+ *
+ * En el mail, siempre de accedra.com.ar: un cliente de correo no puede leer nada
+ * de esta app, y Gmail descarta las imágenes incrustadas. En la previa de acá,
+ * de `public/logos/`, que son las mismas copiadas al repo — así lo que se ve no
+ * depende de que el sitio esté desplegado, que es lo que hacía aparecer la tira
+ * rota en el minuto que va entre el push y el deploy.
+ */
+export const CDN = "https://www.accedra.com.ar/logos/"
+export const LOGOS_PREVIA = "/logos/"
 
 const NAVY = "#0D1F3A"
 const TEXTO = "#3A4A63"
@@ -28,7 +38,7 @@ const ANCHO = 560
 /** Aire entre la fila de logo/iconos y la tira de marcas. */
 const AIRE_PARTNERS = 34
 /** Alto de la tira; lo fija `public/firma/tira_partners.py`, que la dibuja. */
-const ALTO_PARTNERS = 54
+const ALTO_PARTNERS = 56
 /** Lado de la ficha de enlace; los PNG están a 48px para que no se vean blandas. */
 const ICONO = 24
 /** Separación entre fichas, la del pie del sitio a esta escala. */
@@ -131,10 +141,15 @@ function enlaces(d: DatosFirma) {
  *
  * Cada logo suelto es un pedido que Gmail además proxea la primera vez: doce
  * hacían que la firma se dibujara de a pedazos.
+ *
+ * El `-v3` del nombre no es un descuido: una imagen de firma queda cacheada en
+ * el navegador, en el CDN y en el proxy de Gmail, y de los tres se controla uno
+ * solo. Al redibujarla se sube el número en `tira_partners.py` y se cambia acá;
+ * es lo único que hace que todos vean lo mismo el mismo día.
  */
 function partners() {
   return (
-    `<img src="${CDN}accedra-firma-partners-12.png" alt="Partners de Accedra" width="${ANCHO}" height="${ALTO_PARTNERS}" ` +
+    `<img src="${CDN}accedra-firma-partners-12-v3.png" alt="Partners de Accedra" width="${ANCHO}" height="${ALTO_PARTNERS}" ` +
     `style="display:block;width:${ANCHO}px;height:${ALTO_PARTNERS}px;border:0;">`
   )
 }
@@ -238,8 +253,9 @@ function clasica(d: DatosFirma) {
   return TABLA + `<tr><td style="padding:0;">${envolver(interno)}</td></tr></table>`
 }
 
-export function firmaHtml(datos: DatosFirma, modelo: ModeloFirma) {
-  return modelo === "clasica" ? clasica(datos) : completa(datos)
+export function firmaHtml(datos: DatosFirma, modelo: ModeloFirma, base = CDN) {
+  const html = modelo === "clasica" ? clasica(datos) : completa(datos)
+  return base === CDN ? html : html.replaceAll(CDN, base)
 }
 
 /** La versión en texto plano que acompaña al copiado, para el cliente que no acepta HTML. */
