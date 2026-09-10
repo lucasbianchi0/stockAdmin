@@ -10,8 +10,14 @@ un logo ajeno.
 
 Tambien se recicla el tratamiento del footer —el glifo adentro de una ficha
 redondeada—, que es lo que empareja un cuadrado macizo como el de LinkedIn con
-una camara de contorno como la de Instagram. Ahi la ficha es clara sobre fondo
-oscuro; aca va al reves, gris muy suave sobre el blanco del bloque de marca.
+una camara de contorno como la de Instagram.
+
+Salen en los dos tonos que usa el pie de firma. El 'gris' es para el bloque
+blanco: ficha gris muy suave, glifo gris medio. El 'oscuro' es para el bloque
+navy y copia el footer del sitio tal cual —blanco al 5% con borde al 10%—, con
+el navy ya pintado abajo en vez de transparente: una ficha que se apoya en el
+alfa se dibuja con un halo gris en Outlook, y el fondo del bloque es un hex fijo
+que se conoce de antemano.
 
 Se arman en SVG, se rasterizan con Chrome a 4x y se bajan a 48px: se ven a 24 y
 tienen que aguantar retina. Salen a public/logos/ del repo de accedra porque
@@ -32,8 +38,13 @@ LADO = 24          # lado de la ficha, en px de pantalla
 FINAL = LADO * 2   # @2x
 DIBUJO = LADO * 8  # se rasteriza a 8x y se baja: los bordes redondeados lo agradecen
 
-FICHA = '#EFF2F7'  # el gris mas claro de la paleta, apenas despegado del blanco
-TINTA = '#64738C'  # el gris de los datos secundarios de la firma
+# tono: (fondo del bloque, relleno de la ficha, borde de la ficha, tinta del glifo)
+TONOS = {
+    # el gris mas claro de la paleta y el gris de los datos secundarios de la firma
+    'gris': (None, '#EFF2F7', None, '#64738C'),
+    # blanco al 5% sobre el navy, borde al 10%, glifo gray-400: el footer del sitio
+    'oscuro': ('#101827', '#1C2432', '#282F3D', '#9CA3AF'),
+}
 
 # LinkedIn e Instagram: components/Footer.tsx del sitio. Del de LinkedIn se saca
 # el ultimo subtrazo, que es el cuadrado contenedor: la ficha ya es el contenedor,
@@ -73,15 +84,22 @@ GLIFOS = {
 }
 
 
-def svg(glifo, lado_glifo):
+def svg(glifo, lado_glifo, tono):
     """La ficha con el glifo centrado, en la grilla de 24 que usan los tres."""
+    fondo, ficha, borde_ficha, tinta = TONOS[tono]
     escala = lado_glifo / LADO
-    borde = (LADO - lado_glifo) / 2
+    margen = (LADO - lado_glifo) / 2
+    # El borde va por dentro: un stroke se dibuja a caballo del trazo y medio pixel
+    # se le escapa afuera de la ficha.
+    trazo = ('<rect x=".5" y=".5" width="%s" height="%s" rx="6" fill="none" stroke="%s"/>'
+             % (LADO - 1, LADO - 1, borde_ficha)) if borde_ficha else ''
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">'
-        '<rect width="%d" height="%d" rx="6.5" fill="%s"/>'
+        '%s<rect width="%d" height="%d" rx="6.5" fill="%s"/>%s'
         '<g transform="translate(%s %s) scale(%s)">%s</g></svg>'
-        % (DIBUJO, DIBUJO, LADO, LADO, LADO, LADO, FICHA, borde, borde, escala, glifo % TINTA)
+        % (DIBUJO, DIBUJO, LADO, LADO,
+           '<rect width="%d" height="%d" fill="%s"/>' % (LADO, LADO, fondo) if fondo else '',
+           LADO, LADO, ficha, trazo, margen, margen, escala, glifo % tinta)
     )
 
 
@@ -100,7 +118,8 @@ def rasterizar(marcado, destino):
         (COPIA / destino.name).write_bytes(destino.read_bytes())
 
 
-for nombre, glifo in GLIFOS.items():
-    archivo = 'firma-icono-%s-gris.png' % nombre
-    rasterizar(svg(glifo, GLIFO[nombre]), SALIDA / archivo)
-    print(archivo)
+for tono in TONOS:
+    for nombre, glifo in GLIFOS.items():
+        archivo = 'firma-icono-%s-%s.png' % (nombre, tono)
+        rasterizar(svg(glifo, GLIFO[nombre], tono), SALIDA / archivo)
+        print(archivo)

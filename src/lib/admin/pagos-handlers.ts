@@ -247,12 +247,35 @@ async function validarPago(
 
   const porId = new Map((facturas ?? []).map((f) => [f.id as string, f as Record<string, unknown>]))
 
-  // Si alguna factura está en otra moneda que el recibo, el TC deja de ser
-  // opcional: sin él no hay forma de saber cuánto de lo que entró cancela cada
-  // una. Se chequea antes de recorrerlas para dar un mensaje entendible en vez
-  // de un "no cuadra por 4.679.859".
-  const hayMonedaCruzada = (facturas ?? []).some((f) => f.moneda !== moneda)
-  if (hayMonedaCruzada && tc === null) {
+  /**
+   * El TC propio de cada renglón, cuando el formulario lo mandó.
+   *
+   * Un recibo que cancela varias facturas en dólares rara vez las cancela todas
+   * al mismo dólar: cada una se salda al TC de su fecha de emisión. Con un solo
+   * TC de cabecera la conversión de cada renglón queda apenas corrida y la suma
+   * no cierra contra lo que entró al banco — la diferencia de centavos que no se
+   * podía cerrar ni con mil decimales en el promedio, porque no era un problema
+   * de precisión sino de que dos números distintos se estaban forzando a ser uno.
+   *
+   * `tc` de la cabecera queda como valor por defecto: el renglón que no trae el
+   * suyo se sigue convirtiendo como antes.
+   */
+  const tcDeRenglon = (i: Record<string, unknown>): number | null => {
+    const v = Number(i.tcAplicado)
+    return Number.isFinite(v) && v > 0 ? redondear(v, 4) : null
+  }
+
+  // Si alguna factura está en otra moneda que el recibo, hace falta un TC: el
+  // propio del renglón o, en su defecto, el de la cabecera. Sin ninguno de los
+  // dos no hay forma de saber cuánto de lo que entró cancela cada una. Se chequea
+  // antes de recorrerlas para dar un mensaje entendible en vez de un "no cuadra
+  // por 4.679.859".
+  const sinTcPropio = imputacionesRaw.some((item) => {
+    const i = item as Record<string, unknown>
+    const f = porId.get(typeof i.comprobanteId === "string" ? i.comprobanteId : "")
+    return Boolean(f) && f!.moneda !== moneda && tcDeRenglon(i) === null
+  })
+  if (sinTcPropio && tc === null) {
     return { respuesta: NextResponse.json(
       {
         error:
@@ -306,17 +329,23 @@ async function validarPago(
       ) }
     }
 
+    // El TC con el que se cancela ESTE renglón: el suyo si lo trae, si no el de
+    // la cabecera. En una factura en la misma moneda del recibo no hay
+    // conversión, así que no se guarda ninguno.
+    const cruzada = f.moneda !== moneda
+    const tcRenglon = cruzada ? (tcDeRenglon(i) ?? tc) : null
+
     filasImputacion.push({
       comprobante_id: id,
       importe: redondear(importe),
-      tc_aplicado: f.moneda === moneda ? null : tc,
+      tc_aplicado: tcRenglon,
     })
 
-    // `tc ?? 0` y no `?? 1`: si por algún camino llegara acá sin TC teniendo
+    // `?? 0` y no `?? 1`: si por algún camino llegara acá sin TC teniendo
     // monedas distintas, la conversión da cero y el control de cuadratura de
     // abajo lo frena con un error. Un 1 lo dejaría pasar con el importe
     // equivocado, que es exactamente el bug que se está arreglando.
-    imputadoEnMonedaRecibo += convertir(importe, f.moneda as "ARS" | "USD", moneda, tc ?? 0)
+    imputadoEnMonedaRecibo += convertir(importe, f.moneda as "ARS" | "USD", moneda, tcRenglon ?? 0)
   }
 
   /* Los medios de pago.

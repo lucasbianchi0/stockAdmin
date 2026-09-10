@@ -9,10 +9,12 @@ import {
   FIRMA_DEFAULT,
   LOGOS_PREVIA,
   MODELOS,
+  TONOS,
   firmaHtml,
   firmaTexto,
   type DatosFirma,
   type ModeloFirma,
+  type Tono,
 } from "@/lib/firma-correo"
 
 /**
@@ -30,6 +32,12 @@ import {
  * Lo que se dibuja acá abajo trae las imágenes de `public/logos/` y lo que se
  * copia las trae del sitio: son los mismos archivos, pero la previa no tiene por
  * qué esperar a un deploy para mostrarlas.
+ *
+ * Las cuatro se dibujan a la vez —dos modelos por dos tonos—, no detrás de un
+ * selector: elegir firma es una decisión visual, y con un selector hay que ir y
+ * venir para comparar lo que se podría estar mirando junto. Cada una tiene su
+ * propio par de botones, así que la elección y la acción están en el mismo
+ * lugar.
  */
 
 const CAMPOS: { k: keyof DatosFirma; label: string; ph: string }[] = [
@@ -43,7 +51,7 @@ const CAMPOS: { k: keyof DatosFirma; label: string; ph: string }[] = [
 
 export function FirmaCorreoGenerador() {
   const [datos, setDatos] = React.useState<DatosFirma>(FIRMA_DEFAULT)
-  /** Qué botón acaba de copiar, como `modelo:firma` o `modelo:html`. */
+  /** Qué botón acaba de copiar, como `modelo:tono:firma` o `modelo:tono:html`. */
   const [copiado, setCopiado] = React.useState("")
 
   React.useEffect(() => {
@@ -64,8 +72,8 @@ export function FirmaCorreoGenerador() {
    * de pantalla: la previa apunta a las imágenes locales, y copiarla dejaría una
    * firma con URLs de localhost adentro del mail.
    */
-  async function copiarFirma(modelo: ModeloFirma) {
-    const html = firmaHtml(datos, modelo)
+  async function copiarFirma(modelo: ModeloFirma, tono: Tono) {
+    const html = firmaHtml(datos, modelo, tono)
     try {
       await navigator.clipboard.write([
         new ClipboardItem({
@@ -87,12 +95,12 @@ export function FirmaCorreoGenerador() {
       sel?.removeAllRanges()
       fuera.remove()
     }
-    setCopiado(`${modelo}:firma`)
+    setCopiado(`${modelo}:${tono}:firma`)
   }
 
-  async function copiarHtml(modelo: ModeloFirma) {
-    await navigator.clipboard.writeText(firmaHtml(datos, modelo))
-    setCopiado(`${modelo}:html`)
+  async function copiarHtml(modelo: ModeloFirma, tono: Tono) {
+    await navigator.clipboard.writeText(firmaHtml(datos, modelo, tono))
+    setCopiado(`${modelo}:${tono}:html`)
   }
 
   return (
@@ -129,31 +137,60 @@ export function FirmaCorreoGenerador() {
         </div>
       </div>
 
-      {/* Las dos opciones, con los mismos datos */}
+      {/* Los dos modelos, cada uno en sus dos tonos, con los mismos datos */}
       {MODELOS.map((m, i) => (
         <div key={m.id}>
-          <div className="mb-2.5 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
-            <div className="min-w-0">
-              <p className="eyebrow">Opción {i + 1}</p>
-              <h3 className="mt-0.5 text-[14px] font-semibold text-ink">{m.nombre}</h3>
-              <p className="mt-0.5 max-w-xl text-[12px] leading-relaxed text-ink-muted">
-                {m.bajada}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button type="button" size="sm" onClick={() => copiarFirma(m.id)}>
-                {copiado === `${m.id}:firma` ? <Check className="text-white" /> : <Copy />}
-                {copiado === `${m.id}:firma` ? "Copiada" : "Copiar firma"}
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => copiarHtml(m.id)}>
-                {copiado === `${m.id}:html` ? <Check className="text-success-text" /> : <Code2 />}
-                HTML
-              </Button>
-            </div>
+          <div className="mb-2.5 min-w-0">
+            <p className="eyebrow">Opción {i + 1}</p>
+            <h3 className="mt-0.5 text-[14px] font-semibold text-ink">{m.nombre}</h3>
+            <p className="mt-0.5 max-w-xl text-[12px] leading-relaxed text-ink-muted">{m.bajada}</p>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-line bg-white p-6 shadow-e1">
-            <div dangerouslySetInnerHTML={{ __html: firmaHtml(datos, m.id, LOGOS_PREVIA) }} />
+          <div className="space-y-3">
+            {TONOS.map((t) => (
+              <div
+                key={t.id}
+                className="overflow-hidden rounded-xl border border-line bg-surface shadow-e1"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line px-4 py-2.5">
+                  <span className="text-[12px] font-medium text-ink-secondary">
+                    Fondo {t.nombre.toLowerCase()}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button type="button" size="sm" onClick={() => copiarFirma(m.id, t.id)}>
+                      {copiado === `${m.id}:${t.id}:firma` ? (
+                        <Check className="text-white" />
+                      ) : (
+                        <Copy />
+                      )}
+                      {copiado === `${m.id}:${t.id}:firma` ? "Copiada" : "Copiar firma"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => copiarHtml(m.id, t.id)}
+                    >
+                      {copiado === `${m.id}:${t.id}:html` ? (
+                        <Check className="text-success-text" />
+                      ) : (
+                        <Code2 />
+                      )}
+                      HTML
+                    </Button>
+                  </div>
+                </div>
+
+                {/* El piso blanco es el del mail, no el de la firma: en la completa
+                    los datos caen sobre el fondo del cliente y el bloque de marca
+                    se pinta solo. */}
+                <div className="overflow-x-auto bg-white p-6">
+                  <div
+                    dangerouslySetInnerHTML={{ __html: firmaHtml(datos, m.id, t.id, LOGOS_PREVIA) }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ))}

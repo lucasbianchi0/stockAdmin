@@ -18,6 +18,15 @@ Dos decisiones sostienen la tira:
 Van en seis columnas iguales, cada uno al ras del borde izquierdo de la suya,
 que es donde arrancan el wordmark y todas las lineas de datos de la firma.
 
+Sale en los dos tonos que usa el pie de firma. El claro son los logos como
+vienen, a color, sobre transparente. El oscuro los pasa a blanco por el canal
+alfa —los doce son tinta sobre transparente, sin ningun calado en blanco, asi
+que la silueta es exactamente el logo— y los apoya en el navy del bloque: sobre
+un fondo oscuro, doce logos a color son doce colores peleando, y ademas la mitad
+son azules o negros y desaparecen. El navy va pintado en la imagen y no queda
+transparente, por lo mismo que las fichas de enlace: el alfa sobre un fondo de
+tabla es lo que Outlook dibuja con halo.
+
    python3 tira_partners.py
 """
 import math
@@ -29,7 +38,7 @@ LOGOS = pathlib.Path('/Users/lucasbianchi/Desktop/projects/accedra/public/logos'
 # servida por la propia app, para que lo que se ve no dependa de un deploy.
 COPIA = pathlib.Path(__file__).resolve().parents[1] / 'logos'
 
-ANCHO = 560        # el ancho util del bloque blanco de la firma (600 menos 20 de padding por lado)
+ANCHO = 560        # el ancho util del bloque de marca de la firma (600 menos 20 de padding por lado)
 POR_FILA = 6
 AIRE_FILAS = 18    # aire entre las dos filas
 
@@ -43,6 +52,12 @@ ANCHO_MAXIMO = 76  # ni mas ancho: la columna mide 93 y el resto es el aire con 
 # es la unica manera de que todos vean el dibujo nuevo el mismo dia; el anterior
 # se deja publicado, porque las firmas ya pegadas lo siguen pidiendo.
 REVISION = 3
+
+NAVY = (16, 24, 39)   # el fondo del bloque oscuro
+# Los logos en blanco puro sobre navy pesan mas que los de color sobre blanco y
+# la tira se adelanta al wordmark. Bajarles un punto los deja donde estaban: al
+# fondo, que es el lugar de una tira de partners.
+OPACIDAD = 0.86
 
 # archivo, alt, y el ajuste optico: cuanto se aparta ese logo del area comun.
 # Un trazo muy fino pesa menos que uno macizo aunque cubra la misma superficie,
@@ -85,28 +100,40 @@ def _medida(im, ajuste):
     return max(1, round(ancho)), max(1, round(alto))
 
 
-def nombre_archivo(cantidad=None):
+def nombre_archivo(cantidad=None, tono='claro'):
     """El nombre que pide la firma. Lo lee tambien src/lib/firma-correo.ts."""
-    return 'accedra-firma-partners-%d-v%d.png' % (cantidad or len(PARTNERS), REVISION)
+    return 'accedra-firma-partners-%d%s-v%d.png' % (
+        cantidad or len(PARTNERS), '' if tono == 'claro' else '-' + tono, REVISION)
 
 
-def escribir(items=None, ancho=ANCHO):
+def _entintado(im):
+    """El logo en blanco: se le conserva la silueta y se le tira el color."""
+    blanco = Image.new('RGBA', im.size, (255, 255, 255, 0))
+    alfa = im.getchannel('A').point(lambda v: round(v * OPACIDAD))
+    blanco.putalpha(alfa)
+    return blanco
+
+
+def escribir(items=None, ancho=ANCHO, tono='claro'):
     items = items or PARTNERS
     piezas = [(_recortado(a),) + (lambda im: _medida(im, j))(_recortado(a)) for a, _, j in items]
     filas = [piezas[i:i + POR_FILA] for i in range(0, len(piezas), POR_FILA)]
     alto_fila = max(h for fila in filas for _, _, h in fila)
     alto = len(filas) * alto_fila + (len(filas) - 1) * AIRE_FILAS
 
-    lienzo = Image.new('RGBA', (ancho * 2, alto * 2), (0, 0, 0, 0))
+    fondo = NAVY + (255,) if tono == 'oscuro' else (0, 0, 0, 0)
+    lienzo = Image.new('RGBA', (ancho * 2, alto * 2), fondo)
     columna = ancho / POR_FILA
     for i, fila in enumerate(filas):
         for j, (im, w, h) in enumerate(fila):
             escalado = im.resize((w * 2, h * 2), Image.LANCZOS)
+            if tono == 'oscuro':
+                escalado = _entintado(escalado)
             x = j * columna
             y = i * (alto_fila + AIRE_FILAS) + (alto_fila - h) // 2
             lienzo.alpha_composite(escalado, (round(x * 2), y * 2))
 
-    nombre = nombre_archivo(len(items))
+    nombre = nombre_archivo(len(items), tono)
     # PNG8 con alfa: son logos planos, no fotos. Baja el peso a un tercio sin diferencia visible.
     lienzo.quantize(colors=200, method=Image.FASTOCTREE).save(LOGOS / nombre, optimize=True)
     COPIA.mkdir(exist_ok=True)
@@ -117,3 +144,4 @@ def escribir(items=None, ancho=ANCHO):
 
 if __name__ == '__main__':
     escribir()
+    escribir(tono='oscuro')

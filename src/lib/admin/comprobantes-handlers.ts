@@ -422,12 +422,19 @@ export async function editarComprobante(tipo: TipoComprobante, req: Request, id:
   }
 
   /**
-   * Un comprobante que ya tiene un recibo imputado no se edita.
+   * Un comprobante con un recibo imputado se edita a medias, y a propósito.
    *
-   * Cambiarle el importe movería el saldo del cliente sin que nadie haya cobrado
-   * ni facturado nada, y el recibo pasaría a cancelar un número que no existió
-   * nunca. La salida correcta es una nota de crédito, que deja los dos hechos
-   * registrados en vez de reescribir uno.
+   * Lo que no se toca es la deuda: importes, moneda, tipo de cambio, fecha,
+   * número, proveedor. Cambiar cualquiera de esos movería el saldo sin que nadie
+   * haya cobrado ni facturado nada, y el recibo pasaría a cancelar un número que
+   * no existió nunca; la salida correcta ahí sigue siendo una nota de crédito.
+   *
+   * Lo que sí se toca es todo lo demás —la cuenta contable, el detalle, el
+   * vencimiento, las observaciones—, que no mueve un peso de ningún saldo. La
+   * cuenta contable en particular es el caso que motivó esto: define contra qué
+   * cuenta va el gasto, se equivoca seguido, y no tiene nada que ver con lo que
+   * el proveedor cobró. Bloquearla obligaba a una nota de crédito para arreglar
+   * un dato que la nota de crédito ni siquiera corrige.
    */
   const { data: imputado } = await supabase
     .from("imputaciones")
@@ -436,20 +443,41 @@ export async function editarComprobante(tipo: TipoComprobante, req: Request, id:
     .limit(1)
     .maybeSingle()
 
+  let fila = validado.fila
+
   if (imputado) {
-    return NextResponse.json(
-      {
-        error:
-          "Este comprobante ya tiene un recibo imputado y no se puede editar. " +
-          "Si el importe está mal, emitile una nota de crédito.",
-      },
-      { status: 409 }
+    const { data: actual } = await supabase
+      .from("comprobantes")
+      .select("*")
+      .eq("id", id)
+      .eq("tipo", tipo)
+      .maybeSingle()
+
+    if (!actual) return NextResponse.json({ error: "Comprobante no encontrado" }, { status: 404 })
+
+    const tocados = camposDeLaDeudaTocados(actual, fila)
+    if (tocados.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            `Este comprobante ya tiene un recibo imputado: no se puede cambiarle ${listar(tocados)}. ` +
+            "Si el importe está mal, emitile una nota de crédito. " +
+            "El resto de los datos —cuenta contable, detalle, vencimiento— sí se pueden editar.",
+        },
+        { status: 409 }
+      )
+    }
+
+    // Nada de la deuda cambió, así que se escribe solo lo editable y la fila
+    // conserva intacto lo que el recibo está cancelando.
+    fila = Object.fromEntries(
+      CAMPOS_EDITABLES_CON_RECIBO.filter((c) => c in fila).map((c) => [c, fila[c]])
     )
   }
 
   const { data, error } = await supabase
     .from("comprobantes")
-    .update(await conTcDelDia(validado.fila))
+    .update(imputado ? fila : await conTcDelDia(fila))
     .eq("id", id)
     .eq("tipo", tipo)
     .select(SELECT_COMPROBANTE)
@@ -527,4 +555,95 @@ function enDias(n: number): string {
   const d = new Date()
   d.setDate(d.getDate() + n)
   return d.toISOString().slice(0, 10)
+}
+
+/* ── Qué se puede editar con un recibo ya imputado ────────────────────────── */
+
+/**
+ * Los campos que definen la deuda: lo que el recibo está cancelando.
+ *
+ * El rótulo que va al costado es el que ve el usuario en el mensaje de error,
+ * así que dice lo mismo que la etiqueta del formulario y no el nombre de la
+ * columna. `estado` entra en la lista porque volver a borrador borraría el
+ * asiento de un comprobante que alguien ya pagó.
+ */
+const DEUDA: ReadonlyArray<readonly [string, string]> = [
+  ["clase", "el tipo de comprobante"],
+  ["fecha", "la fecha"],
+  ["punto_venta", "el punto de venta"],
+  ["numero", "el número"],
+  ["cliente_id", "el cliente"],
+  ["proveedor_id", "el proveedor"],
+  ["moneda", "la moneda"],
+  ["tc", "el tipo de cambio"],
+  ["neto_gravado", "el neto gravado"],
+  ["alicuota_iva", "la alícuota de IVA"],
+  ["iva", "el IVA"],
+  ["no_gravado", "el no gravado"],
+  ["exento", "el exento"],
+  ["percepcion_iva", "la percepción de IVA"],
+  ["percepcion_iibb_bsas", "la percepción de IIBB Buenos Aires"],
+  ["percepcion_iibb_caba", "la percepción de IIBB Capital"],
+  ["otros_impuestos", "los otros impuestos"],
+  ["total", "el total"],
+  ["estado", "el estado"],
+]
+
+/** Todo lo que no es la deuda. Ninguno de estos mueve un saldo ni toca lo que
+ *  el recibo canceló. */
+export const CAMPOS_EDITABLES_CON_RECIBO = [
+  "cuenta_contable_id",
+  "detalle",
+  "observaciones",
+  "condicion_pago",
+  "fecha_vencimiento",
+  "fecha_estimada_pago",
+  "vendedor_id",
+]
+
+/**
+ * Comparación campo a campo entre lo guardado y lo que llega del formulario.
+ *
+ * Los numéricos de Postgres vuelven como string —`"506550.00"`— así que comparar
+ * con `!==` daría distinto siempre y bloquearía hasta un cambio de detalle. Se
+ * comparan como número cuando los dos lados lo son, y `null` y `undefined` se
+ * tratan igual: la fila validada omite lo que el formulario no mandó.
+ */
+function camposDeLaDeudaTocados(
+  actual: Record<string, unknown>,
+  fila: Record<string, unknown>
+): string[] {
+  return DEUDA.filter(([campo]) => {
+    if (!(campo in fila)) return false
+
+    // El formulario solo muestra el tipo de cambio en dólares: en pesos manda
+    // `null` aunque la fila tenga el TC del día que le puso el alta. Eso no es
+    // alguien cambiando el TC, es un campo que la pantalla no ofrece — y como
+    // acá se escriben solo los campos editables, tampoco se va a pisar.
+    if (campo === "tc" && fila.tc === null) return false
+
+    return !mismoValor(actual[campo], fila[campo])
+  }).map(([, rotulo]) => rotulo)
+}
+
+function mismoValor(a: unknown, b: unknown): boolean {
+  if (a === null || a === undefined) return b === null || b === undefined
+  if (b === null || b === undefined) return false
+
+  // A cuatro decimales, que es lo que guardan las columnas más finas —`tc` y
+  // `alicuota_iva`—. Redondear evita que `0.21` y `0.2100` difieran por el ruido
+  // del punto flotante sin abrir una ventana donde entren dos alícuotas.
+  const na = Number(a)
+  const nb = Number(b)
+  if (Number.isFinite(na) && Number.isFinite(nb) && a !== "" && b !== "") {
+    return Math.round(na * 1e4) === Math.round(nb * 1e4)
+  }
+
+  return String(a) === String(b)
+}
+
+/** "el total", "el total y la fecha", "el total, la fecha y el IVA". */
+function listar(items: string[]): string {
+  if (items.length === 1) return items[0]
+  return `${items.slice(0, -1).join(", ")} y ${items[items.length - 1]}`
 }

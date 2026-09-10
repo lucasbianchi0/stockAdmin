@@ -201,6 +201,10 @@ export type Cobro = {
     numero: number | null
     moneda: Moneda
     importe: number
+    /** El TC con el que ESTE renglón canceló, cuando no es el de la cabecera.
+     *  `null` cuando la factura está en la misma moneda del recibo o cuando se
+     *  saldó al TC general. */
+    tcAplicado: number | null
   }[]
 }
 

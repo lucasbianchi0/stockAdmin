@@ -64,7 +64,11 @@ export function AvisoSinAsiento({
   if (cargando || docs.length === 0) return null
 
   const total = docs.length
-  const soloFaltaCuenta = docs.every((d) => !d.cuentaContableId)
+  // "Se arregla en dos clicks" sólo es cierto cuando todo lo que falta es elegir
+  // la cuenta. Un recibo fuera del mayor no se arregla desde acá, y prometerlo
+  // haría que el que abre el diálogo busque un botón que no está.
+  const soloFaltaCuenta = docs.every((d) => d.corregibleConCuenta && !d.cuentaContableId)
+  const esRecibo = docs.every((d) => d.origen === "pago")
 
   return (
     <>
@@ -73,19 +77,25 @@ export function AvisoSinAsiento({
 
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-semibold text-ink">
-            {total === 1
-              ? "Hay 1 documento que no llegó al mayor"
-              : `Hay ${total} documentos que no llegaron al mayor`}
+            {esRecibo
+              ? total === 1
+                ? "Hay 1 recibo que no llegó al mayor"
+                : `Hay ${total} recibos que no llegaron al mayor`
+              : total === 1
+                ? "Hay 1 documento que no llegó al mayor"
+                : `Hay ${total} documentos que no llegaron al mayor`}
           </p>
           <p className="mt-0.5 text-[12px] leading-snug text-warning-text">
             {soloFaltaCuenta
               ? "Están en los saldos y en la deuda, pero fuera de la contabilidad porque les falta la cuenta contable. Se arregla en dos clicks."
-              : "Están en los saldos y en la deuda, pero fuera de la contabilidad. Mirá el motivo de cada uno."}
+              : esRecibo
+                ? "La plata ya figura en las cuentas y las facturas ya figuran canceladas, pero el asiento no salió. Mirá el motivo de cada uno."
+                : "Están en los saldos y en la deuda, pero fuera de la contabilidad. Mirá el motivo de cada uno."}
           </p>
         </div>
 
         <Button size="sm" onClick={() => setAbierto(true)} className="shrink-0">
-          Corregir
+          {soloFaltaCuenta ? "Corregir" : "Ver el motivo"}
         </Button>
       </div>
 

@@ -15,7 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { formatearNumero } from "@/lib/admin/comprobantes"
-import { etiquetaRetencion, type Cobro } from "@/lib/admin/cobros"
+import { convertir, etiquetaRetencion, type Cobro } from "@/lib/admin/cobros"
 import type { TipoPago } from "@/lib/admin/cobros-server"
 import { formatearFechaLarga } from "@/lib/admin/fecha"
 import { formatearImporte, formatearTc } from "@/lib/admin/moneda"
@@ -44,6 +44,14 @@ export function PagoDetalle({
   onAnular: () => void
 }) {
   const esCobro = tipo === "cobro"
+  /** Hubo conversión si alguna factura o alguna cuenta estaba en otra moneda que
+   *  el recibo. Es la condición para que el TC signifique algo. */
+  const hayConversion = Boolean(
+    cobro &&
+      (cobro.moneda === "USD" ||
+        cobro.imputaciones.some((i) => i.moneda !== cobro.moneda) ||
+        cobro.medios.some((m) => m.moneda !== cobro.moneda))
+  )
   const total = cobro ? cobro.totalMedios + cobro.totalRetenciones : 0
 
   return (
@@ -95,9 +103,24 @@ export function PagoDetalle({
                       </div>
                     }
                     derecha={
-                      <span className="num text-[12.5px] font-semibold text-ink">
-                        {formatearImporte(i.importe, i.moneda)}
-                      </span>
+                      <div className="text-right">
+                        <span className="num text-[12.5px] font-semibold text-ink">
+                          {formatearImporte(i.importe, i.moneda)}
+                        </span>
+                        {/* Con qué dólar se canceló ESTA factura. Sin esto el
+                            dato se guarda y desaparece: el recibo dice que
+                            canceló USD 671,91 y nadie puede reconstruir de dónde
+                            salieron los pesos que entraron al banco. */}
+                        {i.moneda !== cobro.moneda && i.tcAplicado !== null && (
+                          <p className="num text-[10.5px] text-ink-muted">
+                            TC {formatearTc(i.tcAplicado)} ={" "}
+                            {formatearImporte(
+                              convertir(i.importe, i.moneda, cobro.moneda, i.tcAplicado),
+                              cobro.moneda
+                            )}
+                          </p>
+                        )}
+                      </div>
                     }
                   />
                 ))
@@ -173,9 +196,13 @@ export function PagoDetalle({
           <Bloque titulo="Datos">
             <ListaDatos>
               <Dato rotulo="Moneda" valor={cobro.moneda} />
+              {/* Antes se mostraba sólo en los recibos en dólares, que es
+                  justo el caso donde menos hace falta. El que lo necesita es el
+                  recibo en pesos que cancela facturas en dólares: ahí el TC es
+                  lo único que explica por qué entraron esos pesos. */}
               <Dato
                 rotulo="Tipo de cambio"
-                valor={cobro.moneda === "USD" ? formatearTc(cobro.tc) : null}
+                valor={hayConversion ? formatearTc(cobro.tc) : null}
               />
               <Dato
                 rotulo="Observaciones"

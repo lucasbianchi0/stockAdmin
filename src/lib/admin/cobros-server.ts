@@ -25,7 +25,7 @@ export const SELECT_COBRO = `
   proveedor:proveedores (id, razon_social),
   movimientos (id, cuenta_id, importe, moneda, referencia, cuenta:cuentas_financieras (id, nombre)),
   imputaciones (
-    id, importe, comprobante_id,
+    id, importe, comprobante_id, tc_aplicado,
     comprobante:comprobantes (id, clase, punto_venta, numero, moneda)
   ),
   pago_retenciones (
@@ -49,6 +49,7 @@ type Fila = Record<string, unknown> & {
     id: string
     importe: number | string
     comprobante_id: string
+    tc_aplicado: number | string | null
     comprobante?: {
       id: string
       clase: string
@@ -104,6 +105,8 @@ export function aCobro(fila: Fila): Cobro {
     numero: i.comprobante?.numero ?? null,
     moneda: (i.comprobante?.moneda ?? "ARS") as Moneda,
     importe: num(i.importe),
+    tcAplicado:
+      i.tc_aplicado === null || i.tc_aplicado === undefined ? null : Number(i.tc_aplicado),
   }))
 
   return {

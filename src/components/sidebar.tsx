@@ -66,6 +66,7 @@ const GRUPOS: Grupo[] = [
       { name: "Plantillas de mensajes", href: "/marketing/mensajes", available: true },
       { name: "Brochures", href: "/marketing/brochures", available: true },
       { name: "Landings y SEO", href: "/marketing/landings", available: true },
+      { name: "Popup del sitio", href: "/marketing/popup", available: true },
       /* El flujo nuevo, en el orden en el que se usa: primero se genera y se
          revisa, después se programa. El camino anterior —los planes de 15 días
          y el Content Studio— queda fuera del menú por ahora; las páginas siguen

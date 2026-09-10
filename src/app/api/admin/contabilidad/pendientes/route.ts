@@ -29,7 +29,9 @@ export const GET = ruta("pendientes contables GET", async (req: Request) => {
   const tipo = params.get("tipo")
 
   const filtro: FiltroPendientes = {}
-  if (origen === "comprobante" || origen === "movimiento") filtro.origen = origen
+  if (origen === "comprobante" || origen === "movimiento" || origen === "pago") {
+    filtro.origen = origen
+  }
   if (tipo === "compra" || tipo === "venta") filtro.tipo = tipo
 
   return listarPendientesContables(filtro)

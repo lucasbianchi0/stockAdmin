@@ -24,6 +24,27 @@ import { cn } from "@/lib/utils"
  * —cada documento va a una cuenta distinta— y si la quinta falla, las cuatro
  * anteriores ya están arregladas.
  */
+/**
+ * Qué hacer con un recibo que no llegó al mayor.
+ *
+ * Un recibo no tiene cuenta contable propia: su asiento sale de las facturas que
+ * cancela y de los bancos por donde entró la plata. Así que el selector no
+ * aplica y en su lugar va la instrucción concreta, deducida del motivo. Decir
+ * «el motor no pudo» y nada más es lo mismo que no decir nada.
+ */
+function queHacerConElRecibo(motivo: string): string {
+  if (motivo.includes("no está imputado")) {
+    return "Abrí el recibo y elegí qué comprobantes cancela: sin imputaciones no hay contra qué asentarlo."
+  }
+  if (motivo.includes("medio de pago")) {
+    return "Abrí el recibo y cargale por dónde entró la plata, o la retención que lo cancela."
+  }
+  if (motivo.includes("cuenta contable asociada")) {
+    return "Andá a Caja y bancos, abrí esa cuenta y asignale una cuenta contable del plan. Con eso el asiento sale solo."
+  }
+  return "Mostrale este motivo a quien lleva la contabilidad: no se arregla eligiendo una cuenta."
+}
+
 export function CorregirImputacionDialog({
   abierto,
   documentos,
@@ -112,7 +133,8 @@ export function CorregirImputacionDialog({
                 Documentos fuera del mayor
               </h2>
               <p className="mt-0.5 text-[11.5px] text-ink-muted">
-                Elegí contra qué cuenta va cada uno. El asiento se genera solo al guardar.
+                Elegí contra qué cuenta va cada uno. Los que no llevan cuenta traen la
+                instrucción de qué arreglar.
               </p>
             </div>
           </div>
@@ -141,6 +163,10 @@ export function CorregirImputacionDialog({
             pendientes.map((d) => {
               const yaTieneCuenta = Boolean(d.cuentaContableId)
               const esteGuardando = guardando === d.id
+              // Dos motivos distintos para no ofrecer el selector: el documento
+              // ya tiene cuenta —así que la falla es otra— o es un recibo, que
+              // nunca tuvo una.
+              const sinSelector = yaTieneCuenta || !d.corregibleConCuenta
 
               return (
                 <div key={d.id} className="rounded-xl border border-line bg-surface px-4 py-3">
@@ -157,7 +183,12 @@ export function CorregirImputacionDialog({
                   {/* De quién es y de qué se trata: los dos datos que permiten
                       elegir la cuenta sin abrir el documento. */}
                   <p className="mt-0.5 text-[12px] text-ink-secondary">
-                    {d.contraparte ?? (d.origen === "movimiento" ? "Movimiento de banco" : "—")}
+                    {d.contraparte ??
+                      (d.origen === "movimiento"
+                        ? "Movimiento de banco"
+                        : d.origen === "pago"
+                          ? "Recibo"
+                          : "—")}
                     {d.detalle && (
                       <span className="text-ink-muted"> · {d.detalle}</span>
                     )}
@@ -166,22 +197,22 @@ export function CorregirImputacionDialog({
                   <p
                     className={cn(
                       "mt-1.5 flex items-start gap-1.5 text-[11.5px]",
-                      yaTieneCuenta ? "text-danger-text" : "text-warning-text"
+                      // Rojo cuando no se arregla con un clic acá: o ya tiene
+                      // cuenta, o es un recibo. Ámbar cuando falta elegirla.
+                      sinSelector ? "text-danger-text" : "text-warning-text"
                     )}
                   >
                     <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
                     {d.motivo}
                   </p>
 
-                  {yaTieneCuenta ? (
-                    /* Ya tiene cuenta: el problema es otro y cambiarla no lo va a
-                       arreglar. Ofrecer el selector igual sería mandar a alguien a
-                       probar cuentas hasta que salga. */
+                  {sinSelector ? (
+                    /* Sin selector: ofrecerlo igual sería mandar a alguien a
+                       probar cuentas hasta que salga. En su lugar va qué hacer. */
                     <p className="mt-2 rounded-lg bg-surface-subtle px-3 py-2 text-[11.5px] text-ink-muted">
-                      Este documento ya está imputado, así que la falla es del motor de
-                      asientos y no de la cuenta. Suele ser una cuenta de sistema sin
-                      configurar en el plan contable — mostrale este motivo a quien lleva la
-                      contabilidad.
+                      {!d.corregibleConCuenta
+                        ? queHacerConElRecibo(d.motivo)
+                        : "Este documento ya está imputado, así que la falla es del motor de asientos y no de la cuenta. Suele ser una cuenta de sistema sin configurar en el plan contable — mostrale este motivo a quien lleva la contabilidad."}
                     </p>
                   ) : (
                     <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -214,7 +245,7 @@ export function CorregirImputacionDialog({
 
                   {/* Lo que se gana además de arreglar este documento. Sin
                       decirlo, la acción parece un parche y no una configuración. */}
-                  {!yaTieneCuenta && d.origen === "comprobante" && d.contraparte && (
+                  {!sinSelector && d.origen === "comprobante" && d.contraparte && (
                     <p className="mt-1.5 text-[11px] text-ink-faint">
                       La cuenta queda guardada en la ficha de {d.contraparte}: sus próximas
                       facturas ya vienen con ella.

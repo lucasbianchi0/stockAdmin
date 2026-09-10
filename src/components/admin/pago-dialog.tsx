@@ -102,6 +102,16 @@ export function PagoDialog({
   const [cargandoPendientes, setCargandoPendientes] = useState(false)
   /** comprobanteId → importe imputado, como texto del formulario. */
   const [imputado, setImputado] = useState<Record<string, string>>({})
+  /**
+   * comprobanteId → el TC con el que se cancela ESA factura.
+   *
+   * Vacío quiere decir "el de la cabecera", que es el caso normal. Se llena
+   * cuando un mismo recibo cancela varias facturas en dólares a distintos
+   * dólares —cada una al de su fecha de emisión—, que con un TC único no cierra
+   * nunca: la diferencia no viene de la precisión del promedio sino de que dos
+   * números distintos se están forzando a ser uno.
+   */
+  const [tcFactura, setTcFactura] = useState<Record<string, string>>({})
   const [medios, setMedios] = useState<Medio[]>([{ cuentaId: "", importe: "", referencia: "" }])
   /** Los renglones de retención. Arranca vacío: la mayoría de los recibos no
    *  tiene ninguna, y cuatro campos en cero era la forma más rápida de que nadie
@@ -145,6 +155,7 @@ export function PagoDialog({
       setTc("")
       setPendientes([])
       setImputado({})
+      setTcFactura({})
       setMedios([{ cuentaId: "", importe: "", referencia: "" }])
       setRetenciones([])
       setObservaciones("")
@@ -161,6 +172,15 @@ export function PagoDialog({
     setImputado(
       Object.fromEntries(
         cobro.imputaciones.map((i) => [i.comprobanteId, String(i.importe)] as const)
+      )
+    )
+    // Solo los renglones que se saldaron a un TC propio. El que canceló al TC de
+    // la cabecera vuelve con el campo vacío, que es lo que era.
+    setTcFactura(
+      Object.fromEntries(
+        cobro.imputaciones
+          .filter((i) => i.tcAplicado !== null && i.tcAplicado !== cobro.tc)
+          .map((i) => [i.comprobanteId, String(i.tcAplicado)] as const)
       )
     )
     setMedios(
@@ -184,6 +204,34 @@ export function PagoDialog({
     cargarPendientes(cobro.clienteId, cobro.id)
   }, [abierto, cobro, cargarPendientes])
 
+  /**
+   * Cada factura llega con su TC propio ya puesto: el de su fecha de emisión.
+   *
+   * Es el que se usa nueve de cada diez veces —el cliente paga cada factura al
+   * dólar del día en que se emitió— y es además el único con el que la cuenta
+   * corriente se cancela por el mismo importe con que se cargó. Tenerlo que
+   * tipear a mano en cada renglón sería pedirle al usuario que copie un dato que
+   * el sistema ya tiene.
+   *
+   * Solo se completan los renglones vacíos: lo que el usuario escribió, y lo que
+   * un recibo guardado trajo consigo, mandan sobre el valor sugerido.
+   */
+  useEffect(() => {
+    if (pendientes.length === 0) return
+    setTcFactura((prev) => {
+      const siguiente = { ...prev }
+      let hubo = false
+      for (const p of pendientes) {
+        if (p.moneda === moneda) continue
+        if (siguiente[p.id] !== undefined) continue
+        if (!p.tc || p.tc <= 0) continue
+        siguiente[p.id] = String(p.tc)
+        hubo = true
+      }
+      return hubo ? siguiente : prev
+    })
+  }, [pendientes, moneda])
+
   useEffect(() => {
     if (!abierto) return
     fetch("/api/admin/cuentas")
@@ -205,16 +253,22 @@ export function PagoDialog({
 
   const tcNum = parsearImporte(tc) ?? 0
 
+  /** El TC de una factura: el suyo si le pusieron uno, si no el de la cabecera. */
+  const tcDe = useCallback(
+    (comprobanteId: string) => parsearImporte(tcFactura[comprobanteId] ?? "") ?? tcNum,
+    [tcFactura, tcNum]
+  )
+
   /** Lo imputado, convertido a la moneda del recibo: una factura en dólares se
-   *  cancela en dólares aunque se cobre en pesos. */
+   *  cancela en dólares aunque se cobre en pesos, y cada una al TC que le toca. */
   const totalImputado = useMemo(
     () =>
       pendientes.reduce((acc, p) => {
         const v = parsearImporte(imputado[p.id] ?? "") ?? 0
         if (v <= 0) return acc
-        return acc + convertir(v, p.moneda, moneda, tcNum)
+        return acc + convertir(v, p.moneda, moneda, tcDe(p.id))
       }, 0),
-    [pendientes, imputado, moneda, tcNum]
+    [pendientes, imputado, moneda, tcDe]
   )
 
   const totalMedios = useMemo(
@@ -247,7 +301,21 @@ export function PagoDialog({
   })
   const necesitaTc = hayComprobanteEnOtraMoneda || hayCuentaEnOtraMoneda
 
-  const faltaTc = necesitaTc && tcNum <= 0
+  /**
+   * Mostrar el TC de cabecera y exigirlo son dos cosas distintas.
+   *
+   * Se muestra siempre que haya conversión de por medio, porque es el número que
+   * explica el recibo. Pero solo se exige cuando algo lo necesita de verdad: un
+   * renglón cruzado sin TC propio, o una cuenta en otra moneda. Un recibo donde
+   * cada factura ya trae el suyo se guarda sin que la cabecera tenga nada.
+   */
+  const hayRenglonSinTcPropio = pendientes.some(
+    (p) =>
+      p.moneda !== moneda &&
+      (parsearImporte(imputado[p.id] ?? "") ?? 0) > 0 &&
+      (parsearImporte(tcFactura[p.id] ?? "") ?? 0) <= 0
+  )
+  const faltaTc = (hayRenglonSinTcPropio || hayCuentaEnOtraMoneda) && tcNum <= 0
 
   // La cotización del día se propone cuando el recibo la va a necesitar, que no
   // es lo mismo que "cuando el recibo está en dólares": un cobro en pesos de una
@@ -301,7 +369,13 @@ export function PagoDialog({
               numeroCertificado: r.numeroCertificado || null,
             })),
           imputaciones: pendientes
-            .map((p) => ({ comprobanteId: p.id, importe: parsearImporte(imputado[p.id] ?? "") ?? 0 }))
+            .map((p) => ({
+              comprobanteId: p.id,
+              importe: parsearImporte(imputado[p.id] ?? "") ?? 0,
+              // Solo cuando difiere del de la cabecera: mandarlo siempre
+              // llenaría `tc_aplicado` de valores redundantes.
+              tcAplicado: parsearImporte(tcFactura[p.id] ?? "") ?? null,
+            }))
             .filter((i) => i.importe > 0),
           medios: medios
             .filter((m) => m.cuentaId && (parsearImporte(m.importe) ?? 0) > 0)
@@ -415,7 +489,13 @@ export function PagoDialog({
               <Campo
                 id="tc"
                 rotulo="Tipo de cambio"
-                ayuda={cotizacion.venta ? `Hoy: ${formatearTc(cotizacion.venta)}` : undefined}
+                ayuda={
+                  hayComprobanteEnOtraMoneda
+                    ? "Para los renglones sin TC propio"
+                    : cotizacion.venta
+                      ? `Hoy: ${formatearTc(cotizacion.venta)}`
+                      : undefined
+                }
               >
                 <Input
                   id="tc"
@@ -456,10 +536,13 @@ export function PagoDialog({
                   p={p}
                   valor={imputado[p.id] ?? ""}
                   monedaRecibo={moneda}
-                  tc={tcNum}
+                  tc={tcDe(p.id)}
+                  tcPropio={tcFactura[p.id] ?? ""}
+                  tcCabecera={tcNum}
                   primera={i === 0}
                   disabled={guardando}
                   onValor={(v) => setImputado((prev) => ({ ...prev, [p.id]: v }))}
+                  onTc={(v) => setTcFactura((prev) => ({ ...prev, [p.id]: v }))}
                   onSaldar={() => saldarTodo(p)}
                 />
               ))}
@@ -764,23 +847,34 @@ function FilaPendiente({
   valor,
   monedaRecibo,
   tc,
+  tcPropio,
+  tcCabecera,
   primera,
   disabled,
   onValor,
+  onTc,
   onSaldar,
 }: {
   p: Pendiente
   valor: string
   monedaRecibo: Moneda
+  /** El que rige para esta factura: el propio si lo tiene, si no el general. */
   tc: number
+  /** Lo tipeado en el campo de TC de este renglón. Vacío = el de la cabecera. */
+  tcPropio: string
+  tcCabecera: number
   primera: boolean
   disabled?: boolean
   onValor: (v: string) => void
+  onTc: (v: string) => void
   onSaldar: () => void
 }) {
   const importe = parsearImporte(valor) ?? 0
   const excede = importe > p.saldo + 0.01
   const enRecibo = importe > 0 ? convertir(importe, p.moneda, monedaRecibo, tc) : 0
+  // El campo de TC solo aparece donde hay conversión. En una factura en la misma
+  // moneda del recibo no hay nada que convertir y sería una casilla muerta.
+  const cruzada = p.moneda !== monedaRecibo
 
   return (
     <div
@@ -812,6 +906,26 @@ function FilaPendiente({
         </p>
       </div>
 
+      {/* El TC de esta factura. Cada una se cancela al dólar que le corresponde
+          —normalmente el de su fecha de emisión—, y ese es el único modo de que
+          un recibo por varias facturas cierre exacto en vez de arrastrar
+          centavos irreducibles. Vacío hereda el de la cabecera. */}
+      {cruzada && (
+        <div>
+          <p className="eyebrow mb-0.5">TC</p>
+          <Input
+            value={tcPropio}
+            onChange={(e) => onTc(e.target.value)}
+            placeholder={tcCabecera > 0 ? formatearTc(tcCabecera) : "0,00"}
+            inputMode="decimal"
+            disabled={disabled}
+            className="num h-8 w-24 text-right text-[12px]"
+            aria-label={`Tipo de cambio de ${p.clase} ${formatearNumero(p.puntoVenta, p.numero)}`}
+            title="El tipo de cambio con el que se cancela esta factura. Vacío usa el del recibo."
+          />
+        </div>
+      )}
+
       <div className="flex items-center gap-1">
         <div>
           <Input
@@ -824,7 +938,7 @@ function FilaPendiente({
             aria-label={`Importe a imputar a ${p.clase} ${formatearNumero(p.puntoVenta, p.numero)}`}
           />
           {/* El contravalor solo cuando las monedas difieren: si no, es ruido. */}
-          {p.moneda !== monedaRecibo && importe > 0 && (
+          {cruzada && importe > 0 && (
             <p className="num mt-0.5 text-right text-[10.5px] text-ink-muted">
               = {formatearImporte(enRecibo, monedaRecibo)}
             </p>

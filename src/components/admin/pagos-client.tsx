@@ -4,6 +4,7 @@ import { useCallback, useState } from "react"
 import { Eye, HandCoins, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { AvisoSinAsiento } from "@/components/admin/aviso-sin-asiento"
 import { PagoDialog } from "@/components/admin/pago-dialog"
 import { PagoDetalle } from "@/components/admin/pago-detalle"
 import { ConfirmarDialog } from "@/components/admin/confirmar-dialog"
@@ -66,12 +67,17 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
   const [ver, setVer] = useState<Cobro | null>(null)
   const [aAnular, setAAnular] = useState<Cobro | null>(null)
   const [anulando, setAnulando] = useState(false)
+  /** Se incrementa con cada cambio para remontar el aviso de "fuera del mayor",
+   *  que así vuelve a preguntar en vez de quedarse con la foto vieja. */
+  const [refrescoAvisos, setRefrescoAvisos] = useState(0)
 
   const { recargar } = tabla
 
   const alGuardar = useCallback(() => {
     setNuevo(false)
+    setEditando(null)
     toast.success(esCobro ? "Cobro registrado" : "Pago registrado")
+    setRefrescoAvisos((n) => n + 1)
     recargar()
   }, [recargar, esCobro])
 
@@ -87,6 +93,7 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
       )
       setAAnular(null)
       setVer(null)
+      setRefrescoAvisos((n) => n + 1)
       recargar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo anular")
@@ -97,6 +104,15 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
 
   return (
     <>
+      {/* Un recibo que no llegó al mayor no se veía en ninguna parte: ni acá, ni
+          en Contabilidad. Quedaba fuera del balance en silencio hasta el cierre.
+          Va antes de la tabla, que es donde el que lo cargó lo va a ver. */}
+      <AvisoSinAsiento
+        key={`aviso-${refrescoAvisos}`}
+        filtro={{ origen: "pago", tipo: esCobro ? "venta" : "compra" }}
+        onCorregido={recargar}
+      />
+
       <div className="panel overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-line bg-surface-subtle px-4 py-3">
           <p className="text-[12.5px] text-ink-muted">

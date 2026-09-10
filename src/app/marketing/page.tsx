@@ -5,6 +5,7 @@ import {
   Target,
   FileText,
   ListChecks,
+  MessageSquareDashed,
   MessageSquareQuote,
   PenLine,
   Globe,
@@ -98,6 +99,15 @@ const CARDS: Card[] = [
     href: "/marketing/acciones",
     icon: ListChecks,
     estado: "proximo",
+  },
+  {
+    kicker: "Sitio",
+    titulo: "Popup del sitio",
+    descripcion:
+      "El aviso que aparece sobre accedra.com.ar. Un evento, una capacitación, una novedad: se prende, se apaga y se programa desde acá.",
+    href: "/marketing/popup",
+    icon: MessageSquareDashed,
+    estado: "listo",
   },
   {
     kicker: "Sitio",

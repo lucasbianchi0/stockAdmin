@@ -28,19 +28,17 @@ export interface PaymentTerm {
   name: string
 }
 
+/** La direccion de entrega es fija (la resuelve el server); aca solo se muestra. */
 export interface DeliveryAddress {
   id: string
-  name: string
-  street: string
-  number: string
-  jurisdiction: string
-  postalCode: string
+  label: string
 }
 
 interface Props {
   items: OrderDraftItem[]
   paymentTerm: PaymentTerm | null
-  addresses: DeliveryAddress[]
+  deliveryAddress: DeliveryAddress | null
+  addressWarning: string | null
   environment: string | null
   onClose: () => void
   onSuccess: () => void
@@ -81,12 +79,12 @@ function Aviso({
 export function OrderDialog({
   items,
   paymentTerm,
-  addresses,
+  deliveryAddress,
+  addressWarning,
   environment,
   onClose,
   onSuccess,
 }: Props) {
-  const [addressId, setAddressId] = useState(addresses[0]?.id ?? "")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ salesOrderId: string; warning?: string } | null>(
@@ -116,7 +114,7 @@ export function OrderDialog({
         body: JSON.stringify({
           items: items.map((i) => ({ code: i.code, quantity: i.quantity })),
           paymentTermId: paymentTerm?.id ?? null,
-          deliveryAddressId: addressId || null,
+          deliveryAddressId: deliveryAddress?.id ?? null,
         }),
       })
       const data = await res.json()
@@ -236,29 +234,17 @@ export function OrderDialog({
                 ))}
               </div>
 
-              {/* Dirección */}
-              {addresses.length > 0 && (
+              {/* Dirección de entrega — fija, no se elige */}
+              {deliveryAddress ? (
                 <div>
                   <p className="eyebrow flex items-center gap-1.5">
                     <MapPin className="h-3 w-3" />
                     Dirección de entrega
                   </p>
-                  {addresses.length === 1 ? (
-                    <p className="mt-1.5 text-[13px] text-ink">{addresses[0].name}</p>
-                  ) : (
-                    <select
-                      value={addressId}
-                      onChange={(e) => setAddressId(e.target.value)}
-                      className="mt-1.5 h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-[13px] text-ink transition-colors hover:border-n-400 focus:outline-none"
-                    >
-                      {addresses.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+                  <p className="mt-1.5 text-[13px] text-ink">{deliveryAddress.label}</p>
                 </div>
+              ) : (
+                addressWarning && <Aviso tone="warning">{addressWarning}</Aviso>
               )}
 
               {/* Condición de pago */}

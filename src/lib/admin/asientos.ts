@@ -136,13 +136,13 @@ export type SumasYSaldos = {
  * lista de pendientes no se vacíe nunca.
  */
 export type DocumentoSinAsiento = {
-  origen: "comprobante" | "movimiento"
+  origen: "comprobante" | "movimiento" | "pago"
   id: string
   fecha: string
   referencia: string
   importeArs: number
   motivo: string
-  /** `compra` o `venta` en un comprobante; `null` en un movimiento. */
+  /** `compra` o `venta` en un comprobante; `null` en un movimiento o un recibo. */
   tipo: "compra" | "venta" | null
   /** El proveedor o cliente, o la cuenta financiera si es un movimiento. */
   contraparte: string | null
@@ -151,6 +151,16 @@ export type DocumentoSinAsiento = {
   /** Ya imputado quiere decir que el motivo es otro y que cambiar la cuenta no
    *  lo va a arreglar. La pantalla lo distingue. */
   cuentaContableId: string | null
+  /**
+   * Si elegir una cuenta contable arregla este pendiente.
+   *
+   * En una factura o un movimiento suelto casi siempre sí: falta la cuenta y se
+   * elige. En un recibo nunca — no tiene cuenta propia, su asiento sale de las
+   * facturas que cancela y de los bancos por donde entró la plata. Lo que hace
+   * falta es leer el motivo y arreglar eso. La pantalla no puede ofrecer un
+   * selector que no va a servir.
+   */
+  corregibleConCuenta: boolean
 }
 
 /* ── Lectura ──────────────────────────────────────────────────────────────── */

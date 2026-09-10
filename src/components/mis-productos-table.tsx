@@ -225,7 +225,8 @@ export function MisProductosTable() {
     configured: boolean
     environment: string | null
     paymentTerm: PaymentTerm | null
-    addresses: DeliveryAddress[]
+    deliveryAddress: DeliveryAddress | null
+    addressWarning: string | null
     warning: string | null
   } | null>(null)
   // Que la lectura del contexto haya fallado no es lo mismo que Distecna no
@@ -273,7 +274,8 @@ export function MisProductosTable() {
           configured: Boolean(d.configured),
           environment: d.environment ?? null,
           paymentTerm: d.paymentTerm ?? null,
-          addresses: d.addresses ?? [],
+          deliveryAddress: d.deliveryAddress ?? null,
+          addressWarning: d.addressWarning ?? null,
           warning: d.warning ?? null,
         })
       })
@@ -874,7 +876,8 @@ export function MisProductosTable() {
         <OrderDialog
           items={orderItems}
           paymentTerm={checkout?.paymentTerm ?? null}
-          addresses={checkout?.addresses ?? []}
+          deliveryAddress={checkout?.deliveryAddress ?? null}
+          addressWarning={checkout?.addressWarning ?? null}
           environment={checkout?.environment ?? null}
           onClose={() => setShowOrderDialog(false)}
           onSuccess={() => setSelected(new Map())}

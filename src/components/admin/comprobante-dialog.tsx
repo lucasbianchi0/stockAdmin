@@ -91,8 +91,12 @@ const VACIO = (): Borrador => ({
 
 function aBorrador(c: Comprobante): Borrador {
   return {
-    entidadId: c.clienteId ?? "",
-    clienteNombre: c.clienteNombre ?? "",
+    // Un comprobante tiene cliente o proveedor, nunca los dos: el que no
+    // corresponde viene en null. Leer sólo `clienteId` dejaba el buscador vacío
+    // en toda factura de compra, y con él vacío «Guardar y confirmar» queda
+    // deshabilitado — o sea que ninguna compra se podía editar.
+    entidadId: c.clienteId ?? c.proveedorId ?? "",
+    clienteNombre: c.clienteNombre ?? c.proveedorNombre ?? "",
     clase: c.clase,
     fecha: c.fecha,
     fechaVencimiento: c.fechaVencimiento ?? "",

@@ -207,11 +207,63 @@ export function getPaymentTerm(): Promise<DistecnaPaymentTerm> {
   return v2Fetch<DistecnaPaymentTerm>("/v2/PaymentTerms", {}, { retryOnNetworkError: true })
 }
 
-export function getDeliveryAddresses(): Promise<DistecnaDeliveryAddress[]> {
+// Solo la usa getDefaultDeliveryAddress: la pantalla no elige direccion.
+function getDeliveryAddresses(): Promise<DistecnaDeliveryAddress[]> {
   return v2Fetch<DistecnaDeliveryAddress[]>(
     "/v2/DeliveryAddresses",
     {},
     { retryOnNetworkError: true }
+  )
+}
+
+// Los pedidos van siempre a Irala: es la unica direccion que usamos y no la elige
+// nadie en la pantalla. Distecna solo acepta un id de su propia lista de
+// direcciones de la cuenta, asi que la buscamos por calle en vez de hardcodear un
+// uuid — si Distecna la da de baja y la vuelve a crear, el id cambia y el nombre
+// no.
+const ENTREGA = {
+  calle: "IRALA",
+  etiqueta: "Irala 1950, 2° piso — C1276, CABA",
+} as const
+
+/** Direccion de entrega que deberia estar dada de alta en Distecna, para poder
+ *  nombrarla en los avisos cuando no aparece en la lista de la cuenta. */
+export const DIRECCION_ENTREGA_ESPERADA = ENTREGA.etiqueta
+
+function normalizar(texto: string) {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u00a0/g, " ")
+    .toUpperCase()
+}
+
+/** Nombre legible. El `name` que devuelve Distecna viene con el numero repetido y
+ *  espacios duros de relleno ("LA RIOJA 1446\u00a01446   -\u00a0..."), asi que lo
+ *  rearmamos con los campos sueltos. */
+export function formatearDireccion(dir: DistecnaDeliveryAddress) {
+  const calle = dir.street.trim()
+  // Algunas direcciones traen el numero pegado en `street` ("LA RIOJA 1446"); si
+  // ya esta, no lo repetimos.
+  const numero = calle.endsWith(dir.number.trim()) ? "" : dir.number
+  const piso = [dir.floor, dir.department].filter(Boolean).join(" ")
+  const linea = [calle, numero, piso].filter(Boolean).join(" ")
+  return `${linea} — ${dir.jurisdiction} (${dir.postalCode})`
+}
+
+/** La direccion de entrega fija, o null si la cuenta de Distecna no la tiene
+ *  registrada. Null no bloquea el pedido, pero hay que avisarlo: sin direccion,
+ *  Distecna despacha al default de la cuenta, que son direcciones viejas que ya no
+ *  usamos. */
+export async function getDefaultDeliveryAddress(): Promise<DistecnaDeliveryAddress | null> {
+  const direcciones = await getDeliveryAddresses()
+  const buscada = normalizar(ENTREGA.calle)
+  // Miramos `street` y `name`: algunas altas de Distecna dejan la calle solo en el
+  // nombre armado.
+  return (
+    direcciones.find((d) =>
+      [d.street, d.name].some((campo) => normalizar(campo ?? "").includes(buscada))
+    ) ?? null
   )
 }
 

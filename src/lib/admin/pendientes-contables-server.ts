@@ -23,9 +23,11 @@ import { TABLA_DE_TIPO, recordarCuentaEnFicha } from "@/lib/admin/entidad-de-com
 const LIMITE = 500
 
 export type FiltroPendientes = {
-  /** `comprobante` para las pantallas de facturas, `movimiento` para bancos. */
-  origen?: "comprobante" | "movimiento"
-  /** Acota a un circuito. Sólo tiene sentido con `origen = comprobante`. */
+  /** `comprobante` para las pantallas de facturas, `movimiento` para bancos,
+   *  `pago` para cobros y pagos. */
+  origen?: "comprobante" | "movimiento" | "pago"
+  /** Acota a un circuito. Con `origen = comprobante` separa compras de ventas;
+   *  con `origen = pago`, cobros de pagos. */
   tipo?: "compra" | "venta"
 }
 
@@ -60,18 +62,27 @@ export async function listarPendientesContables(filtro: FiltroPendientes = {}) {
   // dos consultas para cualquier cantidad de pendientes.
   const idsComprobante = filas.filter((f) => f.origen === "comprobante").map((f) => f.id)
   const idsMovimiento = filas.filter((f) => f.origen === "movimiento").map((f) => f.id)
+  const idsPago = filas.filter((f) => f.origen === "pago").map((f) => f.id)
 
-  const [detalleComprobantes, detalleMovimientos] = await Promise.all([
+  const [detalleComprobantes, detalleMovimientos, detallePagos] = await Promise.all([
     detalleDeComprobantes(idsComprobante),
     detalleDeMovimientos(idsMovimiento),
+    detalleDePagos(idsPago),
   ])
 
   let documentos: DocumentoSinAsiento[] = filas.map((f) => {
+    const origen: DocumentoSinAsiento["origen"] =
+      f.origen === "movimiento" ? "movimiento" : f.origen === "pago" ? "pago" : "comprobante"
+
     const extra =
-      f.origen === "comprobante" ? detalleComprobantes.get(f.id) : detalleMovimientos.get(f.id)
+      origen === "comprobante"
+        ? detalleComprobantes.get(f.id)
+        : origen === "pago"
+          ? detallePagos.get(f.id)
+          : detalleMovimientos.get(f.id)
 
     return {
-      origen: f.origen === "movimiento" ? "movimiento" : "comprobante",
+      origen,
       id: f.id,
       fecha: f.fecha,
       referencia: f.referencia,
@@ -81,11 +92,12 @@ export async function listarPendientesContables(filtro: FiltroPendientes = {}) {
       contraparte: extra?.contraparte ?? null,
       detalle: extra?.detalle ?? null,
       cuentaContableId: extra?.cuentaContableId ?? null,
+      corregibleConCuenta: origen !== "pago",
     }
   })
 
   // El filtro por circuito se aplica acá y no en la consulta: la vista no expone
-  // el tipo del comprobante, y traerlo hasta el detalle es más simple que
+  // el tipo del documento, y traerlo hasta el detalle es más simple que
   // reescribir la vista para una pantalla.
   if (filtro.tipo) {
     documentos = documentos.filter((d) => d.tipo === filtro.tipo)
@@ -157,6 +169,46 @@ async function detalleDeMovimientos(ids: string[]): Promise<Map<string, Extra>> 
         contraparte: m.cuenta?.nombre ?? null,
         detalle: m.detalle ?? m.referencia,
         cuentaContableId: m.cuenta_contable_id,
+      } satisfies Extra,
+    ])
+  )
+}
+
+/**
+ * De quién es el recibo y qué cancela.
+ *
+ * `tipo` reusa `compra`/`venta` para que el filtro por circuito de las pantallas
+ * funcione igual que con los comprobantes: un pago a proveedor pertenece al
+ * circuito de compras y un cobro al de ventas, aunque el documento sea un recibo.
+ */
+async function detalleDePagos(ids: string[]): Promise<Map<string, Extra>> {
+  if (ids.length === 0) return new Map()
+
+  const { data } = await supabase
+    .from("pagos")
+    .select(
+      "id, tipo, observaciones, cliente:clientes (razon_social), proveedor:proveedores (razon_social)"
+    )
+    .in("id", ids)
+
+  type Fila = {
+    id: string
+    tipo: string
+    observaciones: string | null
+    cliente: { razon_social: string } | null
+    proveedor: { razon_social: string } | null
+  }
+
+  return new Map(
+    ((data ?? []) as unknown as Fila[]).map((p) => [
+      p.id,
+      {
+        tipo: p.tipo === "pago" ? "compra" : "venta",
+        contraparte: p.proveedor?.razon_social ?? p.cliente?.razon_social ?? null,
+        detalle: p.observaciones,
+        // Un recibo no tiene cuenta contable propia. Se deja en null y
+        // `corregibleConCuenta` es lo que la pantalla mira.
+        cuentaContableId: null,
       } satisfies Extra,
     ])
   )
