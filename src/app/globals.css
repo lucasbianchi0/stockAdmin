@@ -380,6 +380,24 @@
   }
 }
 
+/* ── El latido del botón del asistente ──────────────────────────────────────
+   Un solo pico cada seis segundos, para que se note sin molestar. La misma
+   cantidad de capas de sombra en todos los pasos —las dos de la elevación más
+   un anillo, transparente en reposo—: con distinta cantidad entre keyframes el
+   navegador no puede interpolar y la sombra salta. */
+@keyframes chat-latido {
+  0%, 82%, 100% {
+    box-shadow: var(--elevation-3), 0 0 0 0 oklch(0.566 0.200 265 / 0);
+  }
+  90% {
+    box-shadow: var(--elevation-3), 0 0 0 10px oklch(0.566 0.200 265 / 0.22);
+  }
+}
+
+.chat-latido {
+  animation: chat-latido 6s ease-out 2s infinite;
+}
+
 /* Respeta la preferencia del sistema: nada de animaciones decorativas. */
 @media (prefers-reduced-motion: reduce) {
   *,

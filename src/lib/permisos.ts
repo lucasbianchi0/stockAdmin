@@ -52,6 +52,9 @@ const PUBLICAS = ["/login", "/sin-acceso"]
 const RUTAS: { prefijo: string; modulos: Modulo[] }[] = [
   // Marketing
   { prefijo: "/marketing", modulos: ["marketing"] },
+  // Los PDF de informes de campañas, que la página de Informes enlaza. Sin esta
+  // línea sólo los podía abrir un administrador: el middleware no excluye .pdf.
+  { prefijo: "/informes", modulos: ["marketing"] },
   { prefijo: "/contenido", modulos: ["marketing"] },
   { prefijo: "/api/marketing", modulos: ["marketing"] },
   { prefijo: "/api/contenido", modulos: ["marketing"] },
@@ -72,6 +75,9 @@ const RUTAS: { prefijo: string; modulos: Modulo[] }[] = [
 
   // Compartidas
   { prefijo: "/api/dolar", modulos: ["productos", "administracion"] },
+  // El asistente es de todos los que tienen algún módulo. Lo que ve cada uno lo
+  // recorta la propia ruta según el acceso de la sesión.
+  { prefijo: "/api/chat", modulos: [...MODULOS] },
 ]
 
 export function esPublica(pathname: string): boolean {

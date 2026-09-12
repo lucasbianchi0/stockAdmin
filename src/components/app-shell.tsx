@@ -6,15 +6,19 @@ import { usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
 
 import { Sidebar } from "./sidebar"
-import type { Modulo } from "@/lib/permisos"
+import { ChatbotProvider } from "./chatbot/provider"
+import type { Acceso } from "@/lib/permisos"
 
 export function AppShell({
   children,
-  modulos,
+  acceso,
+  usuarioId,
 }: {
   children: React.ReactNode
-  modulos: Modulo[]
+  acceso: Acceso
+  usuarioId: string | null
 }) {
+  const { modulos } = acceso
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
 
@@ -75,6 +79,14 @@ export function AppShell({
             página se ancla al área de contenido y no al viewport completo. */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
       </div>
+
+      {/* El asistente vive acá y no en una página: el shell no se remonta al
+          navegar, así que la conversación sigue ahí al cambiar de pantalla. La
+          `key` es el usuario —si en la misma pestaña entra otra persona, arranca
+          de cero— y no cambia al navegar. */}
+      {usuarioId && modulos.length > 0 && (
+        <ChatbotProvider key={usuarioId} usuarioId={usuarioId} acceso={acceso} />
+      )}
     </div>
   )
 }

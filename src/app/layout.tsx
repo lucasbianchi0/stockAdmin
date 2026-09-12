@@ -46,12 +46,14 @@ export default async function RootLayout({
   // API—: es para no mostrarle puertas a alguien que no las puede abrir.
   const supabase = await createSupabaseServer()
   const { data: { user } } = await supabase.auth.getUser()
-  const { modulos } = accesoDeUsuario(user)
+  const acceso = accesoDeUsuario(user)
 
   return (
     <html lang="es" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased" suppressHydrationWarning>
-        <AppShell modulos={modulos}>{children}</AppShell>
+        <AppShell acceso={acceso} usuarioId={user?.id ?? null}>
+          {children}
+        </AppShell>
         <Toaster
           position="top-center"
           richColors

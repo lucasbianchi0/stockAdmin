@@ -32,6 +32,12 @@ const nextConfig: NextConfig = {
       "./public/brand/accedra-logo-blanco.svg",
       "./public/brand/accedra-logo-navy.svg",
     ],
+    /*
+     * El asistente lee los informes de campañas del disco para pasárselos al
+     * modelo (`leer_documento`). Mismo motivo que arriba: la ruta se arma con un
+     * `join()` a partir del slug y el rastreo no la ve.
+     */
+    "/api/chat": ["./public/informes/*.pdf"],
   },
 };
 
