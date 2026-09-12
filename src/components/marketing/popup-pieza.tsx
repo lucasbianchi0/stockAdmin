@@ -191,7 +191,11 @@ function Imagen({ url, alt, className }: { url: string; alt: string; className?:
         // Vacío = decorativa. Es lo correcto cuando no se cargó una descripción:
         // peor que no describirla es que el lector de pantalla lea "imagen.webp".
         alt={alt}
-        loading="lazy"
+        // `eager`, no `lazy`. Este nodo se monta cuando el popup YA se está
+        // mostrando: diferir su carga es pedirle al navegador que retrase justo
+        // lo único que hay que ver. Con `lazy` el modal abría con un rectángulo
+        // negro arriba y la foto entraba un segundo después.
+        loading="eager"
         decoding="async"
         className="absolute inset-0 h-full w-full object-cover"
       />
