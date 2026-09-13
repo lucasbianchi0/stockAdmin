@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { CloudUpload, Inbox, Loader2, Mail, Trophy, UserCheck } from "lucide-react"
+import { Check, CloudUpload, Download, Inbox, Loader2, Mail, Trophy, UserCheck } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -367,7 +367,14 @@ function FilaLead({ lead, alCambiar }: { lead: Lead; alCambiar: (id: string, cam
 
 /* ── Conversiones ─────────────────────────────────────────────────────────── */
 
-type Revision = { listas: number; descartadas: number; rechazadas: { leadId: string; motivo: string }[] }
+type Revision = {
+  /** `false` = Google cerró la subida por API para esta cuenta; va por CSV. */
+  viaApi: boolean
+  listas: number
+  descartadas: number
+  rechazadas: { leadId: string; motivo: string }[]
+  ids: string[]
+}
 
 /**
  * Informarle a Google qué clics terminaron en cliente.
@@ -375,14 +382,18 @@ type Revision = { listas: number; descartadas: number; rechazadas: { leadId: str
  * ── POR QUE NO ES UN CRON ──
  *
  * Porque la decisión de decirle a Google que un lead vale la tiene que tomar
- * alguien que miró ese lead. Subir automáticamente todo lo que entra es enseñarle
- * a comprar formularios completados, que es exactamente lo que esta vía viene a
- * evitar: acá lo que se informa son CONTRATOS.
+ * alguien que miró ese lead. Subir automáticamente todo lo que entra es
+ * enseñarle a comprar formularios completados, que es exactamente lo que esta
+ * vía viene a evitar: acá lo que se informa son CONTRATOS.
  *
- * ── POR QUE SON DOS CLICS ──
+ * ── POR QUE SIEMPRE EMPIEZA POR REVISAR ──
  *
- * Una conversión aceptada por Google no se puede borrar. El primer clic la valida
- * contra Google sin escribir nada y dice cuántas entrarían; el segundo sube.
+ * Dos motivos. Una conversión aceptada por Google no se puede borrar, así que
+ * conviene ver cuántas entran antes. Y porque el propio paso de revisar es el
+ * que averigua por dónde se puede subir: el 13/9/2026 Google contestó que cerró
+ * la subida por API a integraciones nuevas y que esta cuenta no está habilitada,
+ * de modo que hoy el camino es el CSV. El día que se habilite, el mismo botón
+ * sube directo sin que haya que tocar nada.
  */
 function SubirConversiones({
   conversiones,
@@ -392,10 +403,11 @@ function SubirConversiones({
   recargar: () => void
 }) {
   const [revision, setRevision] = useState<Revision | null>(null)
+  const [descargado, setDescargado] = useState(false)
   const [ocupado, setOcupado] = useState(false)
 
-  // Sin cola no hay nada que decidir: la tarjeta no aparece en vez de mostrar un
-  // cero que invita a apretar un botón que no hace nada.
+  // Sin cola no hay nada que decidir: la tarjeta no aparece, en vez de mostrar
+  // un cero que invita a apretar un botón que no hace nada.
   if (conversiones.pendientes === 0) {
     if (conversiones.subidas === 0) return null
     return (
@@ -407,34 +419,88 @@ function SubirConversiones({
     )
   }
 
-  async function llamar(confirmar: boolean) {
+  async function pedir(accion: "revisar" | "subir" | "csv" | "marcar", ids?: string[]) {
+    const res = await fetch("/api/marketing/conversiones", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accion, soloGanados: true, ids }),
+    })
+    const cuerpo = (await res.json()) as Record<string, unknown> & { error?: string }
+    if (!res.ok) throw new Error(cuerpo.error ?? "Google no aceptó el pedido")
+    return cuerpo
+  }
+
+  async function revisar() {
     setOcupado(true)
     try {
-      const res = await fetch("/api/marketing/conversiones", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmar, soloGanados: true }),
-      })
-      const cuerpo = (await res.json()) as Revision & { error?: string; subidas?: number }
-      if (!res.ok) throw new Error(cuerpo.error ?? "Google no aceptó la subida")
-
-      if (confirmar) {
-        toast.success(
-          cuerpo.subidas
-            ? `${cuerpo.subidas} ${cuerpo.subidas === 1 ? "conversión informada" : "conversiones informadas"} a Google`
-            : "No entró ninguna conversión"
-        )
-        setRevision(null)
-        recargar()
-      } else {
-        setRevision({ listas: cuerpo.listas, descartadas: cuerpo.descartadas, rechazadas: cuerpo.rechazadas ?? [] })
-      }
+      const r = (await pedir("revisar")) as unknown as Revision
+      setRevision(r)
+      setDescargado(false)
     } catch (e) {
       toast.error(mensajeError(e, "No se pudo hablar con Google Ads"))
     } finally {
       setOcupado(false)
     }
   }
+
+  async function subirPorApi() {
+    setOcupado(true)
+    try {
+      const r = (await pedir("subir")) as { subidas?: number }
+      toast.success(
+        r.subidas
+          ? `${r.subidas} ${r.subidas === 1 ? "conversión informada" : "conversiones informadas"} a Google`
+          : "No entró ninguna conversión"
+      )
+      setRevision(null)
+      recargar()
+    } catch (e) {
+      toast.error(mensajeError(e, "No se pudo subir"))
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  async function bajarCsv() {
+    setOcupado(true)
+    try {
+      const r = (await pedir("csv")) as { csv?: string; ids?: string[] }
+      if (!r.csv) throw new Error("Google no devolvió el archivo")
+
+      const url = URL.createObjectURL(new Blob([r.csv], { type: "text/csv;charset=utf-8" }))
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `conversiones-${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      setRevision((prev) => (prev ? { ...prev, ids: r.ids ?? prev.ids } : prev))
+      setDescargado(true)
+    } catch (e) {
+      toast.error(mensajeError(e, "No se pudo generar el archivo"))
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  /** El sello va acá y no al descargar: bajar el archivo no es haberlo subido. */
+  async function confirmarSubido() {
+    if (!revision) return
+    setOcupado(true)
+    try {
+      const r = (await pedir("marcar", revision.ids)) as { marcadas?: number }
+      toast.success(`${r.marcadas ?? 0} marcadas como informadas`)
+      setRevision(null)
+      setDescargado(false)
+      recargar()
+    } catch (e) {
+      toast.error(mensajeError(e, "No se pudieron marcar"))
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  const porCsv = revision !== null && !revision.viaApi
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-brand-200 bg-brand-50 p-4">
@@ -453,7 +519,7 @@ function SubirConversiones({
         {revision && (
           <div className="mt-2.5 rounded-lg border border-line bg-surface p-3 text-[12.5px]">
             <p className="font-medium text-ink">
-              {revision.listas} {revision.listas === 1 ? "conversión lista" : "conversiones listas"} para subir
+              {revision.listas} {revision.listas === 1 ? "conversión lista" : "conversiones listas"} para informar
             </p>
             {revision.descartadas > 0 && (
               <p className="mt-0.5 text-ink-muted">
@@ -462,31 +528,70 @@ function SubirConversiones({
             )}
             {revision.rechazadas.length > 0 && (
               <p className="mt-0.5 text-danger-text">
-                {revision.rechazadas.length} rechazada{revision.rechazadas.length === 1 ? "" : "s"} por Google:{" "}
+                {revision.rechazadas.length} rechazada{revision.rechazadas.length === 1 ? "" : "s"}:{" "}
                 {revision.rechazadas[0].motivo}
               </p>
             )}
-            <p className="mt-1.5 text-[11.5px] text-ink-faint">
-              Una vez aceptadas no se pueden deshacer.
-            </p>
+
+            {porCsv && (
+              <p className="mt-1.5 text-[11.5px] text-ink-muted">
+                Google cerró la subida directa por API a las cuentas nuevas, así que va por archivo:{" "}
+                <span className="font-medium text-ink-secondary">
+                  Google Ads → Objetivos → Subidas → + → Subir un archivo
+                </span>
+                . Cuando lo hayas subido, volvé y confirmalo acá para que salgan de la cola.
+              </p>
+            )}
+            {!porCsv && <p className="mt-1.5 text-[11.5px] text-ink-faint">Una vez aceptadas no se pueden deshacer.</p>}
           </div>
         )}
       </div>
 
-      <button
-        type="button"
-        disabled={ocupado || (revision !== null && revision.listas === 0)}
-        onClick={() => void llamar(revision !== null)}
-        className={cn(
-          "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3.5 text-[12.5px] font-semibold shadow-e1 transition-colors disabled:opacity-50",
-          revision
-            ? "bg-brand-600 text-white hover:bg-brand-700"
-            : "border border-line-strong bg-surface text-ink-secondary hover:border-brand-200 hover:text-brand-700"
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {revision === null && (
+          <button type="button" disabled={ocupado} onClick={() => void revisar()} className={BOTON_SUAVE}>
+            {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CloudUpload className="h-3.5 w-3.5" />}
+            Revisar antes de informar
+          </button>
         )}
-      >
-        {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CloudUpload className="h-3.5 w-3.5" />}
-        {revision ? `Subir ${revision.listas} a Google` : "Revisar antes de subir"}
-      </button>
+
+        {revision !== null && revision.viaApi && (
+          <button
+            type="button"
+            disabled={ocupado || revision.listas === 0}
+            onClick={() => void subirPorApi()}
+            className={BOTON_FUERTE}
+          >
+            {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CloudUpload className="h-3.5 w-3.5" />}
+            Subir {revision.listas} a Google
+          </button>
+        )}
+
+        {porCsv && (
+          <>
+            <button
+              type="button"
+              disabled={ocupado || revision.listas === 0}
+              onClick={() => void bajarCsv()}
+              className={descargado ? BOTON_SUAVE : BOTON_FUERTE}
+            >
+              {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              {descargado ? "Bajar de nuevo" : `Descargar ${revision.listas}`}
+            </button>
+            {descargado && (
+              <button type="button" disabled={ocupado} onClick={() => void confirmarSubido()} className={BOTON_FUERTE}>
+                <Check className="h-3.5 w-3.5" />
+                Ya lo subí
+              </button>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
+
+const BOTON_BASE =
+  "inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[12.5px] font-semibold shadow-e1 transition-colors disabled:opacity-50"
+const BOTON_FUERTE = `${BOTON_BASE} bg-brand-600 text-white hover:bg-brand-700`
+const BOTON_SUAVE = `${BOTON_BASE} border border-line-strong bg-surface text-ink-secondary hover:border-brand-200 hover:text-brand-700`

@@ -68,8 +68,12 @@ function credenciales(): Credenciales | null {
   return {
     developerToken,
     customerId: soloDigitos(customerId),
-    // Sólo va si la MCC realmente administra la cuenta. Mandarlo cuando no es
-    // así devuelve un 403 que no dice nada útil.
+    // En esta cuenta NO es opcional. El usuario del token llega a 300-886-7811 a
+    // través de la MCC 176-724-6088, no directo: sin este header Google contesta
+    // 403 USER_PERMISSION_DENIED. (Comprobado el 13/9/2026; la nota del .env del
+    // MCP que dice "no descomentar, la MCC está vacía" quedó vieja — hoy la
+    // administra de verdad.) Donde el usuario sí tenga acceso directo, mandarlo
+    // igual devuelve un 403 distinto, así que sigue siendo opcional por diseño.
     loginCustomerId: login ? soloDigitos(login) : null,
     clientId,
     clientSecret,
@@ -445,6 +449,13 @@ export async function campanaDeClics(
  */
 const ACCION_CONVERSION = "7733887838"
 
+/**
+ * El nombre, para el CSV. Tiene que coincidir carácter por carácter con el de
+ * Google: si no coincide, la subida se acepta y descarta las filas en silencio
+ * — el error más difícil de detectar de todo este flujo.
+ */
+export const NOMBRE_CONVERSION = "Consulta calificada"
+
 export type ConversionASubir = {
   leadId: string
   gclid: string
@@ -459,6 +470,15 @@ export type ResultadoSubida = {
   subidas: number
   rechazadas: { leadId: string; motivo: string }[]
   detalle?: string
+  /**
+   * Google cerró `UploadClickConversions` a integraciones nuevas: las cuentas
+   * que no estaban usándolo reciben `CUSTOMER_NOT_ALLOWLISTED_FOR_THIS_FEATURE`
+   * y hay que ir por la Data Manager API, que pide otro permiso de OAuth.
+   *
+   * Comprobado en esta cuenta el 13/9/2026: no está en la lista. Por eso queda
+   * el CSV, que es la vía que la interfaz de Google sigue aceptando.
+   */
+  sinPermisoDeApi?: boolean
 }
 
 /**
@@ -540,6 +560,21 @@ export async function subirConversiones(
   // En una respuesta con fallos parciales, las filas que fallaron vienen como
   // objetos vacíos EN LA MISMA POSICION que se mandaron. Es la única forma de
   // saber cuál se cayó.
+  // El cierre de la API no viene como error HTTP sino como fallo parcial en
+  // cada fila. Se detecta por el código, no por el texto: el mensaje de Google
+  // cambia cuando se le ocurre.
+  const codigos = JSON.stringify(cuerpo.partialFailureError?.details ?? [])
+  if (codigos.includes("CUSTOMER_NOT_ALLOWLISTED_FOR_THIS_FEATURE")) {
+    return {
+      ok: false,
+      subidas: 0,
+      rechazadas: [],
+      sinPermisoDeApi: true,
+      detalle:
+        "Google cerró la subida por API a integraciones nuevas y esta cuenta no está habilitada.",
+    }
+  }
+
   const rechazadas: { leadId: string; motivo: string }[] = []
   const resultados = cuerpo.results ?? []
   filas.forEach((f, i) => {
@@ -571,4 +606,42 @@ function fechaParaGoogle(iso: string): string {
       .format(d)
       .match(/GMT([+-]\d{2}:\d{2})/)?.[1] ?? "-03:00"
   return `${base}${off}`
+}
+
+/**
+ * El archivo que acepta Google Ads → Objetivos → Subidas → Subir un archivo.
+ *
+ * Existe porque la vía por API está cerrada para esta cuenta (ver
+ * `sinPermisoDeApi`). El formato lo sacó a fuerza de prueba y error
+ * `accedra/scripts/ads/conversiones-offline.mjs`; acá se repite exacto.
+ *
+ * La primera línea es un PARAMETRO, no una fila: declara la zona horaria para
+ * que Google no interprete las fechas en la suya.
+ */
+export function csvDeConversiones(filas: ConversionASubir[]): string {
+  const escapar = (v: unknown) => {
+    const s = String(v ?? "")
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+
+  const lineas = [
+    "Parameters:TimeZone=America/Argentina/Buenos_Aires",
+    "Google Click ID,Conversion Name,Conversion Time,Conversion Value,Conversion Currency",
+  ]
+
+  for (const f of filas) {
+    lineas.push(
+      [
+        escapar(f.gclid),
+        escapar(NOMBRE_CONVERSION),
+        escapar(fechaParaGoogle(f.cuando)),
+        // Sin monto se manda vacío, no un cero: un cero le dice a Google que ese
+        // cliente valió nada, que es peor que no decirle nada.
+        escapar(f.valor ?? ""),
+        escapar(f.valor ? (f.moneda ?? "ARS") : ""),
+      ].join(",")
+    )
+  }
+
+  return lineas.join("\n") + "\n"
 }
