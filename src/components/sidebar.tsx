@@ -5,7 +5,9 @@ import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
+  Bot,
   ChevronRight,
+  KanbanSquare,
   LogOut,
   Megaphone,
   Package,
@@ -13,7 +15,9 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+import { useChatbotOpcional } from "@/components/chatbot/provider"
 import { createSupabaseBrowser } from "@/lib/supabase-browser"
+import { borrarHistoriales } from "@/lib/chatbot/historial"
 import { cn } from "@/lib/utils"
 import type { Modulo } from "@/lib/permisos"
 
@@ -60,13 +64,17 @@ const GRUPOS: Grupo[] = [
     titulo: "Marketing",
     icon: Megaphone,
     items: [
-      { name: "Panel", href: "/marketing", available: true, exact: true },
+      /* Primero Resultados: es la única pantalla que se abre para saber cómo
+         venimos. Informes va abajo porque es lo que se manda, no lo que se
+         consulta. */
+      { name: "Resultados", href: "/marketing/resultados", available: true },
       { name: "Informes de campañas", href: "/marketing/informes", available: true },
       { name: "Brand Kit", href: "/marketing/brand", available: true },
       { name: "Plantillas de mensajes", href: "/marketing/mensajes", available: true },
       { name: "Brochures", href: "/marketing/brochures", available: true },
       { name: "Landings y SEO", href: "/marketing/landings", available: true },
       { name: "Popup del sitio", href: "/marketing/popup", available: true },
+      { name: "Eventos y certificados", href: "/marketing/eventos", available: true },
       /* El flujo nuevo, en el orden en el que se usa: primero se genera y se
          revisa, después se programa. El camino anterior —los planes de 15 días
          y el Content Studio— queda fuera del menú por ahora; las páginas siguen
@@ -162,11 +170,14 @@ interface SidebarProps {
   mobile?: boolean
   /** Módulos habilitados del usuario. Filtra qué grupos se dibujan. */
   modulos: Modulo[]
+  /** Después de abrir los agentes. En el teléfono cierra el menú, que taparía el chat. */
+  onAbrirAgentes?: () => void
 }
 
-export function Sidebar({ mobile, modulos }: SidebarProps) {
+export function Sidebar({ mobile, modulos, onAbrirAgentes }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const chat = useChatbotOpcional()
 
   /**
    * Estado inicial derivado del pathname, no de localStorage: se calcula igual en
@@ -192,6 +203,9 @@ export function Sidebar({ mobile, modulos }: SidebarProps) {
   }, [pathname, grupos])
 
   const handleLogout = async () => {
+    // Antes de salir: lo que el asistente contestó no puede quedar en la
+    // pestaña para quien entre después.
+    borrarHistoriales()
     const supabase = createSupabaseBrowser()
     await supabase.auth.signOut()
     router.push("/login")
@@ -215,6 +229,70 @@ export function Sidebar({ mobile, modulos }: SidebarProps) {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
+        {/* La ticketera va primera y fuera de los grupos: no pertenece a ningún
+            módulo —es el tablero del equipo entero— y es la pantalla con la que
+            se empieza el día. Un ítem suelto y sin plegar, porque no tiene
+            hermanas entre las que elegir.
+
+            La condición es la misma regla que declara `/tickets` en permisos.ts
+            —alcanza con tener algún módulo—, escrita acá para que el menú no
+            prometa una puerta que el middleware no abre. Es cosmética, como
+            todo el filtrado de la sidebar: la barrera real está allá. */}
+        {modulos.length > 0 && (
+        <Link
+          href="/tickets"
+          className={cn(
+            "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13.5px] font-semibold tracking-[-0.005em] transition-colors duration-150",
+            pathname.startsWith("/tickets")
+              ? "bg-white/[0.09] text-white"
+              : "text-white/75 hover:bg-white/[0.05] hover:text-white"
+          )}
+        >
+          <KanbanSquare
+            className={cn(
+              "h-[18px] w-[18px] shrink-0 transition-colors",
+              pathname.startsWith("/tickets")
+                ? "text-white/85"
+                : "text-white/50 group-hover:text-white/85"
+            )}
+            strokeWidth={1.85}
+          />
+          <span className="flex-1 truncate text-left">Ticketera</span>
+        </Link>
+        )}
+
+        {/* Agentes no es una pantalla sino el chat a pantalla completa: no
+            navega, así que la página de atrás queda donde estaba al cerrarlo. */}
+        {chat && (
+          <div className="mb-2 border-b border-white/[0.07] pb-2">
+            <button
+              type="button"
+              onClick={() => {
+                chat.abrirAgentes()
+                onAbrirAgentes?.()
+              }}
+              aria-pressed={chat.abierto && chat.ampliado}
+              className={cn(
+                "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13.5px] font-semibold tracking-[-0.005em] transition-colors duration-150",
+                chat.abierto && chat.ampliado
+                  ? "bg-white/[0.09] text-white"
+                  : "text-white/75 hover:bg-white/[0.05] hover:text-white"
+              )}
+            >
+              <Bot
+                className="h-[18px] w-[18px] shrink-0 text-white/50 transition-colors group-hover:text-white/85"
+                strokeWidth={1.85}
+              />
+              <span className="flex-1 truncate text-left">Agentes</span>
+              {chat.agentes.length > 1 && (
+                <span className="shrink-0 rounded-full bg-brand-400/15 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-brand-300">
+                  {chat.agentes.length}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
         {grupos.map((grupo) => (
           <GrupoNav
             key={grupo.id}
