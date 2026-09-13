@@ -125,11 +125,12 @@ export async function resolverCampanas(leads: Lead[]): Promise<Lead[]> {
  * enseña a Smart Bidding a comprar clics que nunca fueron clientes, y una vez
  * que Google la acepta no se puede deshacer.
  */
-export function contarConversiones(leads: Lead[]): Conversiones {
+export function contarConversiones(leads: Lead[], contactosAutomaticos = 0): Conversiones {
   const cola = leads.filter((l) => l.gclid && !l.equipo && !l.subida_en)
   return {
     pendientes: cola.length,
     ganados: cola.filter((l) => l.estado === "ganado").length,
     subidas: leads.filter((l) => l.subida_en).length,
+    contactosAutomaticos,
   }
 }

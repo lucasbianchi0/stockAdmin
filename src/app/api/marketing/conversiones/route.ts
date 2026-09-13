@@ -69,6 +69,10 @@ type LeadPendiente = {
  * Si la verificación no se puede hacer, se aborta. Es preferible no subir nada a
  * subir de más.
  */
+/*
+ * Sólo leads. Los clics a WhatsApp y teléfono NO pasan por acá: van solos todos
+ * los días por `/api/marketing/conversiones/programada`.
+ */
 async function cola(soloGanados: boolean): Promise<
   { ok: true; filas: ConversionASubir[]; descartadas: number } | { ok: false; error: string }
 > {
@@ -121,6 +125,7 @@ async function cola(soloGanados: boolean): Promise<
     ok: true,
     descartadas: candidatos.length - limpios.length,
     filas: limpios.map((l) => ({
+      accion: "consulta" as const,
       leadId: l.id,
       gclid: l.gclid as string,
       // El momento de la conversión es el cierre si existe; si no, la consulta.

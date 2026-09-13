@@ -422,16 +422,36 @@ function SubirConversiones({
 
   // Sin cola no hay nada que decidir: la tarjeta no aparece, en vez de mostrar
   // un cero que invita a apretar un botón que no hace nada.
-  if (conversiones.pendientes === 0) {
-    if (conversiones.subidas === 0) return null
-    return (
+  // Los contactos por WhatsApp o teléfono no son trabajo de nadie: Google los lee
+  // solo cada día. Se nombran para que se sepa que existen y adónde van.
+  const automaticos =
+    conversiones.contactosAutomaticos > 0 ? (
       <p className="text-[12.5px] text-ink-muted">
         <CloudUpload className="mr-1.5 inline h-3.5 w-3.5 align-[-2px]" />
-        {conversiones.subidas} {conversiones.subidas === 1 ? "conversión informada" : "conversiones informadas"} a Google en
-        este período. No queda ninguna pendiente.
+        {conversiones.contactosAutomaticos}{" "}
+        {conversiones.contactosAutomaticos === 1 ? "contacto" : "contactos"} por WhatsApp o teléfono desde un anuncio
+        (últimos 90 días). Van solos a Google todos los días como «Contacto directo»; no hay que subirlos.
       </p>
+    ) : null
+
+  if (conversiones.pendientes === 0) {
+    if (conversiones.subidas === 0) return automaticos
+    return (
+      <>
+        <p className="text-[12.5px] text-ink-muted">
+          <CloudUpload className="mr-1.5 inline h-3.5 w-3.5 align-[-2px]" />
+          {conversiones.subidas} {conversiones.subidas === 1 ? "conversión informada" : "conversiones informadas"} a
+          Google en este período. No queda ninguna pendiente.
+        </p>
+        {automaticos}
+      </>
     )
   }
+
+  const titulo =
+    conversiones.ganados > 0
+      ? `${conversiones.ganados} ${conversiones.ganados === 1 ? "contrato" : "contratos"}`
+      : `${conversiones.pendientes} ${conversiones.pendientes === 1 ? "consulta" : "consultas"} de Ads`
 
   async function pedir(accion: "revisar" | "subir" | "csv" | "marcar", ids?: string[]) {
     const res = await fetch("/api/marketing/conversiones", {
@@ -520,14 +540,12 @@ function SubirConversiones({
     <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-brand-200 bg-brand-50 p-4">
       <div className="min-w-0">
         <p className="text-[13px] font-semibold text-brand-700">
-          {conversiones.ganados > 0
-            ? `${conversiones.ganados} ${conversiones.ganados === 1 ? "contrato" : "contratos"} sin informarle a Google`
-            : `${conversiones.pendientes} ${conversiones.pendientes === 1 ? "consulta" : "consultas"} de Ads sin informar`}
+          {titulo} sin informarle a Google
         </p>
         <p className="mt-1 max-w-[78ch] text-[12.5px] text-ink-secondary">
           Se le manda el identificador del clic, el momento y —si se cargó— el monto. Ni nombre, ni mail, ni empresa, ni el
           texto de la consulta. Es lo que le enseña a Google a buscar empresas que firman en vez de gente que completa
-          formularios.
+          formularios. Los clics a WhatsApp y teléfono no pasan por acá: van solos todos los días.
         </p>
 
         {revision && (

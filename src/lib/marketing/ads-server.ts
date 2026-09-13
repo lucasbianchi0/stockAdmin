@@ -456,7 +456,23 @@ const ACCION_CONVERSION = "7733887838"
  */
 export const NOMBRE_CONVERSION = "Consulta calificada"
 
+/**
+ * La acción que recibe los clics a WhatsApp, teléfono y mail. Creada el
+ * 13/9/2026, también `UPLOAD_CLICKS` y principal. Va aparte de la consulta: un
+ * clic al botón no garantiza que la persona haya escrito, y mezclarlos le haría
+ * creer a Google que todo contacto vale lo mismo que una consulta con nombre.
+ */
+const ACCION_CONTACTO = "7765289408"
+const NOMBRE_CONTACTO = "Contacto directo"
+
+const ACCIONES = {
+  consulta: { id: ACCION_CONVERSION, nombre: NOMBRE_CONVERSION },
+  contacto: { id: ACCION_CONTACTO, nombre: NOMBRE_CONTACTO },
+} as const
+
 export type ConversionASubir = {
+  accion: keyof typeof ACCIONES
+  /** El id del lead, o `contacto:<id del evento>` para un clic de contacto. */
   leadId: string
   gclid: string
   /** ISO. El cierre si lo hay; si no, el momento de la consulta. */
@@ -524,7 +540,7 @@ export async function subirConversiones(
 
   const conversions = filas.map((f) => ({
     gclid: f.gclid,
-    conversionAction: `customers/${c.customerId}/conversionActions/${ACCION_CONVERSION}`,
+    conversionAction: `customers/${c.customerId}/conversionActions/${ACCIONES[f.accion].id}`,
     conversionDateTime: fechaParaGoogle(f.cuando),
     // Sin monto no se manda un cero: un cero le dice a Google que ese cliente
     // valió nada, que es peor que no decirle nada.
@@ -633,7 +649,7 @@ export function csvDeConversiones(filas: ConversionASubir[]): string {
     lineas.push(
       [
         escapar(f.gclid),
-        escapar(NOMBRE_CONVERSION),
+        escapar(ACCIONES[f.accion].nombre),
         escapar(fechaParaGoogle(f.cuando)),
         // Sin monto se manda vacío, no un cero: un cero le dice a Google que ese
         // cliente valió nada, que es peor que no decirle nada.
@@ -644,4 +660,94 @@ export function csvDeConversiones(filas: ConversionASubir[]): string {
   }
 
   return lineas.join("\n") + "\n"
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Contacto directo
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const NOMBRES_CONTACTO = ["whatsapp", "telefono", "email"]
+
+type EventoContacto = {
+  id: number
+  created_at: string
+  session_id: string | null
+}
+
+/**
+ * Los clics a WhatsApp, teléfono o mail de gente que llegó por un anuncio.
+ *
+ * Es como contacta de verdad este público —en un año, 492 clics a llamar o
+ * escribir contra 0 formularios— y hasta el 13/9/2026 Google no los contaba: la
+ * cuenta no tenía ninguna conversión que los recibiera.
+ *
+ * Una fila por gclid, con el primer clic: la acción cuenta uno por clic de
+ * anuncio, y mandar tres toques al mismo botón sólo generaría rechazos.
+ *
+ * No hay sello ni cola manual. Google Ads lee estas filas todos los días desde
+ * `/api/marketing/conversiones/programada` (subida programada), y una fila con
+ * el mismo gclid, nombre y hora que ya recibió la ignora — así que devolver los
+ * últimos 90 días enteros cada vez es seguro y no duplica. A diferencia de las
+ * consultas, un clic a WhatsApp no tiene nada que revisar antes de informarlo.
+ *
+ * Mismo criterio que con los leads: si no se puede verificar el tráfico interno,
+ * no se sube nada.
+ */
+export async function colaDeContactos(): Promise<
+  { ok: true; filas: ConversionASubir[]; descartadas: number } | { ok: false; error: string }
+> {
+  // Google no acepta clics de más de 90 días; se deja un día de margen.
+  const desde = new Date(Date.now() - 89 * 86_400_000).toISOString()
+  const { data, error } = await supabase
+    .from("events")
+    .select("id, created_at, session_id")
+    .eq("type", "click")
+    .in("name", NOMBRES_CONTACTO)
+    .gte("created_at", desde)
+    .order("created_at", { ascending: true })
+    .limit(2000)
+  if (error) {
+    console.error("[contactos cola]", error)
+    return { ok: false, error: "No se pudieron leer los clics de contacto" }
+  }
+
+  const eventos = (data ?? []) as EventoContacto[]
+  const ids = [...new Set(eventos.map((e) => e.session_id).filter(Boolean))] as string[]
+  if (ids.length === 0) return { ok: true, filas: [], descartadas: 0 }
+
+  const { data: ses, error: errSes } = await supabase
+    .from("sessions")
+    .select("id, gclid, is_internal, is_bot")
+    .in("id", ids)
+  if (errSes) {
+    console.error("[contactos sesiones]", errSes)
+    return { ok: false, error: "No se pudo verificar el tráfico interno. No se subió nada." }
+  }
+
+  type Sesion = { id: string; gclid: string | null; is_internal: boolean | null; is_bot: boolean | null }
+  const sesiones = new Map(((ses ?? []) as Sesion[]).map((s) => [String(s.id), s]))
+  const sesionDe = (e: EventoContacto) => (e.session_id ? sesiones.get(e.session_id) : undefined)
+
+  const vistos = new Set<string>()
+  const filas: ConversionASubir[] = []
+  let descartadas = 0
+  for (const e of eventos) {
+    const s = sesionDe(e)
+    if (!s?.gclid || vistos.has(s.gclid)) continue
+    vistos.add(s.gclid)
+    if (s.is_internal || s.is_bot) {
+      descartadas++
+      continue
+    }
+    filas.push({
+      accion: "contacto",
+      leadId: `contacto:${e.id}`,
+      gclid: s.gclid,
+      cuando: e.created_at,
+      valor: null,
+      moneda: null,
+    })
+  }
+
+  return { ok: true, filas, descartadas }
 }

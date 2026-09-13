@@ -36,19 +36,43 @@ function alertasDe(r: Resultados): Alerta[] {
   const conversiones = r.ads.campanas.reduce((s, c) => s + c.conversiones, 0)
   const clics = r.ads.campanas.reduce((s, c) => s + c.clics, 0)
 
+  // No hay tag: las consultas se suben a mano desde Leads y los clics a
+  // WhatsApp/teléfono los lee Google solo cada día. Si no hay nada de ninguno de
+  // los dos, el cero es consecuencia de la alerta siguiente y no un problema
+  // aparte.
+  const { pendientes, contactosAutomaticos } = r.conversiones
   if (gasto > 0 && conversiones === 0) {
-    a.push({
-      nivel: "critico",
-      titulo: "Google no registra ninguna conversión",
-      texto: `${clics.toLocaleString("es-AR")} clics y cero conversiones en la cuenta. Sin el tag instalado, Smart Bidding optimiza por nada y los informes de Google no sirven para decidir.`,
-    })
+    if (pendientes > 0) {
+      a.push({
+        nivel: "critico",
+        titulo: "Hay consultas de anuncios que Google no recibió",
+        texto: `${pendientes} ${pendientes === 1 ? "consulta llegó" : "consultas llegaron"} desde un anuncio y la cuenta sigue en cero conversiones. Subilas desde la pestaña de Leads: sin eso, Google optimiza a ciegas.`,
+      })
+    } else if (contactosAutomaticos > 0) {
+      // Van solos, así que si Google sigue en cero el problema es la subida
+      // programada, no alguien que se olvidó de apretar un botón.
+      a.push({
+        nivel: "advertencia",
+        titulo: "Google todavía no muestra los contactos de los anuncios",
+        texto: `${contactosAutomaticos} ${contactosAutomaticos === 1 ? "persona tocó" : "personas tocaron"} WhatsApp o teléfono después de un anuncio y la cuenta sigue en cero. Se envían solos cada día y Google tarda hasta 2 días en mostrarlos; si pasa más, revisá Google Ads → Objetivos → Subidas.`,
+      })
+    } else {
+      a.push({
+        nivel: "advertencia",
+        titulo: "Google no registra ninguna conversión",
+        texto: `${clics.toLocaleString("es-AR")} clics y cero conversiones. No es un tag faltante: se informan cuando alguien que vino de un anuncio consulta o toca WhatsApp o teléfono, y todavía no pasó.`,
+      })
+    }
   }
 
   if (t.de_ads >= 20 && t.leads_de_ads === 0) {
+    const tocaron = t.contactos_de_ads ?? 0
     a.push({
       nivel: "critico",
       titulo: "El tráfico pago no deja una sola consulta",
-      texto: `${t.de_ads} visitas llegaron desde un anuncio y ninguna dejó el mail. Con ${pesos(gasto)} invertidos, el problema está en la página donde caen, no en la puja.`,
+      texto: `${t.de_ads} visitas llegaron desde un anuncio y ninguna dejó el mail${
+        tocaron ? ` (${tocaron} tocaron WhatsApp o teléfono)` : ""
+      }. Con ${pesos(gasto)} invertidos, el problema está en la página donde caen, no en la puja.`,
     })
   }
 
@@ -170,6 +194,12 @@ export function ResultadosResumen({ datos }: { datos: Resultados }) {
     { titulo: "Impresiones", detalle: "Veces que apareció el anuncio", valor: impresiones },
     { titulo: "Clics", detalle: impresiones ? `CTR ${porcentaje(clics, impresiones)}` : "Sin impresiones", valor: clics },
     { titulo: "Visitas al sitio", detalle: "Cruzadas por gclid", valor: t.de_ads },
+    {
+      titulo: "Tocaron WhatsApp o teléfono",
+      detalle: "Se suben como Contacto directo",
+      valor: t.contactos_de_ads ?? 0,
+      critico: !t.contactos_de_ads,
+    },
     { titulo: "Dejaron el mail", detalle: t.leads_de_ads ? "Consultas atribuidas" : "Ninguna", valor: t.leads_de_ads, critico: true },
   ]
 

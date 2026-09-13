@@ -82,6 +82,11 @@ export type Totales = {
   interacciones: number
   /** Clics a WhatsApp, teléfono o mail: contacto real, sin nombre. */
   contactos_directos: number
+  /**
+   * Personas que llegaron por un anuncio y tocaron WhatsApp, teléfono o mail.
+   * Una por gclid, sin equipo ni bots. Es lo que se sube como `Contacto directo`.
+   */
+  contactos_de_ads?: number
   leads: number
   leads_equipo: number
   leads_reales: number
@@ -257,6 +262,11 @@ export type Conversiones = {
   ganados: number
   /** Ya informados a Google en este período. */
   subidas: number
+  /**
+   * Clics a WhatsApp, teléfono o mail desde un anuncio en los últimos 90 días.
+   * No son cola: Google los lee solo cada día como `Contacto directo`.
+   */
+  contactosAutomaticos: number
 }
 
 export type Resultados = {

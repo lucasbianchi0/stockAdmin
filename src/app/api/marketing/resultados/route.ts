@@ -11,6 +11,7 @@ import {
   sitioDelPeriodo,
   totalesDelPeriodo,
 } from "@/lib/marketing/resultados-server"
+import { colaDeContactos } from "@/lib/marketing/ads-server"
 import {
   PERIODOS,
   rangoAnterior,
@@ -50,11 +51,12 @@ export const GET = ruta("resultados GET", async (req) => {
 
   // En paralelo: el sitio y los leads salen de la misma base, Ads de afuera.
   // Encadenarlos sumaría el peor caso de Google al tiempo de carga de todo.
-  const [sitio, leadsCrudos, adsCruda, anterior] = await Promise.all([
+  const [sitio, leadsCrudos, adsCruda, anterior, colaContactos] = await Promise.all([
     sitioDelPeriodo(desde, hasta),
     leadsDelPeriodo(desde, hasta),
     campanasEnVivo(desde, hasta),
     totalesDelPeriodo(previo.desde, previo.hasta),
+    colaDeContactos(),
   ])
 
   // Va después del Promise.all y no adentro: necesita los leads ya traídos para
@@ -65,12 +67,24 @@ export const GET = ruta("resultados GET", async (req) => {
   const campanas = pegarLeads(adsCruda.campanas, leads)
   const ads = { ...adsCruda, campanas } as Resultados["ads"]
 
+  // No sale de `resultados_sitio` porque cruzar clics con gclid pide las sesiones,
+  // y eso ya lo resuelve la cola de contactos. Se recorta al período acá.
+  const inicio = new Date(`${desde}T00:00:00-03:00`).getTime()
+  const fin = new Date(`${hasta}T23:59:59.999-03:00`).getTime()
+  sitio.totales.contactos_de_ads = colaContactos.ok
+    ? colaContactos.filas.filter((f) => {
+        const ms = new Date(f.cuando).getTime()
+        return ms >= inicio && ms <= fin
+      }).length
+    : 0
+
   const cuerpo: Resultados = {
     sitio,
     anterior,
     leads,
     ads,
-    conversiones: contarConversiones(leads),
+    // Si la lectura de contactos falla, el panel sigue: sólo no los muestra.
+    conversiones: contarConversiones(leads, colaContactos.ok ? colaContactos.filas.length : 0),
   }
 
   return NextResponse.json(cuerpo, {
