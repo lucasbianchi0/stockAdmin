@@ -145,7 +145,7 @@ export function ResultadosClient() {
             <ResultadosPaginas datos={datos} />
           </TabsContent>
           <TabsContent value="leads" className="mt-0">
-            <ResultadosLeads datos={datos} alCambiar={alCambiar} />
+            <ResultadosLeads datos={datos} alCambiar={alCambiar} recargar={() => void query.refetch()} />
           </TabsContent>
         </Tabs>
       )}

@@ -9,7 +9,8 @@
  */
 
 import { supabase } from "@/lib/supabase"
-import type { Campana, Lead, Sitio, Totales } from "@/lib/marketing/resultados"
+import { campanaDeClics } from "@/lib/marketing/ads-server"
+import type { Campana, Conversiones, Lead, Sitio, Totales } from "@/lib/marketing/resultados"
 
 /** El embudo, la serie y las tablas del período. */
 export async function sitioDelPeriodo(desde: string, hasta: string): Promise<Sitio> {
@@ -82,4 +83,53 @@ export function pegarLeads(campanas: Campana[], leads: Lead[]): Campana[] {
     ...c,
     leads: porCampana.get(c.nombre.trim().toLowerCase()) ?? 0,
   }))
+}
+
+/**
+ * Le pone a cada lead de Ads la campaña y el grupo que lo trajeron.
+ *
+ * Reemplaza al `utm_campaign` que hoy no llega: con el etiquetado automático de
+ * Google lo que viaja es el `gclid`, no los UTMs. Se resuelve contra
+ * `click_view`, que es de sólo lectura y no obliga a tocar ningún anuncio en
+ * producción — ver el comentario largo en `campanaDeClics`.
+ *
+ * Nunca lanza: si Google no contesta, los leads vuelven como estaban. Saber de
+ * qué campaña vino un lead es valioso, pero no vale romper la bandeja entera.
+ */
+export async function resolverCampanas(leads: Lead[]): Promise<Lead[]> {
+  const paraResolver = leads
+    .filter((l) => l.gclid && !l.campana)
+    .map((l) => ({ gclid: l.gclid as string, fecha: l.created_at }))
+
+  if (paraResolver.length === 0) return leads
+
+  try {
+    const mapa = await campanaDeClics(paraResolver)
+    if (mapa.size === 0) return leads
+
+    return leads.map((l) => {
+      const r = l.gclid ? mapa.get(l.gclid) : undefined
+      return r ? { ...l, campana: l.campana ?? r.campana, grupo: r.grupo } : l
+    })
+  } catch (e) {
+    console.error("[resolverCampanas]", e)
+    return leads
+  }
+}
+
+/**
+ * La cola de conversiones pendientes de informarle a Google.
+ *
+ * Un lead entra en la cola si tiene `gclid`, no es del equipo y todavía no se
+ * subió. El filtro del equipo es el que importa: subir una prueba nuestra le
+ * enseña a Smart Bidding a comprar clics que nunca fueron clientes, y una vez
+ * que Google la acepta no se puede deshacer.
+ */
+export function contarConversiones(leads: Lead[]): Conversiones {
+  const cola = leads.filter((l) => l.gclid && !l.equipo && !l.subida_en)
+  return {
+    pendientes: cola.length,
+    ganados: cola.filter((l) => l.estado === "ganado").length,
+    subidas: leads.filter((l) => l.subida_en).length,
+  }
 }

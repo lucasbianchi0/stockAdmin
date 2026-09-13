@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Inbox, Mail, Trophy, UserCheck } from "lucide-react"
+import { CloudUpload, Inbox, Loader2, Mail, Trophy, UserCheck } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -51,9 +51,11 @@ const FILTROS: { clave: Filtro; label: string }[] = [
 export function ResultadosLeads({
   datos,
   alCambiar,
+  recargar,
 }: {
   datos: Resultados
   alCambiar: (id: string, cambio: Partial<Lead>) => void
+  recargar: () => void
 }) {
   const [filtro, setFiltro] = useState<Filtro>("todos")
   const [ocultarEquipo, setOcultarEquipo] = useState(true)
@@ -113,6 +115,8 @@ export function ResultadosLeads({
           hint={sinClasificar > 0 ? "Esperan que alguien los mire" : "Todos clasificados"}
         />
       </div>
+
+      <SubirConversiones conversiones={datos.conversiones} recargar={recargar} />
 
       <section className="panel">
         <div className="panel-header flex-wrap items-center gap-2">
@@ -358,5 +362,131 @@ function FilaLead({ lead, alCambiar }: { lead: Lead; alCambiar: (id: string, cam
         )}
       </td>
     </tr>
+  )
+}
+
+/* ── Conversiones ─────────────────────────────────────────────────────────── */
+
+type Revision = { listas: number; descartadas: number; rechazadas: { leadId: string; motivo: string }[] }
+
+/**
+ * Informarle a Google qué clics terminaron en cliente.
+ *
+ * ── POR QUE NO ES UN CRON ──
+ *
+ * Porque la decisión de decirle a Google que un lead vale la tiene que tomar
+ * alguien que miró ese lead. Subir automáticamente todo lo que entra es enseñarle
+ * a comprar formularios completados, que es exactamente lo que esta vía viene a
+ * evitar: acá lo que se informa son CONTRATOS.
+ *
+ * ── POR QUE SON DOS CLICS ──
+ *
+ * Una conversión aceptada por Google no se puede borrar. El primer clic la valida
+ * contra Google sin escribir nada y dice cuántas entrarían; el segundo sube.
+ */
+function SubirConversiones({
+  conversiones,
+  recargar,
+}: {
+  conversiones: Resultados["conversiones"]
+  recargar: () => void
+}) {
+  const [revision, setRevision] = useState<Revision | null>(null)
+  const [ocupado, setOcupado] = useState(false)
+
+  // Sin cola no hay nada que decidir: la tarjeta no aparece en vez de mostrar un
+  // cero que invita a apretar un botón que no hace nada.
+  if (conversiones.pendientes === 0) {
+    if (conversiones.subidas === 0) return null
+    return (
+      <p className="text-[12.5px] text-ink-muted">
+        <CloudUpload className="mr-1.5 inline h-3.5 w-3.5 align-[-2px]" />
+        {conversiones.subidas} {conversiones.subidas === 1 ? "conversión informada" : "conversiones informadas"} a Google en
+        este período. No queda ninguna pendiente.
+      </p>
+    )
+  }
+
+  async function llamar(confirmar: boolean) {
+    setOcupado(true)
+    try {
+      const res = await fetch("/api/marketing/conversiones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmar, soloGanados: true }),
+      })
+      const cuerpo = (await res.json()) as Revision & { error?: string; subidas?: number }
+      if (!res.ok) throw new Error(cuerpo.error ?? "Google no aceptó la subida")
+
+      if (confirmar) {
+        toast.success(
+          cuerpo.subidas
+            ? `${cuerpo.subidas} ${cuerpo.subidas === 1 ? "conversión informada" : "conversiones informadas"} a Google`
+            : "No entró ninguna conversión"
+        )
+        setRevision(null)
+        recargar()
+      } else {
+        setRevision({ listas: cuerpo.listas, descartadas: cuerpo.descartadas, rechazadas: cuerpo.rechazadas ?? [] })
+      }
+    } catch (e) {
+      toast.error(mensajeError(e, "No se pudo hablar con Google Ads"))
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-brand-200 bg-brand-50 p-4">
+      <div className="min-w-0">
+        <p className="text-[13px] font-semibold text-brand-700">
+          {conversiones.ganados > 0
+            ? `${conversiones.ganados} ${conversiones.ganados === 1 ? "contrato" : "contratos"} sin informarle a Google`
+            : `${conversiones.pendientes} ${conversiones.pendientes === 1 ? "consulta" : "consultas"} de Ads sin informar`}
+        </p>
+        <p className="mt-1 max-w-[78ch] text-[12.5px] text-ink-secondary">
+          Se le manda el identificador del clic, el momento y —si se cargó— el monto. Ni nombre, ni mail, ni empresa, ni el
+          texto de la consulta. Es lo que le enseña a Google a buscar empresas que firman en vez de gente que completa
+          formularios.
+        </p>
+
+        {revision && (
+          <div className="mt-2.5 rounded-lg border border-line bg-surface p-3 text-[12.5px]">
+            <p className="font-medium text-ink">
+              {revision.listas} {revision.listas === 1 ? "conversión lista" : "conversiones listas"} para subir
+            </p>
+            {revision.descartadas > 0 && (
+              <p className="mt-0.5 text-ink-muted">
+                {revision.descartadas} descartada{revision.descartadas === 1 ? "" : "s"} por ser del propio equipo.
+              </p>
+            )}
+            {revision.rechazadas.length > 0 && (
+              <p className="mt-0.5 text-danger-text">
+                {revision.rechazadas.length} rechazada{revision.rechazadas.length === 1 ? "" : "s"} por Google:{" "}
+                {revision.rechazadas[0].motivo}
+              </p>
+            )}
+            <p className="mt-1.5 text-[11.5px] text-ink-faint">
+              Una vez aceptadas no se pueden deshacer.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <button
+        type="button"
+        disabled={ocupado || (revision !== null && revision.listas === 0)}
+        onClick={() => void llamar(revision !== null)}
+        className={cn(
+          "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3.5 text-[12.5px] font-semibold shadow-e1 transition-colors disabled:opacity-50",
+          revision
+            ? "bg-brand-600 text-white hover:bg-brand-700"
+            : "border border-line-strong bg-surface text-ink-secondary hover:border-brand-200 hover:text-brand-700"
+        )}
+      >
+        {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CloudUpload className="h-3.5 w-3.5" />}
+        {revision ? `Subir ${revision.listas} a Google` : "Revisar antes de subir"}
+      </button>
+    </div>
   )
 }

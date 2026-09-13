@@ -4,8 +4,10 @@ import { ruta } from "@/lib/admin/ruta"
 import { exigirModulo } from "@/lib/guard-api"
 import { campanasEnVivo } from "@/lib/marketing/ads-server"
 import {
+  contarConversiones,
   leadsDelPeriodo,
   pegarLeads,
+  resolverCampanas,
   sitioDelPeriodo,
   totalesDelPeriodo,
 } from "@/lib/marketing/resultados-server"
@@ -48,17 +50,28 @@ export const GET = ruta("resultados GET", async (req) => {
 
   // En paralelo: el sitio y los leads salen de la misma base, Ads de afuera.
   // Encadenarlos sumaría el peor caso de Google al tiempo de carga de todo.
-  const [sitio, leads, adsCruda, anterior] = await Promise.all([
+  const [sitio, leadsCrudos, adsCruda, anterior] = await Promise.all([
     sitioDelPeriodo(desde, hasta),
     leadsDelPeriodo(desde, hasta),
     campanasEnVivo(desde, hasta),
     totalesDelPeriodo(previo.desde, previo.hasta),
   ])
 
+  // Va después del Promise.all y no adentro: necesita los leads ya traídos para
+  // saber qué gclids resolver. Es una segunda vuelta a Google, pero sólo sobre
+  // los días que efectivamente tienen un lead de Ads — casi siempre, ninguno.
+  const leads = await resolverCampanas(leadsCrudos)
+
   const campanas = pegarLeads(adsCruda.campanas, leads)
   const ads = { ...adsCruda, campanas } as Resultados["ads"]
 
-  const cuerpo: Resultados = { sitio, anterior, leads, ads }
+  const cuerpo: Resultados = {
+    sitio,
+    anterior,
+    leads,
+    ads,
+    conversiones: contarConversiones(leads),
+  }
 
   return NextResponse.json(cuerpo, {
     // El panel no es tiempo real y los datos de Google se mueven despacio. Un

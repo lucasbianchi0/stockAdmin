@@ -186,6 +186,15 @@ export type Lead = {
   pais: string | null
   paginas_vistas: number
   recorrido: string[]
+  /** El identificador del clic del anuncio. Es lo que se le sube a Google. */
+  gclid: string | null
+  /** Cuándo se subió a Google como conversión. `null` = todavía no. */
+  subida_en: string | null
+  /**
+   * Grupo de anuncios que lo trajo. No sale de la base: lo resuelve el servidor
+   * contra `click_view` de Google, y sólo alcanza 90 días para atrás.
+   */
+  grupo?: string | null
 }
 
 /* ── Campañas ─────────────────────────────────────────────────────────────── */
@@ -235,11 +244,27 @@ export type Ads =
   | { ok: true; campanas: Campana[]; desde: string; hasta: string; enVivo: boolean }
   | { ok: false; motivo: MotivoSinAds; detalle: string; campanas: Campana[] }
 
+/**
+ * Conversiones pendientes de informarle a Google.
+ *
+ * No es una métrica: es una cola de trabajo. Aparece en la bandeja cuando hay
+ * algo para subir y desaparece cuando no.
+ */
+export type Conversiones = {
+  /** Leads con gclid, no del equipo y todavía sin subir. */
+  pendientes: number
+  /** De esos, los que ya se cerraron como ganados. Son los que más enseñan. */
+  ganados: number
+  /** Ya informados a Google en este período. */
+  subidas: number
+}
+
 export type Resultados = {
   sitio: Sitio
   anterior: Totales | null
   leads: Lead[]
   ads: Ads
+  conversiones: Conversiones
 }
 
 /* ── Formato ──────────────────────────────────────────────────────────────── */

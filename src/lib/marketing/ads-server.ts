@@ -353,3 +353,222 @@ export async function guardarCierre(
   if (error) return { ok: false, detalle: error.message }
   return { ok: true, guardadas: filas.length }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Clics → campaña
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export type ClicResuelto = { campanaId: string; campana: string; grupo: string | null }
+
+/**
+ * Resuelve cada `gclid` a la campaña y el grupo que lo trajeron.
+ *
+ * ── POR QUE ESTO Y NO UTMs EN LAS URLs DE LOS ANUNCIOS ──
+ *
+ * El camino obvio para saber de qué campaña vino un lead es agregarle
+ * `utm_campaign` a la URL final de cada anuncio. Funciona, pero implica tocar
+ * los anuncios que están corriendo —y una plantilla de seguimiento mal escrita
+ * deja la cuenta entera sirviendo 404 sin que nadie se entere hasta que el
+ * gasto del día ya se fue—.
+ *
+ * `click_view` da lo mismo sin tocar nada: es de sólo lectura, funciona hacia
+ * atrás sobre los clics que ya pasaron, y no depende de que alguien se acuerde
+ * de poner el UTM en el anuncio nuevo del mes que viene.
+ *
+ * ── LOS DOS LIMITES, QUE SON REALES ──
+ *
+ *   · Google sólo conserva `click_view` 90 días. Más atrás, un lead se sigue
+ *     sabiendo "de Ads" —el gclid está en nuestra base para siempre— pero no de
+ *     qué campaña.
+ *   · La consulta exige UN día exacto por vez. Por eso se agrupa por fecha y se
+ *     hace una consulta por día con clics, no una por lead.
+ */
+export async function campanaDeClics(
+  clics: { gclid: string; fecha: string }[]
+): Promise<Map<string, ClicResuelto>> {
+  const mapa = new Map<string, ClicResuelto>()
+  const c = credenciales()
+  if (!c || clics.length === 0) return mapa
+
+  // Los que ya quedaron fuera de la ventana no se consultan: la respuesta sería
+  // vacía igual y cada consulta cuesta una llamada a la API.
+  const corte = new Date()
+  corte.setDate(corte.getDate() - 89)
+
+  const buscados = new Set(clics.map((x) => x.gclid))
+  const porDia = new Map<string, true>()
+  for (const x of clics) {
+    const dia = x.fecha.slice(0, 10)
+    if (new Date(dia) >= corte) porDia.set(dia, true)
+  }
+
+  for (const dia of porDia.keys()) {
+    try {
+      const filas = (await gaql(
+        c,
+        `SELECT click_view.gclid, campaign.id, campaign.name, ad_group.name
+         FROM click_view
+         WHERE segments.date = '${dia}'`
+      )) as (FilaAds & { clickView?: { gclid?: string }; adGroup?: { name?: string } })[]
+
+      for (const f of filas) {
+        const g = f.clickView?.gclid
+        if (!g || !buscados.has(g)) continue
+        mapa.set(g, {
+          campanaId: f.campaign?.id ?? "",
+          campana: f.campaign?.name ?? "",
+          grupo: f.adGroup?.name ?? null,
+        })
+      }
+    } catch (e) {
+      // Un día que falle no puede tirar abajo la pantalla: el resto de los leads
+      // se resuelve igual y los de ese día quedan sin campaña, que es el mismo
+      // estado que tenían antes.
+      console.error(`[click_view ${dia}]`, e)
+    }
+  }
+
+  return mapa
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Conversiones sin conexión
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * La acción de conversión que recibe las subidas. Ya existe en la cuenta, es
+ * `UPLOAD_CLICKS` y está marcada como principal.
+ *
+ * El id va acá y no en una variable de entorno porque es de esta cuenta y de
+ * esta acción: una variable sugeriría que se puede apuntar a otra, y apuntar a
+ * la equivocada es un error silencioso —Google acepta la subida y la descarta—.
+ */
+const ACCION_CONVERSION = "7733887838"
+
+export type ConversionASubir = {
+  leadId: string
+  gclid: string
+  /** ISO. El cierre si lo hay; si no, el momento de la consulta. */
+  cuando: string
+  valor: number | null
+  moneda: string | null
+}
+
+export type ResultadoSubida = {
+  ok: boolean
+  subidas: number
+  rechazadas: { leadId: string; motivo: string }[]
+  detalle?: string
+}
+
+/**
+ * Sube conversiones a Google contra el gclid de cada lead.
+ *
+ * ── POR QUE ESTA VIA Y NO LA ETIQUETA DE GTAG ──
+ *
+ * Es una decisión tomada y escrita, no una omisión. La política de privacidad
+ * publicada del sitio dice, en negrita, que no usa cookies publicitarias ni de
+ * seguimiento entre sitios; `gtag.js` instala `_gcl_aw` y `_gcl_dc`, que son
+ * exactamente eso. Poner la etiqueta convertiría ese párrafo en falso.
+ *
+ * Y mide mejor. La etiqueta le enseña a Google a comprar formularios
+ * completados; esto le enseña a comprar CONTRATOS. En un negocio donde el mejor
+ * y el peor lead de un mes se diferencian en dos órdenes de magnitud, esa
+ * distinción es lo que separa a Smart Bidding ayudando de Smart Bidding
+ * empujando para el lado equivocado.
+ *
+ * Lo único que viaja es el gclid, el momento y —si se cargó— el monto. Ni
+ * nombre, ni mail, ni empresa, ni el texto de la consulta.
+ *
+ * ── POR QUE `validar` EXISTE ──
+ *
+ * Una conversión aceptada por Google no se puede deshacer. `validar: true` hace
+ * exactamente el mismo pedido con `validateOnly`, así que la pantalla puede
+ * decir cuántas van a entrar y por qué se caen las otras ANTES de que sea
+ * irreversible.
+ */
+export async function subirConversiones(
+  filas: ConversionASubir[],
+  { validar }: { validar: boolean }
+): Promise<ResultadoSubida> {
+  const c = credenciales()
+  if (!c) return { ok: false, subidas: 0, rechazadas: [], detalle: "Faltan las variables GOOGLE_ADS_*" }
+  if (filas.length === 0) return { ok: true, subidas: 0, rechazadas: [] }
+
+  let token: string
+  try {
+    token = await accessToken(c)
+  } catch (e) {
+    return { ok: false, subidas: 0, rechazadas: [], detalle: e instanceof Error ? e.message : String(e) }
+  }
+
+  const conversions = filas.map((f) => ({
+    gclid: f.gclid,
+    conversionAction: `customers/${c.customerId}/conversionActions/${ACCION_CONVERSION}`,
+    conversionDateTime: fechaParaGoogle(f.cuando),
+    // Sin monto no se manda un cero: un cero le dice a Google que ese cliente
+    // valió nada, que es peor que no decirle nada.
+    ...(f.valor ? { conversionValue: f.valor, currencyCode: f.moneda ?? "ARS" } : {}),
+  }))
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "developer-token": c.developerToken,
+    "Content-Type": "application/json",
+  }
+  if (c.loginCustomerId) headers["login-customer-id"] = c.loginCustomerId
+
+  const res = await fetch(`${API}/customers/${c.customerId}:uploadClickConversions`, {
+    method: "POST",
+    headers,
+    // `partialFailure` es lo que permite que una fila mal formada no tire abajo
+    // las otras diecinueve. Sin esto, un solo gclid vencido cancela el lote.
+    body: JSON.stringify({ conversions, partialFailure: true, validateOnly: validar }),
+    cache: "no-store",
+  })
+
+  if (!res.ok) {
+    const detalle = await res.text().catch(() => "")
+    return { ok: false, subidas: 0, rechazadas: [], detalle: `Google respondió ${res.status}. ${detalle.slice(0, 400)}` }
+  }
+
+  const cuerpo = (await res.json()) as {
+    results?: ({ gclid?: string } | Record<string, never>)[]
+    partialFailureError?: { message?: string; details?: unknown[] }
+  }
+
+  // En una respuesta con fallos parciales, las filas que fallaron vienen como
+  // objetos vacíos EN LA MISMA POSICION que se mandaron. Es la única forma de
+  // saber cuál se cayó.
+  const rechazadas: { leadId: string; motivo: string }[] = []
+  const resultados = cuerpo.results ?? []
+  filas.forEach((f, i) => {
+    const r = resultados[i] as { gclid?: string } | undefined
+    if (!r || !r.gclid) {
+      rechazadas.push({
+        leadId: f.leadId,
+        motivo: cuerpo.partialFailureError?.message ?? "Google no aceptó esta conversión",
+      })
+    }
+  })
+
+  return { ok: true, subidas: filas.length - rechazadas.length, rechazadas }
+}
+
+/** `2026-08-20 16:26:51-03:00`, uno de los formatos que Google acepta. */
+function fechaParaGoogle(iso: string): string {
+  const ZONA = "America/Argentina/Buenos_Aires"
+  const d = new Date(iso)
+  // El locale sueco ya devuelve "YYYY-MM-DD HH:mm:ss"; falta pegarle el offset.
+  const base = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: ZONA,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  }).format(d)
+  const off =
+    new Intl.DateTimeFormat("en-US", { timeZone: ZONA, timeZoneName: "longOffset" })
+      .format(d)
+      .match(/GMT([+-]\d{2}:\d{2})/)?.[1] ?? "-03:00"
+  return `${base}${off}`
+}
