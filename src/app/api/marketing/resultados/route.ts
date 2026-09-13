@@ -74,9 +74,18 @@ export const GET = ruta("resultados GET", async (req) => {
   }
 
   return NextResponse.json(cuerpo, {
-    // El panel no es tiempo real y los datos de Google se mueven despacio. Un
-    // minuto de caché evita que abrir y cerrar pestañas dispare una consulta a
-    // la API por cada clic.
-    headers: { "Cache-Control": "private, max-age=60" },
+    // Sin caché de HTTP, a propósito.
+    //
+    // Antes acá había `private, max-age=60` para no dispararle una consulta a
+    // Google en cada clic. El problema es que `fetch` respeta esa cabecera, así
+    // que el botón "Actualizar" —cuyo único trabajo es traer lo último AHORA—
+    // podía devolver la misma respuesta guardada: el spinner giraba y no
+    // cambiaba nada.
+    //
+    // El freno sigue existiendo, pero del lado del cliente: react-query tiene
+    // `staleTime` de un minuto y no vuelve a pedir si los datos están frescos.
+    // La diferencia es que ahí sí se distingue "volví a la pestaña" de "apreté
+    // actualizar", y sólo el segundo fuerza el pedido.
+    headers: { "Cache-Control": "no-store" },
   })
 })

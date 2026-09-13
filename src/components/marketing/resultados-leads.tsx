@@ -192,7 +192,7 @@ export function ResultadosLeads({
               </thead>
               <tbody>
                 {visibles.map((l) => (
-                  <FilaLead key={l.id} lead={l} alCambiar={alCambiar} />
+                  <FilaLead key={l.id} lead={l} alCambiar={alCambiar} recargar={recargar} />
                 ))}
               </tbody>
             </table>
@@ -227,7 +227,15 @@ const TONO_TIPO: Record<TipoLead, "brand" | "success" | "neutral" | "warning"> =
   popup: "neutral",
 }
 
-function FilaLead({ lead, alCambiar }: { lead: Lead; alCambiar: (id: string, cambio: Partial<Lead>) => void }) {
+function FilaLead({
+  lead,
+  alCambiar,
+  recargar,
+}: {
+  lead: Lead
+  alCambiar: (id: string, cambio: Partial<Lead>) => void
+  recargar: () => void
+}) {
   const [guardando, setGuardando] = useState(false)
   const [monto, setMonto] = useState(lead.monto === null ? "" : String(lead.monto))
 
@@ -250,6 +258,12 @@ function FilaLead({ lead, alCambiar }: { lead: Lead; alCambiar: (id: string, cam
         throw new Error(cuerpo.error ?? "No se pudo guardar")
       }
       toast.success("Guardado")
+      // El retoque optimista de arriba sólo mueve ESTA fila. Los totales del
+      // embudo —clientes nuevos, monto ganado, costo por consulta— se calculan
+      // en la base, así que sin esto marcabas un lead como ganado y la tarjeta
+      // de arriba seguía diciendo cero. Se recarga en segundo plano: la fila ya
+      // se ve cambiada y el resto se pone al día solo.
+      recargar()
     } catch (e) {
       // Se revierte lo que se había mostrado: dejar el cambio en pantalla
       // después de un fallo es la forma más rápida de que alguien crea que
