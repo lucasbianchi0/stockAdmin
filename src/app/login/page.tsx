@@ -1,12 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { createSupabaseBrowser } from "@/lib/supabase-browser"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { AlertCircle, Loader2 } from "lucide-react"
+import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -14,6 +14,38 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
+
+  /*
+   * Un mail de recuperación mandado desde el panel de Supabase vuelve a la URL
+   * del sitio (la raíz) con los tokens en el fragmento. El middleware manda la
+   * raíz sin sesión acá y el navegador conserva el fragmento, así que desde acá
+   * se lo pasa a la pantalla que pide la contraseña nueva.
+   */
+  useEffect(() => {
+    const hash = window.location.hash
+    const query = window.location.search
+    if (hash.includes("type=recovery") || query.includes("type=recovery")) {
+      window.location.replace(`/login/restablecer${query}${hash}`)
+    }
+  }, [])
+
+  const recuperar = async () => {
+    setError(null)
+    setAviso(null)
+    if (!email.trim()) {
+      setError("Escribí tu email y volvé a tocar “Olvidé mi contraseña”.")
+      return
+    }
+    const supabase = createSupabaseBrowser()
+    // El origen sale de donde está abierta la app, no de la configuración de
+    // Supabase: así el link nunca apunta a localhost desde producción.
+    await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/login/restablecer`,
+    })
+    // Mismo mensaje exista o no la cuenta: no revela qué emails están dados de alta.
+    setAviso("Si el email tiene cuenta, te llega un link para elegir una contraseña nueva.")
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -121,10 +153,23 @@ export default function LoginPage() {
                 <p className="text-[12px] font-medium text-danger-text">{error}</p>
               </div>
             )}
+            {aviso && (
+              <div className="flex items-start gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2.5">
+                <CheckCircle2 className="mt-px h-3.5 w-3.5 shrink-0 text-ink-muted" />
+                <p className="text-[12px] text-ink-secondary">{aviso}</p>
+              </div>
+            )}
 
             <Button type="submit" size="lg" className="w-full" disabled={loading}>
               {loading ? <Loader2 className="animate-spin" /> : "Ingresar"}
             </Button>
+            <button
+              type="button"
+              onClick={recuperar}
+              className="block w-full text-center text-[12px] text-ink-muted transition-colors hover:text-ink"
+            >
+              Olvidé mi contraseña
+            </button>
           </form>
         </div>
 
