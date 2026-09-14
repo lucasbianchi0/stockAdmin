@@ -245,7 +245,7 @@ export const TECNICO = [
   },
   {
     item: "Search Console",
-    valor: "El meta de verificación no aparece en el HTML. Puede estar por DNS — sin confirmar",
+    valor: "Sin verificar (revisado 14/9): no hay meta en el HTML, ni registro TXT de Google en el DNS, ni archivo HTML",
     estado: "duda" as const,
   },
   {
@@ -288,16 +288,18 @@ export type Auditoria = {
 /**
  * Lighthouse 13 sobre producción, headless, red móvil simulada.
  *
- * Esta medición es la de después de aligerar el home. El 60 de mobile pasó a 87:
- * el video del hero ahora se sirve en una versión mobile de 308 KB en vez de los
- * 2,71 MB de antes, y el bloqueo de hilo bajó de 570 ms a 0. Lo que queda es un
- * LCP de 3,6 s — mejorable, pero ya no es el agujero que era.
+ * Segunda tanda de mejoras (14/9, commit 06e26c5 en accedra). El home mobile
+ * pasó de 87 a 96–97:
+ *  - El <h1> del hero arrancaba en opacity 0 y Chrome no lo contaba como LCP
+ *    hasta después de ejecutar el JS. Ahora arranca en 0.01 y el LCP coincide
+ *    con el primer pintado: de 3,6 s a 2,6 s.
+ *  - Inglés y portugués se cargan bajo demanda: ~10 KB menos de JS al arrancar.
+ *  - La portada del evento del panel lateral pasa por el optimizador: 283 KB → 10 KB.
  *
- * Ojo al comparar contra la corrida anterior: aquella fue con Lighthouse 12 y
- * ésta con 13, así que parte del movimiento de los puntajes es de versión. Lo
- * que no depende de la versión son los bytes y el TBT, y ahí la mejora es real.
+ * Es el mejor de tres corridas razonables: una de las tres dio 87, siempre por
+ * Speed Index (ver HALLAZGOS_PERF). Con red lenta el puntaje baila entre 85 y 97.
  */
-export const PERF_MEDIDO = "2026-08-10"
+export const PERF_MEDIDO = "2026-09-14"
 export const PERF_HERRAMIENTA = "Lighthouse 13 · headless · 4G simulado"
 
 export const AUDITORIAS: Auditoria[] = [
@@ -305,27 +307,27 @@ export const AUDITORIAS: Auditoria[] = [
     etiqueta: "Home",
     url: "/",
     dispositivo: "Mobile",
-    performance: 87,
+    performance: 96,
     accesibilidad: 95,
     buenasPracticas: 96,
     seo: 100,
-    lcp: "3,6 s",
+    lcp: "2,6 s",
     cls: "0",
     tbt: "0 ms",
-    si: "4,7 s",
+    si: "1,4 s",
   },
   {
     etiqueta: "Home",
     url: "/",
     dispositivo: "Desktop",
-    performance: 100,
+    performance: 98,
     accesibilidad: 95,
     buenasPracticas: 96,
     seo: 100,
-    lcp: "0,7 s",
+    lcp: "1,0 s",
     cls: "0",
     tbt: "0 ms",
-    si: "0,6 s",
+    si: "1,0 s",
   },
   {
     etiqueta: "Landing tipo",
@@ -335,21 +337,22 @@ export const AUDITORIAS: Auditoria[] = [
     accesibilidad: 91,
     buenasPracticas: 96,
     seo: 100,
-    lcp: "3,2 s",
+    lcp: "3,4 s",
     cls: "0",
-    tbt: "10 ms",
-    si: "4,3 s",
+    tbt: "0 ms",
+    si: "1,8 s",
   },
 ]
 
-/** El reparto del peso del home en mobile, después de aligerarlo. */
+/** El reparto del peso del home en mobile (medición del 14/9). El total incluye
+ *  el video, que se pide después del LCP y no compite con él. */
 export const PESO_HOME = {
-  total: "727 KB en 42 pedidos",
+  total: "797 KB en 50 pedidos",
   reparto: [
-    { tipo: "Video", peso: 0.3, req: 1 },
-    { tipo: "JavaScript", peso: 0.2, req: 13 },
+    { tipo: "Video", peso: 0.31, req: 1 },
+    { tipo: "JavaScript", peso: 0.21, req: 14 },
+    { tipo: "Imágenes", peso: 0.13, req: 20 },
     { tipo: "Tipografías", peso: 0.1, req: 3 },
-    { tipo: "Imágenes", peso: 0.08, req: 18 },
   ],
 }
 
@@ -361,15 +364,15 @@ export type Hallazgo = {
 
 export const HALLAZGOS_PERF: Hallazgo[] = [
   {
-    titulo: "El LCP del home queda en 3,6 s",
+    titulo: "La pestaña de Eventos entra tarde y hunde el Speed Index con red lenta",
     detalle:
-      "Es lo único que separa al home mobile de los 90. El umbral bueno de Google es 2,5 s: falta poco más de un segundo.",
+      "Llega por fetch a /api/eventos y entra deslizándose ~3 s después de cargar. En una de cada tres corridas eso lleva el Speed Index a 4,9 s y el home a 87. Con la pestaña bloqueada el SI baja a 2,8 s. Se arregla trayendo los eventos en el servidor con ISR de 60 s, como ya hace /eventos.",
     impacto: "medio" as const,
   },
   {
-    titulo: "2,2 s de trabajo en el hilo principal",
+    titulo: "El LCP de las landings sigue en 3,4 s",
     detalle:
-      "No bloquea (el TBT es 0 ms), pero son 0,9 s de tareas varias y 0,7 s de estilo y layout que empujan el Speed Index a 4,7 s.",
+      "El home ya bajó a 2,6 s; las landings, que son el destino de los anuncios, no recibieron el mismo arreglo del título. El umbral bueno de Google es 2,5 s.",
     impacto: "medio" as const,
   },
   {
@@ -379,8 +382,8 @@ export const HALLAZGOS_PERF: Hallazgo[] = [
     impacto: "medio" as const,
   },
   {
-    titulo: "48 KB de JavaScript sin usar",
-    detalle: "Más 14 KB de sintaxis vieja transpilada de más. Se recuperan sin tocar el diseño.",
+    titulo: "25 KB de JavaScript sin usar",
+    detalle: "Más 14 KB de sintaxis vieja transpilada de más. Bajó de 48 KB al sacar inglés y portugués del arranque.",
     impacto: "bajo" as const,
   },
   {
@@ -390,7 +393,7 @@ export const HALLAZGOS_PERF: Hallazgo[] = [
     impacto: "bajo" as const,
   },
   {
-    titulo: "16 KB de CSS que bloquean el render",
+    titulo: "19 KB de CSS que bloquean el render",
     detalle: "Una sola hoja de estilos frena la primera pintura. Es el techo del FCP de 1,0 s.",
     impacto: "bajo" as const,
   },
@@ -420,7 +423,7 @@ export const ESTADO: { area: string; estado: Semaforo; comentario: string }[] = 
   {
     area: "Performance",
     estado: "verde",
-    comentario: "Desktop en 100 y mobile del home de 60 a 87 tras aligerar el video del hero",
+    comentario: "Home mobile de 60 a 96–97 en dos tandas (video del hero y LCP del título). Desktop en 98",
   },
   {
     area: "SEO local / Google Business",
@@ -435,7 +438,7 @@ export const PENDIENTES = [
   {
     titulo: "Trabajar el Google Business Profile, que ya existe",
     porque:
-      "La ficha está creada y es el único canal que efectivamente convirtió: las 7 conversiones del último año en Google Ads salieron de su chat, contra cero del formulario del sitio. Nadie la trabaja. Cargar fotos, servicios, publicaciones y atender las reseñas cuesta cero y ya demostró rendir mejor que $712.276 de pauta.",
+      "La ficha está creada y es el único canal que efectivamente convirtió: las 7 conversiones del último año en Google Ads salieron de su chat, contra cero del formulario del sitio. Nadie la trabaja. Cargar fotos, servicios, publicaciones y atender las reseñas cuesta cero y ya demostró rendir mejor que $712.276 de pauta. Ojo: el 14/9 no aparecía en Google Maps ni buscando \"Accedra\" ni por la dirección (Irala 1950 muestra a Distecna). Confirmar con qué cuenta está, que siga publicada y verificada.",
     prioridad: "ahora" as const,
   },
   {
@@ -445,15 +448,15 @@ export const PENDIENTES = [
     prioridad: "ahora" as const,
   },
   {
-    titulo: "Confirmar Search Console",
+    titulo: "Verificar Search Console",
     porque:
-      "El meta de verificación no está en el HTML. Puede estar verificado por DNS, pero sin confirmarlo se navega a ciegas: no hay posiciones ni impresiones.",
+      "Revisado el 14/9: no hay meta de verificación en el HTML, ni registro TXT de Google en el DNS, ni archivo HTML. Salvo otra vía (Analytics/Tag Manager, que el sitio no usa), no está verificado: no hay posiciones ni impresiones. El código ya emite el meta si se carga NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION en Vercel.",
     prioridad: "ahora" as const,
   },
   {
-    titulo: "Bajar el LCP del home de 3,6 s a 2,5 s",
+    titulo: "Traer los eventos del home en el servidor y llevar el arreglo del LCP a las landings",
     porque:
-      "Aligerar el video ya subió el mobile de 60 a 87. Lo que falta para los 90 es el último segundo de LCP: el CSS que bloquea el render y los 2,2 s de hilo principal. Es afinado, ya no rescate.",
+      "El home mobile ya está en 96–97 y LCP 2,6 s. Lo que queda: la pestaña de Eventos que entra tarde (tira el home a 87 con red lenta) y el LCP de 3,4 s de las landings, que son las páginas a las que llegan los anuncios.",
     prioridad: "despues" as const,
   },
   {

@@ -135,8 +135,8 @@ function Portada() {
         <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[11.5px]">
           llms.txt
         </code>{" "}
-        que casi nadie tiene todavía. El home en mobile ya se resolvió: pasó de 60 a 87 al aligerar
-        el video del hero. El hueco real que queda es de otra naturaleza: la ficha de Google
+        que casi nadie tiene todavía. El home en mobile ya se resolvió: pasó de 60 a 96–97 entre
+        el video del hero y el arreglo del LCP. El hueco real que queda es de otra naturaleza: la ficha de Google
         Business existe y es el único canal que efectivamente convirtió el año pasado, pero
         nadie la trabaja.
       </p>
@@ -634,7 +634,7 @@ function Performance() {
     <Section
       num="04"
       titulo="Performance · la calificación real"
-      bajada={`Medido con ${PERF_HERRAMIENTA} sobre producción el ${PERF_MEDIDO}. Google usa el corte de mobile, no el de desktop — y ahí el home pasó de 60 a 87 después de aligerar el video del hero.`}
+      bajada={`Medido con ${PERF_HERRAMIENTA} sobre producción el ${PERF_MEDIDO}. Google usa el corte de mobile, no el de desktop — y ahí el home pasó de 60 a 87 al aligerar el video del hero, y de 87 a 96–97 al arreglar el LCP del título.`}
     >
       <div className="space-y-4">
         <div className="grid gap-3 lg:grid-cols-3">
@@ -718,8 +718,8 @@ function Performance() {
               ))}
             </div>
             <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-ink-muted">
-              El video del hero pasó de 2,71 MB a 308 KB con una versión propia para mobile. El home
-              entero pesa hoy menos de lo que pesaba ese solo archivo.
+              El video del hero pasó de 2,71 MB a 308 KB con una versión propia para mobile, y se
+              pide recién después del LCP. El home entero pesa hoy menos de lo que pesaba ese solo archivo.
             </p>
           </Panel>
 
