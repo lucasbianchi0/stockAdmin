@@ -1,3 +1,5 @@
+import type Anthropic from "@anthropic-ai/sdk"
+
 import {
   BLOQUES_CONTEXTO,
   COLORES_SOLUCION,
@@ -28,9 +30,8 @@ const bloque = (id: string) => BLOQUES_CONTEXTO.find((b) => b.id === id)?.texto 
 export const COMUN = `# El backoffice
 Tiene tres módulos —Productos, Marketing y Administración— y cada persona ve los que tiene habilitados; el acceso lo asigna un administrador. La barra lateral agrupa las pantallas por módulo; en el teléfono se abre con el botón de menú de arriba a la izquierda.
 
-# Ticketera — la ve todo el equipo
-- \`/tickets\` Ticketera — el tablero de actividades, el primero de la barra lateral. Tres columnas: Backlog, En progreso y Hecho; las tarjetas se arrastran de una a otra y lo terminado se archiva para que Hecho no se llene. Arriba, los avatares del equipo filtran por persona y los chips filtran por proyecto. Cada ticket tiene título, descripción, quién lo pidió, a quién está asignado, un proyecto opcional e imágenes.
-No pertenece a ningún módulo: la ve cualquiera que tenga alguno, porque su valor es que se vea en qué anda el resto sin preguntar. Con \`crear_ticket\` podés anotar ahí lo que la persona te pida —y sólo lo que te pida—; nace sin asignar, y el reparto se hace en esa pantalla.
+# Ticketera
+- \`/tickets\` Ticketera — tablero del equipo con Backlog, En progreso y Hecho; las tarjetas se arrastran, se filtran por persona o proyecto y lo terminado se archiva. La ve cualquiera que tenga algún módulo.
 
 # Datos públicos de Accedra
 ${bloque("identidad")}
@@ -79,30 +80,71 @@ const MARKETING = `# Módulo Marketing
 Cada una se abre directo con su enlace:
 ${SECCIONES_KIT.map(([id, nombre]) => `- [${nombre}](/marketing/brand#${id})`).join("\n")}
 
-## Archivos de marca
-Logos (enlace directo al SVG):
-${LOGOS.map((l) => `- ${l.id}: [${l.nombre}](${l.archivo}) — fondo ${l.fondo}. ${l.uso}`).join("\n")}
-El PNG de 1600 px con fondo transparente se baja desde la tarjeta del logo o desde [Logos](/marketing/brand#logos).
-
-Portadas de LinkedIn para perfil personal, ${MEDIDA_PORTADA.ancho} × ${MEDIDA_PORTADA.alto} px, con el logotipo ya compuesto (no sirven para la página de empresa):
-${PORTADAS_LINKEDIN.map((p) => `- [${p.nombre}](${p.archivo}) — ${p.cuando}`).join("\n")}
-
-El pie de firma de correo se arma con el generador de [Pie de firma](/marketing/brand#firma): se completan los datos una vez y sale en dos modelos, listo para pegar en Gmail u Outlook.
-
 ## Tarjetas
 Para mostrar un logo con sus botones de descarga escribí una línea sola: ::logo <id>. Para un color que se copia con un click: ::color <hex>. Una tarjeta por línea, sin nada más en esa línea, como máximo tres por respuesta, y sólo cuando la persona pide el logo o el color (no para decorar). Ids válidos: ${LOGOS.map((l) => l.id).join(", ")}. Hex válidos: ${[...PALETA, ...COLORES_SOLUCION].map((c) => c.hex).join(", ")}.
-
-## Landings del sitio
-Una por solución y por cruce solución × industria, en ${DOMINIO}:
-${PAGINAS.map((p) => `- [${p.industria ? `${p.solucion} · ${p.industria}` : p.solucion}](${DOMINIO}${p.ruta})`).join("\n")}
 
 ## Una aclaración de negocio
 Accedra no vende conectividad satelital ni Starlink como línea de servicio, aunque aparezca en el caso Finning y en textos del sitio: fue parte de una integración puntual. Si preguntan, aclaralo, y no lo propongas como servicio en una pieza.
 
-# BRAND KIT DE ACCEDRA
-Es la fuente de verdad de la marca. Todo lo que respondas de marca sale de acá.
+## Brand kit, logos y landings
+No están en este bloque. Cuando pregunten por la marca, el tono, los servicios, los casos, los logos, la paleta, las portadas, la firma o las landings, abrí la parte que haga falta con leer_brand_kit y respondé con eso. Es la fuente de verdad de la marca.`
 
-${armarPrompt(PROMPTS[0])}`
+/*
+ * EL KIT A DEMANDA.
+ *
+ * Hasta el 13/9/2026 el brand kit entero (unos 9.000 tokens) iba en el prompt
+ * de todo el que tuviera Marketing, y se pagaba en cada mensaje aunque la
+ * pregunta fuera de ventas. Ahora se abre con una herramienta sólo cuando la
+ * pregunta es de marca, y sólo la parte que hace falta.
+ */
+const KIT_PARTES = {
+  marca: "identidad, posicionamiento, servicios, a quién le habla, tono, prueba social, límites, boilerplate, datos y canales",
+  visual: "sistema visual, logos con sus archivos, portadas de LinkedIn y pie de firma",
+  landings: "las landings del sitio, una por solución y por cruce con industria",
+} as const
+type ParteKit = keyof typeof KIT_PARTES
+
+const esVisual = (bloque: string) => /^#\s*SISTEMA VISUAL/i.test(bloque.trim())
+
+function textoKit(parte: ParteKit): string {
+  if (parte === "landings") {
+    return `Landings del sitio, en ${DOMINIO}:\n${PAGINAS.map(
+      (p) => `- [${p.industria ? `${p.solucion} · ${p.industria}` : p.solucion}](${DOMINIO}${p.ruta})`
+    ).join("\n")}`
+  }
+
+  const bloques = armarPrompt(PROMPTS[0]).split(/\n(?=# )/)
+  if (parte === "marca") return bloques.filter((b) => !esVisual(b)).join("\n")
+
+  return [
+    ...bloques.filter(esVisual),
+    `Logos (enlace directo al SVG):\n${LOGOS.map((l) => `- ${l.id}: [${l.nombre}](${l.archivo}) — fondo ${l.fondo}. ${l.uso}`).join("\n")}\nEl PNG de 1600 px con fondo transparente se baja desde la tarjeta del logo o desde [Logos](/marketing/brand#logos).`,
+    `Portadas de LinkedIn para perfil personal, ${MEDIDA_PORTADA.ancho} × ${MEDIDA_PORTADA.alto} px, con el logotipo ya compuesto (no sirven para la página de empresa):\n${PORTADAS_LINKEDIN.map((p) => `- [${p.nombre}](${p.archivo}) — ${p.cuando}`).join("\n")}`,
+    "El pie de firma de correo se arma con el generador de [Pie de firma](/marketing/brand#firma): se completan los datos una vez y sale en dos modelos, listo para pegar en Gmail u Outlook.",
+  ].join("\n\n")
+}
+
+export function herramientaMarca(): Anthropic.Beta.BetaTool {
+  return {
+    name: "leer_brand_kit",
+    description: `Abre una parte del brand kit de Accedra. Partes: ${Object.entries(KIT_PARTES)
+      .map(([id, que]) => `${id} (${que})`)
+      .join("; ")}.`,
+    input_schema: {
+      type: "object",
+      properties: { parte: { type: "string", enum: Object.keys(KIT_PARTES) } },
+      required: ["parte"],
+      additionalProperties: false,
+    },
+    strict: true,
+  }
+}
+
+export function leerMarca(parte: unknown): string {
+  return typeof parte === "string" && parte in KIT_PARTES
+    ? textoKit(parte as ParteKit)
+    : "Esa parte del brand kit no existe."
+}
 
 export const ADMINISTRACION = `# Módulo Administración
 Ordenado como el organigrama del contador:

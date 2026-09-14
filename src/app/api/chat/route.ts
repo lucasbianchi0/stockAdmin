@@ -5,7 +5,7 @@ import { createSupabaseServer } from "@/lib/supabase-server"
 import { accesoDeUsuario, type Acceso } from "@/lib/permisos"
 import { contarUso } from "@/lib/rate-limit"
 import { armarSystemPrompt } from "@/lib/chatbot/persona"
-import { mapaPara } from "@/lib/chatbot/knowledge"
+import { herramientaMarca, leerMarca, mapaPara } from "@/lib/chatbot/knowledge"
 import { armarContexto } from "@/lib/chatbot/context"
 import {
   SECCIONES_ASISTENTE,
@@ -63,19 +63,19 @@ export const maxDuration = 60
  * rentabilidad de un producto: ahí sí se nota Opus, y un número mal leído
  * cuesta más que lo que se ahorra.
  */
-const MODELO_ASISTENTE = "claude-sonnet-5"
-const MODELO_ESPECIALISTA = "claude-opus-5"
-/**
- * Si Opus declina, la API reintenta en éste dentro del mismo pedido. Sonnet 5
- * no tiene respaldo: su lista de modelos permitidos en /v1/models está vacía y
- * mandarle uno es un 400. Un rechazo del asistente se muestra como tal.
+/*
+ * 13/9/2026: los especialistas pasaron de Opus 5 a Sonnet 5 por costo (pedido
+ * de la dirección). Sonnet 5 no admite `fallbacks`: un rechazo se muestra como
+ * tal. Para volver a Opus, cambiar la constante y restaurar el `fallbacks` de
+ * abajo con `claude-opus-4-8`.
  */
-const RESPALDO_ESPECIALISTA = "claude-opus-4-8"
+const MODELO_ASISTENTE = "claude-sonnet-5"
+const MODELO_ESPECIALISTA = "claude-sonnet-5"
 /** Con herramientas, dos vueltas alcanzan (pide, contesta). La tercera es de
  *  gracia y va sin poder pedir más: sin tope, un bucle se come la cuenta. */
 const VUELTAS = 3
-/** Una auditoría trae varias secciones y un informe antes de escribir. */
-const VUELTAS_ESPECIALISTA = 5
+/** Una auditoría trae varias secciones antes de escribir; cada vuelta reenvía todo. */
+const VUELTAS_ESPECIALISTA = 4
 
 const LIMITE_RAFAGA = { cantidad: 25, segundos: 300 }
 const LIMITE_DIA = { cantidad: 120, segundos: 86400 }
@@ -153,6 +153,15 @@ async function ejecutar(
     return datosDelPanel(input.seccion, estado.acceso, estado.secciones)
   }
 
+  if (llamada.name === "leer_brand_kit") {
+    // Sólo la recibe quien tiene Marketing (ver la lista de herramientas); se
+    // vuelve a chequear igual, como el resto.
+    if (!estado.acceso.admin && !estado.acceso.modulos.includes("marketing")) {
+      return "El brand kit está en Marketing, que esta persona no tiene habilitado."
+    }
+    return leerMarca(input.parte)
+  }
+
   if (llamada.name === "leer_documento") {
     // Se cuenta antes del primer await: dos lecturas pedidas en paralelo
     // tienen que ver el mismo contador.
@@ -214,6 +223,7 @@ function etiquetaDePaso(nombres: string[]): string {
   const tickets = nombres.filter((n) => n === "crear_ticket").length
   if (tickets > 0) return tickets === 1 ? "Anotando el ticket" : `Anotando ${tickets} tickets`
   if (nombres.includes("leer_documento")) return "Leyendo el documento"
+  if (nombres.includes("leer_brand_kit")) return "Abriendo el brand kit"
   if (nombres.includes("datos_del_panel")) return "Mirando los números"
   return "Buscando datos"
 }
@@ -330,6 +340,11 @@ export async function POST(req: Request) {
   const herramientas: Anthropic.Beta.BetaTool[] = [
     ...(secciones.length > 0 ? [herramientaPanel(secciones)] : []),
     ...(documentos.length > 0 ? [herramientaDocumentos(documentos)] : []),
+    // El brand kit se abre a demanda en vez de viajar en cada prompt. Lo
+    // reciben el asistente (si tiene Marketing) y el agente de Marketing.
+    ...((!esp || agenteId === "marketing") && (acceso.admin || acceso.modulos.includes("marketing"))
+      ? [herramientaMarca()]
+      : []),
     // La ticketera es de todos los que tienen algún módulo —y acá arriba ya se
     // rechazó a quien no tiene ninguno—, así que va con cualquier agente.
     //
@@ -386,11 +401,9 @@ export async function POST(req: Request) {
           const respuesta = client.beta.messages.stream(
             {
               model: esp ? MODELO_ESPECIALISTA : MODELO_ASISTENTE,
-              // Una auditoría o un plan son largos; una consulta de soporte, no.
-              max_tokens: esp ? 8000 : 2000,
-              ...(esp
-                ? { betas: ["server-side-fallback-2026-06-01"], fallbacks: [{ model: RESPALDO_ESPECIALISTA }] }
-                : {}),
+              // Techo de salida: las respuestas tienen que ser cortas (pedido de la
+              // dirección por costo). El prompt ya pide brevedad; esto la asegura.
+              max_tokens: esp ? 3000 : 1200,
               system,
               messages: mensajes,
               // La conversación: la marca cae en el último bloque y avanza con
@@ -399,11 +412,11 @@ export async function POST(req: Request) {
               ...(herramientas.length > 0
                 ? { tools: herramientas, tool_choice: ultima ? { type: "none" as const } : { type: "auto" as const } }
                 : {}),
-              // Una consulta de soporte no necesita razonar en profundidad, y la
-              // persona está mirando la pantalla esperando. Un especialista sí:
-              // cruzar un informe con el presupuesto es justamente su trabajo.
+              // Esfuerzo bajo en los dos: menos razonamiento, menos preámbulo y
+              // menos tokens facturados. Un especialista conserva el pensamiento
+              // adaptativo para decidir qué secciones pedir.
               ...(esp ? { thinking: { type: "adaptive" as const } } : {}),
-              output_config: { effort: esp ? ("medium" as const) : ("low" as const) },
+              output_config: { effort: "low" as const },
             },
             { signal: req.signal }
           )

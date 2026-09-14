@@ -25,6 +25,10 @@ import { citar } from "@/lib/chatbot/sanear"
  *     tiene el permiso — no dictado por un chat que se puede equivocar de fila.
  *     Lo que sí se lista con nombre es de Accedra: sus cuentas, sus eventos y
  *     los productos de su catálogo.
+ *     La única excepción son las secciones de `SOLO_ADMIN`: la ficha y los
+ *     montos de cada cliente, proveedor y vendedor, para un administrador.
+ *     Decisión de la dirección (13/9/2026): quien administra la empresa tiene
+ *     que poder preguntarle todo al asistente y que le conteste.
  *  3. No tira nunca. Un error de base vuelve como una frase que el asistente
  *     puede decir, no como una excepción que corta la respuesta a la mitad.
  *
@@ -42,6 +46,8 @@ export const SECCIONES = [
   "contenido",
   "antiguedad_saldos",
   "evolucion_12_meses",
+  "ventas_por_cliente_y_vendedor",
+  "compras_por_proveedor",
   "caja_y_bancos",
   "eventos",
   "catalogo_propio",
@@ -52,8 +58,22 @@ type Concreta = Exclude<Seccion, "resumen">
 /** Las que junta "resumen": las livianas. Las de análisis se piden de a una. */
 const EN_RESUMEN: Concreta[] = ["por_cobrar", "por_pagar", "facturacion_mes", "pedidos", "contenido"]
 
-/** Las del asistente general, que contesta el día a día y no audita. */
-export const SECCIONES_ASISTENTE: Seccion[] = ["resumen", ...EN_RESUMEN]
+/**
+ * Las del asistente general. Además del día a día, lo que un administrador
+ * pregunta sin pensar en agentes: cómo vienen las ventas y las compras, y
+ * quiénes son los principales clientes, proveedores y vendedores. Las de
+ * `SOLO_ADMIN` se caen solas para quien no lo es (ver `seccionesPara`).
+ */
+export const SECCIONES_ASISTENTE: Seccion[] = [
+  "resumen",
+  ...EN_RESUMEN,
+  "evolucion_12_meses",
+  "ventas_por_cliente_y_vendedor",
+  "compras_por_proveedor",
+]
+
+/** Las únicas con nombre y montos de terceros. Sólo para administradores. */
+const SOLO_ADMIN: readonly Seccion[] = ["ventas_por_cliente_y_vendedor", "compras_por_proveedor"]
 
 const MODULO_DE: Record<Concreta, Modulo> = {
   por_cobrar: "administracion",
@@ -61,6 +81,8 @@ const MODULO_DE: Record<Concreta, Modulo> = {
   facturacion_mes: "administracion",
   antiguedad_saldos: "administracion",
   evolucion_12_meses: "administracion",
+  ventas_por_cliente_y_vendedor: "administracion",
+  compras_por_proveedor: "administracion",
   caja_y_bancos: "administracion",
   pedidos: "productos",
   catalogo_propio: "productos",
@@ -75,6 +97,10 @@ const DESCRIPCION: Record<Seccion, string> = {
   facturacion_mes: "lo facturado y lo comprado en el mes en curso, por moneda",
   antiguedad_saldos: "lo que nos deben y lo que debemos por tramo de antigüedad (a vencer, 1-30, 31-60, 61-90, más de 90 días), por moneda",
   evolucion_12_meses: "ventas y compras mes por mes de los últimos 12 meses, por moneda",
+  ventas_por_cliente_y_vendedor:
+    "ventas por cliente y por vendedor del equipo, con razón social o nombre, montos y participación: últimos 12 meses, mes en curso y todo lo cargado. Para '¿quién es nuestro principal cliente?' o '¿qué vendedor vende más?'",
+  compras_por_proveedor:
+    "compras por proveedor, con razón social, montos y participación: últimos 12 meses, mes en curso y todo lo cargado. Para '¿a quién le compramos más?' o '¿quién es nuestro principal proveedor?'",
   caja_y_bancos: "saldo actual de cada cuenta de caja, banco y billetera de Accedra, y el total por moneda",
   pedidos: "pedidos a Distecna de los últimos 30 días, por estado",
   catalogo_propio: "Nuestros Productos: cada producto con stock, costo, precio mínimo calculado, precio publicado, margen sobre el mínimo y semáforo",
@@ -89,7 +115,10 @@ export function esSeccion(v: unknown): v is Seccion {
 /** Las secciones que puede pedir esta persona; con `solo`, recortadas a esa lista. */
 export function seccionesPara(acceso: Acceso, solo?: readonly Seccion[]): Seccion[] {
   const propias = (Object.keys(MODULO_DE) as Concreta[]).filter(
-    (s) => (acceso.admin || acceso.modulos.includes(MODULO_DE[s])) && (!solo || solo.includes(s))
+    (s) =>
+      (acceso.admin || acceso.modulos.includes(MODULO_DE[s])) &&
+      (acceso.admin || !SOLO_ADMIN.includes(s)) &&
+      (!solo || solo.includes(s))
   )
   const conResumen =
     (!solo || solo.includes("resumen")) && propias.some((s) => EN_RESUMEN.includes(s))
@@ -97,11 +126,14 @@ export function seccionesPara(acceso: Acceso, solo?: readonly Seccion[]): Seccio
 }
 
 export function herramientaPanel(secciones: Seccion[]): Anthropic.Beta.BetaTool {
+  const conNombres = secciones.some((s) => SOLO_ADMIN.includes(s))
   return {
     name: "datos_del_panel",
     description:
       "Trae números actuales de la operación de Accedra, leídos de la base en el momento. " +
-      "Devuelve agregados y el enlace a la pantalla donde está el detalle; nunca datos de un cliente, proveedor o persona puntual. " +
+      (conNombres
+        ? "ventas_por_cliente_y_vendedor y compras_por_proveedor traen cada cliente, proveedor y vendedor con su ficha (razón social, CUIT, contacto, mail, teléfono, provincia) y sus montos, porque quien pregunta es administrador. El resto vuelve en agregados. "
+        : "Devuelve agregados y el enlace a la pantalla donde está el detalle; nunca datos de un cliente, proveedor o persona puntual. ") +
       "Lo propio de Accedra —sus cuentas, sus eventos, los productos de su catálogo— sí viene con nombre. " +
       `Secciones: ${secciones.map((s) => `${s} (${DESCRIPCION[s]})`).join("; ")}.`,
     input_schema: {
@@ -373,6 +405,142 @@ async function evolucion12Meses(): Promise<string> {
     "- Listados: /admin/ventas/listado y /admin/compras/listado",
     ...(cortado ? ["- Ojo: se leyó hasta el tope de filas; faltan comprobantes."] : []),
   ].join("\n")
+}
+
+type Acumulado = { n: number; m: PorMoneda; ars: number }
+type Ventana = "doce" | "mes" | "todo"
+const nuevoAcumulado = (): Acumulado => ({ n: 0, m: cero(), ars: 0 })
+const porVentana = (): Record<Ventana, Acumulado> => ({ doce: nuevoAcumulado(), mes: nuevoAcumulado(), todo: nuevoAcumulado() })
+
+/**
+ * La ficha de cada uno en un renglón: nombre y, si están cargados, CUIT,
+ * contacto, mail, teléfono y provincia. Todo lo tipeó una persona, así que va
+ * citado.
+ */
+async function nombresDe(
+  tabla: "clientes" | "proveedores" | "vendedores",
+  ids: string[]
+): Promise<Map<string, string>> {
+  const columnas = tabla === "vendedores" ? "id, nombre, email" : "id, razon_social, cuit, contacto, email, telefono, provincia"
+  const mapa = new Map<string, string>()
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await supabase.from(tabla).select(columnas).in("id", ids.slice(i, i + 200))
+    if (error) throw new Error(error.message)
+    for (const f of (data ?? []) as unknown as Fila[]) {
+      const nombre = citar(String(f.razon_social ?? f.nombre ?? "") || "sin nombre cargado", 80)
+      const extra = [
+        f.cuit ? `CUIT ${String(f.cuit).replace(/\D/g, "")}` : "",
+        f.contacto ? `contacto ${citar(String(f.contacto), 60)}` : "",
+        f.email ? citar(String(f.email), 80) : "",
+        f.telefono ? `tel. ${citar(String(f.telefono), 30)}` : "",
+        f.provincia ? citar(String(f.provincia), 30) : "",
+      ].filter(Boolean)
+      mapa.set(String(f.id), extra.length ? `${nombre} (${extra.join(", ")})` : nombre)
+    }
+  }
+  return mapa
+}
+
+/**
+ * Ventas por cliente y por vendedor, o compras por proveedor. Sólo llega a un
+ * administrador (ver `SOLO_ADMIN`).
+ *
+ * Se ordena por el equivalente en pesos al tipo de cambio de cada factura
+ * (`total_ars`), porque un ranking que no compara pesos con dólares no puede
+ * decir quién es el principal. Los montos se muestran igual en su moneda, que
+ * es lo que coincide con la pantalla.
+ */
+async function porEntidad(tipo: "venta" | "compra"): Promise<string> {
+  const { filas, cortado } = await leerPaginado((desde, hasta) =>
+    supabase
+      .from("comprobantes_vigentes")
+      .select("cliente_id, proveedor_id, vendedor_id, moneda, total, total_ars, signo, fecha")
+      .eq("tipo", tipo)
+      .order("fecha", { ascending: true })
+      .range(desde, hasta)
+  )
+
+  const que = tipo === "venta" ? "ventas" : "compras"
+  if (filas.length === 0) return `No hay facturas de ${que} confirmadas. Pantalla: /admin/${que}/listado`
+
+  const hoy = hoyISO()
+  const [anio, mes] = hoy.split("-").map(Number)
+  const inicio12 = new Date(Date.UTC(anio, mes - 1 - 11, 1)).toISOString().slice(0, 10)
+  const ventanas: { id: Ventana; nombre: string; desde: string }[] = [
+    { id: "doce", nombre: `Últimos 12 meses (desde el ${fechaCorta(inicio12)}/${inicio12.slice(0, 4)})`, desde: inicio12 },
+    { id: "mes", nombre: "Mes en curso", desde: `${hoy.slice(0, 7)}-01` },
+    { id: "todo", nombre: "Todo lo cargado", desde: "" },
+  ]
+
+  const agrupar = (clave: string) => {
+    const porId = new Map<string, Record<Ventana, Acumulado>>()
+    const total = porVentana()
+    for (const f of filas) {
+      const id = f[clave] ? String(f[clave]) : ""
+      const signo = Number(f.signo) === -1 ? -1 : 1
+      const moneda = monedaDe(f.moneda)
+      const monto = (Number(f.total) || 0) * signo
+      const ars = (Number(f.total_ars) || 0) * signo
+      const fecha = String(f.fecha)
+      const acc = porId.get(id) ?? porVentana()
+      for (const v of ventanas) {
+        if (fecha < v.desde || (v.id !== "todo" && fecha > hoy)) continue
+        for (const a of [acc[v.id], total[v.id]]) {
+          a.n++
+          a.m[moneda] += monto
+          a.ars += ars
+        }
+      }
+      porId.set(id, acc)
+    }
+    return { porId, total }
+  }
+
+  const tramo = (a: Acumulado, t: Acumulado) => {
+    if (a.n === 0) return "nada"
+    const parte = t.ars > 0 ? ` (${Math.round((a.ars / t.ars) * 100)}%)` : ""
+    return `${montos(a.m)} en ${a.n} ${a.n === 1 ? "factura" : "facturas"}${parte}`
+  }
+
+  const TOPE = 10
+  const ranking = (titulo: string, grupo: ReturnType<typeof agrupar>, nombres: Map<string, string>, sinId: string) => {
+    const orden = [...grupo.porId].sort(([, a], [, b]) => b.doce.ars - a.doce.ars || b.todo.ars - a.todo.ars)
+    return [
+      `${titulo}: ${grupo.porId.size}, ordenados por lo de los últimos 12 meses.`,
+      ...orden.slice(0, TOPE).map(
+        ([id, a], i) =>
+          `${i + 1}. ${id ? nombres.get(id) || "sin ficha" : sinId} · 12 meses: ${tramo(a.doce, grupo.total.doce)} · mes en curso: ${tramo(a.mes, grupo.total.mes)} · todo lo cargado: ${tramo(a.todo, grupo.total.todo)}`
+      ),
+      ...(orden.length > TOPE ? [`- …y ${orden.length - TOPE} más.`] : []),
+    ].join("\n")
+  }
+
+  const campo = tipo === "venta" ? "cliente_id" : "proveedor_id"
+  const idsDe = (clave: string) => [...new Set(filas.map((f) => f[clave]).filter(Boolean).map(String))]
+  const [entidades, vendedores] = await Promise.all([
+    nombresDe(tipo === "venta" ? "clientes" : "proveedores", idsDe(campo)),
+    tipo === "venta" ? nombresDe("vendedores", idsDe("vendedor_id")) : Promise.resolve(new Map<string, string>()),
+  ])
+
+  const principal = agrupar(campo)
+  const partes = [
+    [
+      `${tipo === "venta" ? "Ventas" : "Compras"} confirmadas al ${fechaCorta(hoy)}, con las notas de crédito restando:`,
+      ...ventanas.map((v) => `- ${v.nombre}: ${montos(principal.total[v.id].m)} en ${principal.total[v.id].n} comprobantes.`),
+      "- Los porcentajes comparan el equivalente en pesos al tipo de cambio de cada factura. Los montos van en su moneda y no se suman entre sí.",
+    ].join("\n"),
+    ranking(tipo === "venta" ? "Clientes" : "Proveedores", principal, entidades, tipo === "venta" ? "sin cliente" : "sin proveedor"),
+  ]
+  if (tipo === "venta") {
+    partes.push(
+      ranking("Vendedores del equipo (el asignado en cada factura de venta)", agrupar("vendedor_id"), vendedores, "sin vendedor asignado")
+    )
+  }
+  partes.push(
+    `- Detalle: /admin/${que}/listado · cuenta corriente: /admin/${tipo === "venta" ? "clientes" : "proveedores"}/cuenta-corriente · reportes: /admin/reportes`,
+    ...(cortado ? ["- Ojo: se leyó hasta el tope de filas; faltan comprobantes."] : [])
+  )
+  return partes.join("\n\n")
 }
 
 async function cajaYBancos(): Promise<string> {
@@ -658,6 +826,8 @@ const LEER: Record<Concreta, () => Promise<string>> = {
   facturacion_mes: facturacionMes,
   antiguedad_saldos: antiguedadSaldos,
   evolucion_12_meses: evolucion12Meses,
+  ventas_por_cliente_y_vendedor: () => porEntidad("venta"),
+  compras_por_proveedor: () => porEntidad("compra"),
   caja_y_bancos: cajaYBancos,
   pedidos,
   catalogo_propio: catalogoPropio,
@@ -671,6 +841,8 @@ const PANTALLA: Record<Concreta, string> = {
   facturacion_mes: "/admin/ventas/listado",
   antiguedad_saldos: "/admin/reportes",
   evolucion_12_meses: "/admin/ventas/listado",
+  ventas_por_cliente_y_vendedor: "/admin/ventas/listado",
+  compras_por_proveedor: "/admin/compras/listado",
   caja_y_bancos: "/admin/cuentas",
   pedidos: "/orders",
   catalogo_propio: "/mis-productos",

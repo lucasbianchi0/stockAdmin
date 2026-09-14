@@ -61,42 +61,26 @@ export function herramientaTicket(proyectos: ProyectoTicket[]): Anthropic.Beta.B
 
   return {
     name: "crear_ticket",
+    // Condensada el 13/9/2026: viaja en cada mensaje de todos los agentes, así
+    // que cada palabra se paga siempre. Las reglas son las mismas.
     description: [
-      "Anota una tarea en la Ticketera del backoffice (/tickets), el tablero que mira todo el equipo.",
-      "",
-      "CUÁNDO USARLA: sólo cuando la persona te lo pide —«creá un ticket», «anotá esto», «pasalo al tablero»—.",
-      "Nunca por tu cuenta, ni siquiera cuando la tarea sea obvia o urgente: proponerla en la respuesta",
-      "y preguntar si la anotás es siempre lo correcto. Si te pide varias, llamá a la herramienta una vez",
-      "por cada una, en el mismo turno.",
-      "",
-      "UN TICKET = UNA ACCIÓN CONCRETA que alguien puede empezar el lunes. «Mejorar el marketing» no es",
-      "un ticket; «Cargar las negativas de las cinco líneas sin consulta» sí.",
-      "",
-      "LA DESCRIPCIÓN ES LO QUE QUEDA. La conversación se borra al cerrar la pestaña; el ticket no. Escribí",
-      "ahí todo lo que haría falta para hacerlo sin volver a preguntarte: qué hay que hacer, por qué",
-      "—con los números que lo justifican—, dónde se hace y cómo se sabe que terminó. Un ticket que dice",
-      "«ver lo que hablamos» es un ticket muerto.",
-      "",
-      "QUEDA SIN ASIGNAR, en Backlog y a nombre de quien te está hablando. Vos no repartís trabajo: quién",
-      "lo agarra se decide en el tablero, donde se ve la carga de cada uno.",
-      nombres.length > 0
-        ? `\nPROYECTO: opcional, y sólo uno de los que existen. Si ninguno encaja, no mandes el campo.`
-        : "",
+      "Anota una tarea en la Ticketera (/tickets). Sólo cuando la persona lo pide («creá un ticket», «anotalo»); nunca por tu cuenta: si ves una tarea, proponela y preguntá. Varias tareas: una llamada por cada una, en el mismo turno.",
+      "Un ticket es una acción concreta, no «mejorar el marketing». La descripción es lo único que queda: qué hacer, por qué (con los números), dónde y cómo se sabe que terminó, para alguien que no leyó la charla.",
+      "Queda sin asignar, en Backlog y a nombre de quien habla.",
+      nombres.length > 0 ? "Proyecto: opcional, sólo uno de los existentes." : "",
     ]
       .filter(Boolean)
-      .join("\n"),
+      .join(" "),
     input_schema: {
       type: "object",
       properties: {
         titulo: {
           type: "string",
-          description:
-            "Qué hay que hacer, empezando por un verbo y en una línea. Máximo 120 caracteres. Ej.: «Cargar negativas y concordancia exacta en las cinco líneas sin consulta».",
+          description: "Qué hay que hacer, empezando por un verbo, en una línea de hasta 120 caracteres.",
         },
         descripcion: {
           type: "string",
-          description:
-            "El detalle completo: qué se espera, por qué (con los datos concretos), dónde se hace y cómo se sabe que terminó. Escribilo para alguien que no leyó esta conversación.",
+          description: "El detalle completo, para alguien que no leyó esta conversación.",
         },
         ...(nombres.length > 0
           ? {
