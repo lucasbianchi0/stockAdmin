@@ -18,6 +18,7 @@ import {
   parsearImporte,
   type Moneda,
 } from "@/lib/admin/moneda"
+import { useInvalidarAdmin } from "@/lib/admin/query"
 import { useCotizacion } from "@/lib/admin/use-cotizacion"
 import { cn } from "@/lib/utils"
 
@@ -101,6 +102,9 @@ export function MovimientoDialog({
   const [cambioLaCuenta, setCambioLaCuenta] = useState(false)
 
   const cotizacion = useCotizacion()
+  /** Un movimiento mueve saldos, extractos y el mayor: después de guardar se
+   *  invalida todo el administrador desde acá, abra quien abra el diálogo. */
+  const invalidar = useInvalidarAdmin()
 
   /** Editando se edita UNA pata: la transferencia como operación de dos lados
    *  solo existe al darla de alta. */
@@ -243,6 +247,7 @@ export function MovimientoDialog({
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? "No se pudo guardar")
+        invalidar()
         onGuardado()
         return
       }
@@ -282,6 +287,7 @@ export function MovimientoDialog({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudo guardar")
+      invalidar()
       onGuardado()
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar")

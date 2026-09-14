@@ -1,7 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 import Link from "next/link"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowLeftRight,
   ChevronRight,
@@ -27,6 +28,7 @@ import { Button } from "@/components/ui/button"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
 import type { CuentaFinanciera, CuentaFinancieraDetalle } from "@/lib/admin/cobros"
 import { formatearImporte } from "@/lib/admin/moneda"
+import { claves, mensajeError, pedirJson } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
@@ -58,10 +60,24 @@ const TIPO_LABEL = {
   billetera: "Billetera",
 } as const
 
+// `todas=1`: las dadas de baja también. Es la única lista que las muestra, y sin
+// ellas desactivar una cuenta sería un viaje de ida.
+const URL_CUENTAS = "/api/admin/cuentas?detalle=1&todas=1"
+const SIN_CUENTAS: CuentaFinanciera[] = []
+
 export function CuentasClient() {
-  const [cuentas, setCuentas] = useState<CuentaFinanciera[]>([])
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const query = useQuery({
+    queryKey: claves.url(URL_CUENTAS),
+    queryFn: ({ signal }) =>
+      pedirJson<{ cuentas?: CuentaFinanciera[] }>(URL_CUENTAS, { signal }),
+    select: (d) => d.cuentas ?? SIN_CUENTAS,
+  })
+  const cuentas = query.data ?? SIN_CUENTAS
+  const cargando = query.isPending
+  const error = query.isError
+    ? mensajeError(query.error, "No se pudieron cargar las cuentas")
+    : null
   const [dialogo, setDialogo] = useState<null | "gasto" | "transferencia" | "ajuste">(null)
   const [leyendo, setLeyendo] = useState(false)
   const [borrador, setBorrador] = useState<BorradorMovimiento | null>(null)
@@ -69,50 +85,36 @@ export function CuentasClient() {
   const [fichaAbierta, setFichaAbierta] = useState(false)
   const [abriendo, setAbriendo] = useState<string | null>(null)
 
-  const cargar = useCallback(async () => {
-    setCargando(true)
-    setError(null)
-    try {
-      // `todas=1`: las dadas de baja también. Es la única lista que las muestra,
-      // y sin ellas desactivar una cuenta sería un viaje de ida.
-      const res = await fetch("/api/admin/cuentas?detalle=1&todas=1")
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar las cuentas")
-      setCuentas(data.cuentas ?? [])
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudieron cargar las cuentas")
-    } finally {
-      setCargando(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    cargar()
-  }, [cargar])
-
+  // Las tarjetas se refrescan solas: el diálogo invalida el administrador al guardar.
   const alGuardar = useCallback(() => {
     setDialogo(null)
     setBorrador(null)
     toast.success("Movimiento registrado")
-    cargar()
-  }, [cargar])
+  }, [])
 
   /** La ficha entera, que la tarjeta no tiene: CBU, cuenta contable, saldo
-   *  inicial y si ya tiene movimientos. */
-  const abrirFicha = useCallback(async (id: string) => {
-    setAbriendo(id)
-    try {
-      const res = await fetch(`/api/admin/cuentas/${id}`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "No se pudo abrir la cuenta")
-      setFicha(data.cuenta as CuentaFinancieraDetalle)
-      setFichaAbierta(true)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo abrir la cuenta")
-    } finally {
-      setAbriendo(null)
-    }
-  }, [])
+   *  inicial y si ya tiene movimientos. Pasa por la caché, que es la misma que
+   *  usa el extracto para abrirla. */
+  const abrirFicha = useCallback(
+    async (id: string) => {
+      setAbriendo(id)
+      try {
+        const url = `/api/admin/cuentas/${id}`
+        const data = await queryClient.fetchQuery({
+          queryKey: claves.url(url),
+          queryFn: ({ signal }) =>
+            pedirJson<{ cuenta: CuentaFinancieraDetalle }>(url, { signal }),
+        })
+        setFicha(data.cuenta)
+        setFichaAbierta(true)
+      } catch (e) {
+        toast.error(mensajeError(e, "No se pudo abrir la cuenta"))
+      } finally {
+        setAbriendo(null)
+      }
+    },
+    [queryClient]
+  )
 
   /* Las activas. La lista de tarjetas muestra también las dadas de baja —para
      poder volver a activarlas— pero ni los totales ni el selector de un
@@ -194,7 +196,7 @@ export function CuentasClient() {
       {cargando ? (
         <LoadingState label="Cargando las cuentas…" />
       ) : error ? (
-        <ErrorState message={error} onRetry={cargar} />
+        <ErrorState message={error} onRetry={() => query.refetch()} />
       ) : cuentas.length === 0 ? (
         <EmptyState
           icon={Landmark}
@@ -330,7 +332,6 @@ export function CuentasClient() {
         onGuardada={() => {
           setFichaAbierta(false)
           toast.success(ficha ? "Cuenta actualizada" : "Cuenta creada")
-          cargar()
         }}
       />
     </>

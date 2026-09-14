@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useInvalidar } from "@/lib/admin/query"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -87,6 +88,7 @@ export function OrderDialog({
 }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const invalidar = useInvalidar("productos")
   const [result, setResult] = useState<{ salesOrderId: string; warning?: string } | null>(
     null
   )
@@ -123,6 +125,8 @@ export function OrderDialog({
         return
       }
       setResult({ salesOrderId: data.salesOrderId, warning: data.warning })
+      // El pedido nuevo tiene que estar en Pedidos al entrar.
+      void invalidar()
       onSuccess()
     } catch {
       setError("No se pudo conectar con el servidor.")

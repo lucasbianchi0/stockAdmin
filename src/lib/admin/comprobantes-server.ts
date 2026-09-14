@@ -3,9 +3,13 @@ import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { esMoneda, redondear } from "@/lib/admin/moneda"
 import {
+  alicuotaDeCabecera,
   buscarClase,
+  ivaDe,
+  sumarIvas,
   totalDe,
   type Comprobante,
+  type RenglonIva,
   type TipoComprobante,
 } from "@/lib/admin/comprobantes"
 import { textoONull } from "@/lib/admin/entidades"
@@ -22,6 +26,7 @@ import { textoONull } from "@/lib/admin/entidades"
 
 export const SELECT_COMPROBANTE = `
   *,
+  ivas:comprobante_ivas (alicuota, neto, iva),
   cliente:clientes (id, razon_social),
   proveedor:proveedores (id, razon_social),
   cuenta:plan_cuentas (id, codigo, nombre),
@@ -30,7 +35,9 @@ export const SELECT_COMPROBANTE = `
 
 type Fila = Record<string, unknown>
 
-export type ValidacionComprobante = { fila: Fila } | { error: string; status: number }
+export type ValidacionComprobante =
+  | { fila: Fila; ivas: RenglonIva[] }
+  | { error: string; status: number }
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/
 
@@ -97,10 +104,22 @@ export function validarComprobante(
     return { error: "Un comprobante en dólares necesita tipo de cambio", status: 400 }
   }
 
+  /**
+   * El neto gravado, abierto por alícuota.
+   *
+   * El formulario manda `netos: [{neto, alicuota, iva}]`. Lo que llega sin esa
+   * lista —la importación masiva, la lectura automática de un PDF, cualquier
+   * integración anterior a esto— se lee del par plano de siempre y se convierte
+   * en un desglose de un renglón. Así hay un solo camino de acá para adentro sin
+   * romper a nadie.
+   */
+  const ivas = leerIvas(raw)
+  const sumaIvas = sumarIvas(ivas)
+
   const importes = {
-    netoGravado: importe(raw.netoGravado),
-    alicuotaIva: Number(raw.alicuotaIva) || 0,
-    iva: importe(raw.iva),
+    netoGravado: sumaIvas.neto,
+    alicuotaIva: alicuotaDeCabecera(ivas) ?? 0,
+    iva: sumaIvas.iva,
     noGravado: importe(raw.noGravado),
     exento: importe(raw.exento),
     percepcionIva: importe(raw.percepcionIva),
@@ -134,7 +153,7 @@ export function validarComprobante(
     moneda,
     tc,
     neto_gravado: importes.netoGravado,
-    alicuota_iva: importes.alicuotaIva || null,
+    alicuota_iva: alicuotaDeCabecera(ivas),
     iva: importes.iva,
     no_gravado: importes.noGravado,
     exento: importes.exento,
@@ -164,7 +183,61 @@ export function validarComprobante(
     fila.cliente_id = null
   }
 
-  return { fila }
+  return { fila, ivas }
+}
+
+/**
+ * El desglose por alícuota, venga como venga.
+ *
+ * Dos renglones a la misma alícuota se suman en uno: la base los rechazaría por
+ * el índice único, y de todas formas son el mismo tramo escrito dos veces. Un
+ * renglón sin neto ni IVA es una fila que quedó vacía en el formulario y se
+ * descarta acá para que no llegue a la base.
+ */
+function leerIvas(raw: Record<string, unknown>): RenglonIva[] {
+  const crudos = Array.isArray(raw.netos) ? raw.netos : null
+
+  const filas: RenglonIva[] = crudos
+    ? crudos.map((item) => {
+        const n = (item ?? {}) as Record<string, unknown>
+        const neto = importe(n.neto)
+        const alicuota = alicuotaValida(n.alicuota)
+        return {
+          neto,
+          alicuota,
+          // El IVA escrito a mano gana sobre el calculado: la factura manda.
+          iva: n.iva === undefined || n.iva === null ? ivaDe(neto, alicuota) : importe(n.iva),
+        }
+      })
+    : [
+        {
+          neto: importe(raw.netoGravado),
+          alicuota: alicuotaValida(raw.alicuotaIva),
+          iva: importe(raw.iva),
+        },
+      ]
+
+  const porAlicuota = new Map<number, RenglonIva>()
+  for (const f of filas) {
+    if (f.neto <= 0 && f.iva <= 0) continue
+    const previo = porAlicuota.get(f.alicuota)
+    if (previo) {
+      previo.neto = redondear(previo.neto + f.neto)
+      previo.iva = redondear(previo.iva + f.iva)
+    } else {
+      porAlicuota.set(f.alicuota, { ...f })
+    }
+  }
+
+  return [...porAlicuota.values()].sort((a, b) => a.alicuota - b.alicuota)
+}
+
+/** La alícuota, acotada a lo que la base acepta. Fuera de rango es cero, que es
+ *  lo mismo que decir «sin IVA». */
+function alicuotaValida(v: unknown): number {
+  const n = Number(v)
+  if (!Number.isFinite(n) || n < 0 || n > 1) return 0
+  return redondear(n, 4)
 }
 
 /** El 23505 acá es el comprobante repetido, que es el error más caro del rubro:
@@ -190,6 +263,7 @@ export function errorDeComprobante(
 }
 
 type FilaCompleta = Record<string, unknown> & {
+  ivas?: { alicuota: number | string; neto: number | string; iva: number | string }[] | null
   cliente?: { id: string; razon_social: string } | null
   proveedor?: { id: string; razon_social: string } | null
   cuenta?: { id: string; codigo: string; nombre: string } | null
@@ -226,7 +300,13 @@ export function aComprobante(fila: FilaCompleta): Comprobante {
     moneda: fila.moneda as Comprobante["moneda"],
     tc: numONull(fila.tc),
     netoGravado: num(fila.neto_gravado),
-    alicuotaIva: fila.alicuota_iva === null ? null : num(fila.alicuota_iva),
+    alicuotaIva:
+      fila.alicuota_iva === null || fila.alicuota_iva === undefined
+        ? null
+        : num(fila.alicuota_iva),
+    ivas: [...(fila.ivas ?? [])]
+      .map((r) => ({ neto: num(r.neto), alicuota: num(r.alicuota), iva: num(r.iva) }))
+      .sort((a, b) => a.alicuota - b.alicuota),
     iva: num(fila.iva),
     noGravado: num(fila.no_gravado),
     exento: num(fila.exento),

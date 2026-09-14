@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import Link from "next/link"
+import { useQuery } from "@tanstack/react-query"
 import { ArrowLeftRight, ArrowRight, FileInput, Pencil, Receipt } from "lucide-react"
 import { toast } from "sonner"
 
@@ -12,7 +13,13 @@ import {
 } from "@/components/admin/movimiento-dialog"
 import { Button } from "@/components/ui/button"
 import type { CuentaFinanciera } from "@/lib/admin/cobros"
+import { claves, pedirJson } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
+
+const URL_CUENTAS = "/api/admin/cuentas"
+/** Referencia estable: un `[]` nuevo por render dispararía los efectos del
+ *  formulario que dependen de la lista. */
+const SIN_CUENTAS: CuentaFinanciera[] = []
 
 type Modo = "gasto" | "transferencia" | "ajuste"
 
@@ -43,7 +50,6 @@ const MODOS: { valor: Modo; etiqueta: string; icon: typeof Receipt }[] = [
  */
 export function CargaMovimientoClient() {
   const [modo, setModo] = useState<Modo>("gasto")
-  const [cuentas, setCuentas] = useState<CuentaFinanciera[]>([])
   const [leyendo, setLeyendo] = useState(false)
   const [borrador, setBorrador] = useState<BorradorMovimiento | null>(null)
 
@@ -54,12 +60,14 @@ export function CargaMovimientoClient() {
     setSerie((n) => n + 1)
   }
 
-  useEffect(() => {
-    fetch("/api/admin/cuentas")
-      .then((r) => r.json())
-      .then((d) => setCuentas(d.cuentas ?? []))
-      .catch(() => setCuentas([]))
-  }, [])
+  // La misma lista que piden las otras pantallas del módulo: comparten caché. Si
+  // falla, el selector queda vacío, como antes.
+  const { data: cuentas = SIN_CUENTAS } = useQuery({
+    queryKey: claves.url(URL_CUENTAS),
+    queryFn: ({ signal }) =>
+      pedirJson<{ cuentas?: CuentaFinanciera[] }>(URL_CUENTAS, { signal }),
+    select: (d) => d.cuentas ?? SIN_CUENTAS,
+  })
 
   return (
     <div className="space-y-4">

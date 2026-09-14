@@ -1,12 +1,14 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { Check, Loader2, Plus, Search, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { errorDeCuit, esCuitValido, formatearCuit } from "@/lib/admin/cuit"
 import type { Cliente } from "@/lib/admin/entidades"
+import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
@@ -55,32 +57,36 @@ export function SelectorEntidad({
 }) {
   const [q, setQ] = useState("")
   const [abierto, setAbierto] = useState(false)
-  const [resultados, setResultados] = useState<Cliente[]>([])
-  const [buscando, setBuscando] = useState(false)
+  const [busqueda, setBusqueda] = useState("")
   const [creando, setCreando] = useState(false)
   const caja = useRef<HTMLDivElement>(null)
 
   const recurso = tipo === "proveedor" ? "proveedores" : "clientes"
   const rotulo = etiqueta === undefined ? (tipo === "proveedor" ? "Proveedor" : "Cliente") : etiqueta
 
+  // Lo tipeado llega a la consulta con 250 ms de debounce: cada búsqueda es un
+  // pedido, y sin esto serían uno por tecla.
   useEffect(() => {
     if (!abierto) return
-    const t = setTimeout(async () => {
-      setBuscando(true)
-      try {
-        const params = new URLSearchParams({ porPagina: "8", estado: "activos" })
-        if (q.trim()) params.set("q", q.trim())
-        const res = await fetch(`/api/admin/${recurso}?${params}`)
-        const data = await res.json()
-        setResultados(data[recurso] ?? [])
-      } catch {
-        setResultados([])
-      } finally {
-        setBuscando(false)
-      }
-    }, 250)
+    const t = setTimeout(() => setBusqueda(q.trim()), 250)
     return () => clearTimeout(t)
-  }, [q, abierto, recurso])
+  }, [q, abierto])
+
+  const params = new URLSearchParams({ porPagina: "8", estado: "activos" })
+  if (busqueda) params.set("q", busqueda)
+  const url = `/api/admin/${recurso}?${params}`
+
+  // Mientras llega la búsqueda nueva quedan a la vista los resultados de la
+  // anterior, en vez de vaciar la lista en cada tecla. Si falla, lista vacía.
+  const consulta = useQuery({
+    queryKey: claves.url(url),
+    queryFn: ({ signal }) => pedirJson<Partial<Record<string, Cliente[]>>>(url, { signal }),
+    select: (d) => d[recurso] ?? [],
+    enabled: abierto,
+    placeholderData: keepPreviousData,
+  })
+  const resultados = consulta.data ?? []
+  const buscando = consulta.isFetching
 
   useEffect(() => {
     const fuera = (e: MouseEvent) => {
@@ -236,6 +242,7 @@ function AltaRapida({
   const [cuit, setCuit] = useState("")
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const invalidar = useInvalidarAdmin()
 
   const problemaCuit = cuit.trim() ? errorDeCuit(cuit) : null
   const puedeCrear = razonSocial.trim().length >= 2 && esCuitValido(cuit) && !guardando
@@ -258,6 +265,9 @@ function AltaRapida({
       const creada = Object.values(data).find(
         (v): v is Cliente => typeof v === "object" && v !== null && "id" in v
       )
+      // La ficha ya existe aunque no haya vuelto: el maestro y los buscadores
+      // tienen que enterarse igual.
+      void invalidar()
       if (!creada) throw new Error("La ficha se creó pero no volvió: buscala en el maestro")
 
       onCreada(creada)

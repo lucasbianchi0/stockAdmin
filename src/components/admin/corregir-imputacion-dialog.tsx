@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import type { DocumentoSinAsiento } from "@/lib/admin/asientos"
 import { formatearFecha } from "@/lib/admin/fecha"
 import { formatearImporte } from "@/lib/admin/moneda"
+import { useInvalidarAdmin } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
@@ -54,8 +55,11 @@ export function CorregirImputacionDialog({
   abierto: boolean
   documentos: DocumentoSinAsiento[]
   onCerrar: () => void
-  onCorregido: () => void
+  /** Opcional: los pendientes, el mayor y los saldos ya se refrescan solos al
+   *  invalidar la caché; esto es para lo que la pantalla de atrás quiera sumar. */
+  onCorregido?: () => void
 }) {
+  const invalidar = useInvalidarAdmin()
   /** documento → cuenta elegida en el formulario, todavía sin guardar. */
   const [elegidas, setElegidas] = useState<Record<string, string>>({})
   const [guardando, setGuardando] = useState<string | null>(null)
@@ -91,15 +95,17 @@ export function CorregirImputacionDialog({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudo imputar")
 
+      // En los dos casos la cuenta quedó guardada: todo el administrador a refrescar.
+      void invalidar()
       if (data.ok) {
         setResueltos((prev) => new Set(prev).add(d.id))
-        onCorregido()
+        onCorregido?.()
       } else {
         // La cuenta se guardó pero el asiento sigue sin salir. Pasa cuando falta
         // una cuenta de sistema en la configuración contable: es un problema de
         // otro orden y decirlo tal cual evita que alguien pruebe cinco cuentas.
         toast.warning("Se imputó, pero sigue sin asiento", { description: data.motivo })
-        onCorregido()
+        onCorregido?.()
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo imputar")

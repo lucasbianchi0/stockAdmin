@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { errorDeCuit, esCuitValido, formatearCuit } from "@/lib/admin/cuit"
+import { useInvalidarAdmin } from "@/lib/admin/query"
 import {
   ALICUOTAS,
   ALICUOTA_LABEL,
@@ -200,6 +201,7 @@ export function ImportarFacturasDialog({
   const [guardando, setGuardando] = useState(false)
   const [arrastrando, setArrastrando] = useState(false)
   const inputArchivo = useRef<HTMLInputElement>(null)
+  const invalidar = useInvalidarAdmin()
 
   /**
    * Las dos puertas terminan acá, y a partir de acá son la misma cosa.
@@ -396,6 +398,10 @@ export function ImportarFacturasDialog({
     setGuardando(false)
 
     if (ok === 0) return
+
+    // Borradores o no, las facturas nuevas tienen que aparecer en los listados
+    // y en las fichas que se hayan dado de alta.
+    void invalidar()
 
     /**
      * El resumen se arma acá y no se le pide al servidor.

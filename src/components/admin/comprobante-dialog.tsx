@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertTriangle, FileText, Loader2, X } from "lucide-react"
+import { AlertTriangle, FileText, Loader2, Plus, Trash2, X } from "lucide-react"
 
 import { CampoMoneda } from "@/components/admin/campo-moneda"
 import { MarcoFormulario } from "@/components/admin/marco-formulario"
@@ -27,12 +27,38 @@ import {
   formatearImporte,
   formatearTc,
   parsearImporte,
+  redondear,
   type Moneda,
 } from "@/lib/admin/moneda"
 import { sumarDias } from "@/lib/admin/fecha"
 import type { Impacto } from "@/lib/admin/impacto"
+import { useInvalidarAdmin } from "@/lib/admin/query"
 import { useCotizacion } from "@/lib/admin/use-cotizacion"
 import { cn } from "@/lib/utils"
+
+/**
+ * Un tramo de neto gravado a una alícuota, como lo tipea el usuario.
+ *
+ * Todo texto, igual que el resto del formulario: el parseo a número pasa una sola
+ * vez, en los cálculos, y así un campo a medio escribir no se convierte en cero
+ * mientras se escribe.
+ */
+type RenglonNeto = {
+  neto: string
+  alicuota: string
+  ivaManual: string
+  /** El IVA se calcula solo hasta que alguien lo toca. A partir de ahí manda el
+   *  número escrito: el IVA de la factura de papel es la verdad, aunque no dé
+   *  exacto por redondeo del sistema que la emitió. */
+  ivaPisado: boolean
+}
+
+const RENGLON_VACIO = (alicuota = "0.21"): RenglonNeto => ({
+  neto: "",
+  alicuota,
+  ivaManual: "",
+  ivaPisado: false,
+})
 
 type Borrador = {
   entidadId: string
@@ -45,13 +71,9 @@ type Borrador = {
   detalle: string
   moneda: Moneda
   tc: string
-  netoGravado: string
-  alicuotaIva: string
-  ivaManual: string
-  /** El IVA se calcula solo hasta que alguien lo toca. A partir de ahí manda el
-   *  número escrito: el IVA de la factura de papel es la verdad, aunque no dé
-   *  exacto por redondeo del sistema que la emitió. */
-  ivaPisado: boolean
+  /** El neto gravado, abierto por alícuota. Arranca con un renglón —el caso de
+   *  siempre— y se agregan los que la factura traiga. */
+  netos: RenglonNeto[]
   noGravado: string
   exento: string
   percepcionIva: string
@@ -75,10 +97,7 @@ const VACIO = (): Borrador => ({
   detalle: "",
   moneda: "ARS",
   tc: "",
-  netoGravado: "",
-  alicuotaIva: "0.21",
-  ivaManual: "",
-  ivaPisado: false,
+  netos: [RENGLON_VACIO()],
   noGravado: "",
   exento: "",
   percepcionIva: "",
@@ -105,10 +124,24 @@ function aBorrador(c: Comprobante): Borrador {
     detalle: c.detalle ?? "",
     moneda: c.moneda,
     tc: c.moneda === "USD" ? String(c.tc) : "",
-    netoGravado: String(c.netoGravado || ""),
-    alicuotaIva: c.alicuotaIva !== null ? String(c.alicuotaIva) : "0",
-    ivaManual: String(c.iva || ""),
-    ivaPisado: true,
+    // El desglose guardado manda. Una factura vieja no lo tiene, y entonces se
+    // arma el renglón único con el par de la cabecera, que es lo que era.
+    netos:
+      c.ivas.length > 0
+        ? c.ivas.map((r) => ({
+            neto: String(r.neto || ""),
+            alicuota: String(r.alicuota),
+            ivaManual: String(r.iva || ""),
+            ivaPisado: true,
+          }))
+        : [
+            {
+              neto: String(c.netoGravado || ""),
+              alicuota: c.alicuotaIva !== null ? String(c.alicuotaIva) : "0",
+              ivaManual: String(c.iva || ""),
+              ivaPisado: true,
+            },
+          ],
     noGravado: String(c.noGravado || ""),
     exento: String(c.exento || ""),
     percepcionIva: String(c.percepcionIva || ""),
@@ -147,6 +180,7 @@ export function ComprobanteDialog({
   const [error, setError] = useState<string | null>(null)
 
   const cotizacion = useCotizacion()
+  const invalidar = useInvalidarAdmin()
   const editando = comprobante !== null
   const esCompra = tipo === "compra"
   const recurso = esCompra ? "compras" : "ventas"
@@ -176,17 +210,44 @@ export function ComprobanteDialog({
   /* ── Cálculos ────────────────────────────────────────────────────────────── */
 
   const tc = parsearImporte(f.tc) ?? 0
-  const neto = parsearImporte(f.netoGravado) ?? 0
-  const alicuota = Number(f.alicuotaIva) || 0
 
-  // El IVA sugerido; si lo pisaron a mano, gana el número escrito.
-  const ivaCalculado = ivaDe(neto, alicuota)
-  const iva = f.ivaPisado ? (parsearImporte(f.ivaManual) ?? 0) : ivaCalculado
+  /** Cada renglón resuelto: su neto, su alícuota y el IVA que le corresponde
+   *  —calculado, o el escrito a mano si alguien lo pisó—. */
+  const renglones = useMemo(
+    () =>
+      f.netos.map((r) => {
+        const neto = parsearImporte(r.neto) ?? 0
+        const alicuota = Number(r.alicuota) || 0
+        const calculado = ivaDe(neto, alicuota)
+        return {
+          neto,
+          alicuota,
+          calculado,
+          iva: r.ivaPisado ? (parsearImporte(r.ivaManual) ?? 0) : calculado,
+        }
+      }),
+    [f.netos]
+  )
+
+  const neto = redondear(renglones.reduce((a, r) => a + r.neto, 0))
+  const iva = redondear(renglones.reduce((a, r) => a + r.iva, 0))
+
+  /** Dos renglones a la misma alícuota son el mismo tramo escrito dos veces: la
+   *  base los rechaza por índice único, así que se avisa antes de guardar. */
+  const alicuotaRepetida = useMemo(() => {
+    const vistas = new Set<number>()
+    for (const r of renglones) {
+      if (r.neto <= 0 && r.iva <= 0) continue
+      if (vistas.has(r.alicuota)) return true
+      vistas.add(r.alicuota)
+    }
+    return false
+  }, [renglones])
 
   const importes = useMemo(
     () => ({
       netoGravado: neto,
-      alicuotaIva: alicuota,
+      alicuotaIva: renglones.length === 1 ? renglones[0].alicuota : 0,
       iva,
       noGravado: parsearImporte(f.noGravado) ?? 0,
       exento: parsearImporte(f.exento) ?? 0,
@@ -197,8 +258,8 @@ export function ComprobanteDialog({
     }),
     [
       neto,
-      alicuota,
       iva,
+      renglones,
       f.noGravado,
       f.exento,
       f.percepcionIva,
@@ -222,7 +283,8 @@ export function ComprobanteDialog({
   if (!abierto) return null
 
   const faltaTc = f.moneda === "USD" && tc <= 0
-  const puedeGuardar = Boolean(f.entidadId) && total > 0 && !faltaTc && !guardando
+  const puedeGuardar =
+    Boolean(f.entidadId) && total > 0 && !faltaTc && !alicuotaRepetida && !guardando
 
   const guardar = async (estado: "borrador" | "confirmado") => {
     if (!puedeGuardar) return
@@ -250,6 +312,12 @@ export function ComprobanteDialog({
             tc: tc > 0 ? tc : null,
             estado,
             ...importes,
+            // El desglose por alícuota. `importes` sigue mandando el neto y el
+            // IVA sumados: el servidor prefiere esta lista, y los agregados
+            // quedan para que el payload se explique solo.
+            netos: renglones
+              .filter((r) => r.neto > 0 || r.iva > 0)
+              .map((r) => ({ neto: r.neto, alicuota: r.alicuota, iva: r.iva })),
             condicionPago: f.condicionPago,
             observaciones: f.observaciones,
           }),
@@ -257,6 +325,9 @@ export function ComprobanteDialog({
       )
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudo guardar")
+      // Acá y no en cada pantalla que abre el formulario: una factura mueve la
+      // cuenta corriente, los pendientes de cobro y el mayor.
+      void invalidar()
       onGuardado(
         data.comprobante as Comprobante,
         !editando,
@@ -517,49 +588,144 @@ export function ComprobanteDialog({
 
         {/* ── Importes ─────────────────────────────────────────────────── */}
         <Seccion titulo="Importes">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Campo id="netoGravado" rotulo="Neto gravado">
-              <CampoMoneda
-                id="netoGravado"
-                valor={f.netoGravado}
-                onChange={(v) => set("netoGravado", v)}
-                moneda={f.moneda}
-                tc={tc}
-                disabled={guardando}
-              />
-            </Campo>
+          {/*
+            El neto gravado, un renglón por alícuota.
 
-            <Campo id="alicuotaIva" rotulo="Alícuota IVA">
-              <Select
-                id="alicuotaIva"
-                value={f.alicuotaIva}
-                onChange={(v) => {
-                  // Cambiar la alícuota devuelve el IVA al cálculo: si alguien
-                  // la corrige, lo que quiere es el IVA nuevo, no el viejo.
-                  setF((prev) => ({ ...prev, alicuotaIva: v, ivaPisado: false }))
-                }}
-                disabled={guardando}
-                opciones={ALICUOTAS.map((a) => ({
-                  valor: String(a),
-                  etiqueta: ALICUOTA_LABEL[String(a)],
-                }))}
-              />
-            </Campo>
+            Una factura real trae parte al 21 % y parte al 27 %, y con un solo par
+            había que elegir cuál mentir — con el IVA entero imputado a una cuenta
+            que no era. Arranca con un renglón, que es el caso de siempre y se ve
+            igual que antes; los demás se agregan sólo cuando la factura los pide.
+          */}
+          <div className="space-y-2">
+            {f.netos.map((r, i) => {
+              const calc = renglones[i]?.calculado ?? 0
+              const cambiar = (cambio: Partial<RenglonNeto>) =>
+                setF((prev) => ({
+                  ...prev,
+                  netos: prev.netos.map((x, j) => (j === i ? { ...x, ...cambio } : x)),
+                }))
 
-            <Campo
-              id="iva"
-              rotulo="IVA"
-              ayuda={f.ivaPisado ? "Editado a mano" : "Calculado"}
+              return (
+                <div key={i} className="grid items-end gap-4 sm:grid-cols-3">
+                  <Campo
+                    id={`neto-${i}`}
+                    rotulo={i === 0 ? "Neto gravado" : `Neto gravado del tramo ${i + 1}`}
+                    rotuloOculto={i > 0}
+                  >
+                    <CampoMoneda
+                      id={`neto-${i}`}
+                      valor={r.neto}
+                      onChange={(v) => cambiar({ neto: v })}
+                      moneda={f.moneda}
+                      tc={tc}
+                      disabled={guardando}
+                    />
+                  </Campo>
+
+                  <Campo
+                    id={`alicuota-${i}`}
+                    rotulo={i === 0 ? "Alícuota IVA" : `Alícuota IVA del tramo ${i + 1}`}
+                    rotuloOculto={i > 0}
+                  >
+                    <Select
+                      id={`alicuota-${i}`}
+                      value={r.alicuota}
+                      // Cambiar la alícuota devuelve el IVA al cálculo: si alguien
+                      // la corrige, lo que quiere es el IVA nuevo, no el viejo.
+                      onChange={(v) => cambiar({ alicuota: v, ivaPisado: false })}
+                      disabled={guardando}
+                      opciones={ALICUOTAS.map((a) => ({
+                        valor: String(a),
+                        etiqueta: ALICUOTA_LABEL[String(a)],
+                      }))}
+                    />
+                  </Campo>
+
+                  <div className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      <Campo
+                        id={`iva-${i}`}
+                        rotulo={i === 0 ? "IVA" : `IVA del tramo ${i + 1}`}
+                        rotuloOculto={i > 0}
+                        ayuda={
+                          i === 0 ? (r.ivaPisado ? "Editado a mano" : "Calculado") : undefined
+                        }
+                      >
+                        <CampoMoneda
+                          id={`iva-${i}`}
+                          valor={r.ivaPisado ? r.ivaManual : calc ? String(calc) : ""}
+                          onChange={(v) => cambiar({ ivaManual: v, ivaPisado: true })}
+                          moneda={f.moneda}
+                          tc={tc}
+                          disabled={guardando}
+                        />
+                      </Campo>
+                    </div>
+
+                    {/* Sólo con más de un renglón: con uno solo, el botón de
+                        borrar sobre el caso normal es ruido. */}
+                    {f.netos.length > 1 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setF((prev) => ({
+                            ...prev,
+                            netos: prev.netos.filter((_, j) => j !== i),
+                          }))
+                        }
+                        disabled={guardando}
+                        aria-label={`Quitar el tramo ${i + 1}`}
+                        title="Quitar este tramo"
+                        className="mb-[1px] shrink-0 text-ink-muted hover:text-danger-text"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setF((prev) => ({
+                  ...prev,
+                  // Se propone una alícuota que no esté usada: agregar un tramo
+                  // repetido no sirve para nada y la base lo rechaza.
+                  netos: [
+                    ...prev.netos,
+                    RENGLON_VACIO(
+                      String(
+                        ALICUOTAS.find(
+                          (a) => a > 0 && !prev.netos.some((x) => Number(x.alicuota) === a)
+                        ) ?? 0
+                      )
+                    ),
+                  ],
+                }))
+              }
+              disabled={guardando}
             >
-              <CampoMoneda
-                id="iva"
-                valor={f.ivaPisado ? f.ivaManual : ivaCalculado ? String(ivaCalculado) : ""}
-                onChange={(v) => setF((prev) => ({ ...prev, ivaManual: v, ivaPisado: true }))}
-                moneda={f.moneda}
-                tc={tc}
-                disabled={guardando}
-              />
-            </Campo>
+              <Plus className="h-3.5 w-3.5" />
+              Agregar alícuota
+            </Button>
+
+            {f.netos.length > 1 && (
+              <p className="num text-[11.5px] text-ink-muted">
+                Neto {formatearImporte(neto, f.moneda)} · IVA {formatearImporte(iva, f.moneda)}
+              </p>
+            )}
+
+            {alicuotaRepetida && (
+              <p className="text-[11.5px] text-danger-text">
+                Hay dos tramos con la misma alícuota: juntalos en uno solo.
+              </p>
+            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
@@ -738,24 +904,33 @@ function Campo({
   rotulo,
   opcional,
   ayuda,
+  /**
+   * Esconde el rótulo sin sacarlo.
+   *
+   * Es para las columnas que se repiten —los tramos de neto gravado—, donde
+   * repetir «Neto gravado» en cada fila es ruido pero un campo sin etiqueta deja
+   * a un lector de pantalla sin saber qué se está tipeando.
+   */
+  rotuloOculto,
   children,
 }: {
   id: string
   rotulo: string
   opcional?: boolean
   ayuda?: string
+  rotuloOculto?: boolean
   children: React.ReactNode
 }) {
   return (
     <div>
-      <div className="flex items-baseline gap-2">
+      <div className={cn("flex items-baseline gap-2", rotuloOculto && "sr-only")}>
         <label htmlFor={id} className="text-[12.5px] font-semibold text-ink">
           {rotulo}
         </label>
         {opcional && <span className="text-[10.5px] text-ink-faint">opcional</span>}
       </div>
       {ayuda && <p className="mt-0.5 text-[11.5px] text-ink-muted">{ayuda}</p>}
-      <div className="mt-1.5">{children}</div>
+      <div className={cn(!rotuloOculto && "mt-1.5")}>{children}</div>
     </div>
   )
 }

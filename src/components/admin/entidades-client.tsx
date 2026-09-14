@@ -1,7 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import Link from "next/link"
+import { useQuery } from "@tanstack/react-query"
 import {
   Ban,
   Eye,
@@ -18,7 +19,7 @@ import {
 import { toast } from "sonner"
 
 import { EntidadDialog, type BorradorCliente } from "@/components/admin/entidad-dialog"
-import { ConfirmarDialog } from "@/components/admin/confirmar-dialog"
+import { ConfirmarDialog } from "@/components/ui/confirmar-dialog"
 import { FichaDetalle } from "@/components/admin/ficha-detalle"
 import { LecturaFichaDialog } from "@/components/admin/lectura-ficha-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -43,8 +44,11 @@ import {
   type Vendedor,
 } from "@/lib/admin/entidades"
 import { formatearImporte } from "@/lib/admin/moneda"
+import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { useTablaAdmin } from "@/lib/admin/use-tabla"
 import { cn } from "@/lib/utils"
+
+const URL_VENDEDORES = "/api/admin/vendedores"
 
 type Estado = "activos" | "todos" | "inactivos"
 
@@ -87,7 +91,6 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
   const [estado, setEstado] = useState<Estado>("activos")
   const [categoriaId, setCategoriaId] = useState("")
   const [conDeuda, setConDeuda] = useState(false)
-  const [categorias, setCategorias] = useState<CategoriaEntidad[]>([])
 
   const filtros = useMemo(
     () => ({
@@ -104,7 +107,6 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
     filtros,
   })
 
-  const [vendedores, setVendedores] = useState<Vendedor[]>([])
   const [dialogo, setDialogo] = useState<{ abierto: boolean; cliente: Cliente | null }>({
     abierto: false,
     cliente: null,
@@ -116,40 +118,33 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
   const [aEliminar, setAEliminar] = useState<Cliente | null>(null)
   const [eliminando, setEliminando] = useState(false)
 
-  const cargarVendedores = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/vendedores")
-      const data = await res.json()
-      if (res.ok) setVendedores(data.vendedores ?? [])
-    } catch {
-      // La ficha funciona igual sin la lista: el campo es texto libre y el
-      // autocompletado es una ayuda, no un requisito.
-    }
+  // Si falla, la lista queda vacía y listo: la ficha funciona igual sin ella,
+  // el campo es texto libre y el autocompletado es una ayuda, no un requisito.
+  const { data: vendedores = [] } = useQuery({
+    queryKey: claves.url(URL_VENDEDORES),
+    queryFn: ({ signal }) => pedirJson<{ vendedores?: Vendedor[] }>(URL_VENDEDORES, { signal }),
+    select: (d) => d.vendedores ?? [],
+  })
+
+  // Mismo url que el diálogo de la ficha: comparten la entrada de caché.
+  const urlCategorias = `/api/admin/categorias?tipo=${esProveedor ? "proveedor" : "cliente"}`
+  const { data: categorias = [] } = useQuery({
+    queryKey: claves.url(urlCategorias),
+    queryFn: ({ signal }) =>
+      pedirJson<{ categorias?: CategoriaEntidad[] }>(urlCategorias, { signal }),
+    select: (d) => d.categorias ?? [],
+  })
+
+  const invalidar = useInvalidarAdmin()
+
+  // La tabla y los vendedores no se recargan acá: el diálogo invalida el admin
+  // al guardar, y eso vuelve a pedir la tabla y la lista del autocompletado
+  // —por si la ficha trajo un vendedor nuevo—.
+  const alGuardar = useCallback((c: Cliente, esNuevo: boolean) => {
+    setDialogo({ abierto: false, cliente: null })
+    setBorrador(null)
+    toast.success(esNuevo ? `${c.razonSocial} dado de alta` : "Cambios guardados")
   }, [])
-
-  useEffect(() => {
-    cargarVendedores()
-  }, [cargarVendedores])
-
-  useEffect(() => {
-    fetch(`/api/admin/categorias?tipo=${esProveedor ? "proveedor" : "cliente"}`)
-      .then((r) => r.json())
-      .then((d) => setCategorias(d.categorias ?? []))
-      .catch(() => setCategorias([]))
-  }, [esProveedor])
-
-  const { recargar } = tabla
-
-  const alGuardar = useCallback(
-    (c: Cliente, esNuevo: boolean) => {
-      setDialogo({ abierto: false, cliente: null })
-      setBorrador(null)
-      toast.success(esNuevo ? `${c.razonSocial} dado de alta` : "Cambios guardados")
-      recargar()
-      cargarVendedores()
-    },
-    [recargar, cargarVendedores]
-  )
 
   /** Baja y alta lógicas. No hay borrado: un cliente con facturas es historia
    *  contable, y darlo de baja lo saca de los selectores sin perder nada. */
@@ -164,7 +159,7 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudo actualizar")
       toast.success(activo ? `${c.razonSocial} reactivado` : `${c.razonSocial} dado de baja`)
-      recargar()
+      void invalidar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo actualizar")
     } finally {
@@ -185,7 +180,7 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
       if (!res.ok) throw new Error(data.error ?? "No se pudo eliminar")
       toast.success(`${aEliminar.razonSocial} eliminado`)
       setAEliminar(null)
-      recargar()
+      void invalidar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo eliminar")
     } finally {

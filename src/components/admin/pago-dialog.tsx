@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { AlertTriangle, HandCoins, Loader2, Plus, Trash2, X } from "lucide-react"
 
 import { MarcoFormulario } from "@/components/admin/marco-formulario"
@@ -34,6 +35,7 @@ import {
   parsearImporte,
   type Moneda,
 } from "@/lib/admin/moneda"
+import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { useCotizacion } from "@/lib/admin/use-cotizacion"
 import { cn } from "@/lib/utils"
 
@@ -53,6 +55,11 @@ import { cn } from "@/lib/utils"
  */
 
 const hoyISO = () => new Date().toISOString().slice(0, 10)
+
+/** Referencias fijas para "todavía no hay nada": un `[]` nuevo en cada render
+ *  dispararía de nuevo los efectos y memos que dependen de la lista. */
+const SIN_PENDIENTES: Pendiente[] = []
+const SIN_CUENTAS: CuentaFinanciera[] = []
 
 type Medio = { cuentaId: string; importe: string; referencia: string }
 
@@ -98,8 +105,12 @@ export function PagoDialog({
   const [fecha, setFecha] = useState(hoyISO)
   const [moneda, setMoneda] = useState<Moneda>("ARS")
   const [tc, setTc] = useState("")
-  const [pendientes, setPendientes] = useState<Pendiente[]>([])
-  const [cargandoPendientes, setCargandoPendientes] = useState(false)
+  /** De quién se buscan los pendientes. `incluirPago` trae también las facturas
+   *  que este recibo ya canceló, que por definición dejaron de estar pendientes. */
+  const [pedidoPendientes, setPedidoPendientes] = useState<{
+    entidadId: string
+    incluirPago?: string
+  } | null>(null)
   /** comprobanteId → importe imputado, como texto del formulario. */
   const [imputado, setImputado] = useState<Record<string, string>>({})
   /**
@@ -118,31 +129,49 @@ export function PagoDialog({
    *  leyera ninguno. */
   const [retenciones, setRetenciones] = useState<RenglonRetencion[]>([])
   const [observaciones, setObservaciones] = useState("")
-  const [cuentas, setCuentas] = useState<CuentaFinanciera[]>([])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const cotizacion = useCotizacion()
+  const invalidar = useInvalidarAdmin()
 
   const cargarPendientes = useCallback(
-    async (id: string, incluirPago?: string) => {
-    setCargandoPendientes(true)
-    try {
-      // `incluirPago` trae también las facturas que este recibo ya canceló, que
-      // por definición dejaron de estar pendientes.
-      const params = new URLSearchParams({ entidadId: id })
-      if (incluirPago) params.set("incluirPago", incluirPago)
-      const res = await fetch(`/api/admin/${recurso}/pendientes?${params}`)
-      const data = await res.json()
-      setPendientes(data.pendientes ?? [])
-    } catch {
-      setPendientes([])
-    } finally {
-      setCargandoPendientes(false)
-    }
-    },
-    [recurso]
+    (id: string, incluirPago?: string) => setPedidoPendientes({ entidadId: id, incluirPago }),
+    []
   )
+
+  let urlPendientes: string | null = null
+  if (pedidoPendientes) {
+    const params = new URLSearchParams({ entidadId: pedidoPendientes.entidadId })
+    if (pedidoPendientes.incluirPago) params.set("incluirPago", pedidoPendientes.incluirPago)
+    urlPendientes = `/api/admin/${recurso}/pendientes?${params}`
+  }
+
+  /**
+   * Los pendientes de la entidad elegida. Sin refresco al volver a la ventana:
+   * con el recibo a medio cargar, que una factura desaparezca de la lista porque
+   * alguien la cobró en otra pestaña se llevaría puesto lo imputado sin aviso.
+   * Después de guardar sí se refrescan, por la invalidación.
+   */
+  const pendientesQuery = useQuery({
+    queryKey: claves.url(urlPendientes ?? ""),
+    queryFn: ({ signal }) =>
+      pedirJson<{ pendientes?: Pendiente[] }>(urlPendientes!, { signal }),
+    enabled: abierto && urlPendientes !== null,
+    refetchOnWindowFocus: false,
+  })
+  // Un error se muestra como lista vacía, igual que antes.
+  const pendientes =
+    (urlPendientes && pendientesQuery.data?.pendientes) || SIN_PENDIENTES
+  const cargandoPendientes = urlPendientes !== null && pendientesQuery.isLoading
+
+  const cuentasQuery = useQuery({
+    queryKey: claves.url("/api/admin/cuentas"),
+    queryFn: ({ signal }) =>
+      pedirJson<{ cuentas?: CuentaFinanciera[] }>("/api/admin/cuentas", { signal }),
+    enabled: abierto,
+  })
+  const cuentas = cuentasQuery.data?.cuentas ?? SIN_CUENTAS
 
   useEffect(() => {
     if (!abierto) return
@@ -153,7 +182,7 @@ export function PagoDialog({
       setFecha(hoyISO())
       setMoneda("ARS")
       setTc("")
-      setPendientes([])
+      setPedidoPendientes(null)
       setImputado({})
       setTcFactura({})
       setMedios([{ cuentaId: "", importe: "", referencia: "" }])
@@ -231,14 +260,6 @@ export function PagoDialog({
       return hubo ? siguiente : prev
     })
   }, [pendientes, moneda])
-
-  useEffect(() => {
-    if (!abierto) return
-    fetch("/api/admin/cuentas")
-      .then((r) => r.json())
-      .then((d) => setCuentas(d.cuentas ?? []))
-      .catch(() => {})
-  }, [abierto])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -390,6 +411,8 @@ export function PagoDialog({
       )
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? `No se pudo registrar el ${tipo}`)
+      // El recibo mueve cuentas corrientes, cajas y el mayor: todo a refrescar.
+      void invalidar()
       onGuardado()
     } catch (e) {
       setError(e instanceof Error ? e.message : `No se pudo registrar el ${tipo}`)

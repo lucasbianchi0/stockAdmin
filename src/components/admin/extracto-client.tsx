@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Check,
   Download,
@@ -15,7 +16,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
-import { ConfirmarDialog } from "@/components/admin/confirmar-dialog"
+import { ConfirmarDialog } from "@/components/ui/confirmar-dialog"
 import { CuentaDialog } from "@/components/admin/cuenta-dialog"
 import { MovimientoDetalle } from "@/components/admin/movimiento-detalle"
 import { MovimientoDialog } from "@/components/admin/movimiento-dialog"
@@ -47,7 +48,11 @@ import {
   esEditable,
   type Movimiento,
 } from "@/lib/admin/movimientos"
+import { claves, mensajeError, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
+
+const URL_CUENTAS = "/api/admin/cuentas"
+const SIN_CUENTAS: CuentaFinanciera[] = []
 
 /**
  * El extracto de una cuenta, con el formato del resumen que manda el banco:
@@ -70,11 +75,8 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
      lo rehaga: sin esto la cuenta se renombra y el título sigue diciendo el
      nombre viejo hasta que alguien recargue. */
   const router = useRouter()
-
-  const [datos, setDatos] = useState<Extracto | null>(null)
-  const [cuentas, setCuentas] = useState<CuentaFinanciera[]>([])
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const invalidar = useInvalidarAdmin()
 
   const [periodo, setPeriodo] = useState<Periodo>("mes")
   const [origen, setOrigen] = useState("")
@@ -101,40 +103,33 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
 
   const rango = useMemo(() => rangoDe(periodo), [periodo])
 
-  const cargar = useCallback(async () => {
-    setCargando(true)
-    setError(null)
-    try {
-      const params = new URLSearchParams()
-      if (rango.desde) params.set("desde", rango.desde)
-      if (rango.hasta) params.set("hasta", rango.hasta)
-      if (origen) params.set("origen", origen)
-      if (conciliado) params.set("conciliado", conciliado)
-      if (q) params.set("q", q)
+  const params = new URLSearchParams()
+  if (rango.desde) params.set("desde", rango.desde)
+  if (rango.hasta) params.set("hasta", rango.hasta)
+  if (origen) params.set("origen", origen)
+  if (conciliado) params.set("conciliado", conciliado)
+  if (q) params.set("q", q)
+  const urlExtracto = `/api/admin/cuentas/${cuentaId}/extracto?${params}`
 
-      const res = await fetch(`/api/admin/cuentas/${cuentaId}/extracto?${params}`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "No se pudo cargar el extracto")
-      setDatos(data as Extracto)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo cargar el extracto")
-    } finally {
-      setCargando(false)
-    }
-  }, [cuentaId, rango.desde, rango.hasta, origen, conciliado, q])
-
-  useEffect(() => {
-    cargar()
-  }, [cargar])
+  // Al cambiar un filtro sigue a la vista el extracto anterior, atenuado, hasta
+  // que llega el nuevo: vaciar la tabla en cada clic la haría saltar.
+  const query = useQuery({
+    queryKey: claves.url(urlExtracto),
+    queryFn: ({ signal }) => pedirJson<Extracto>(urlExtracto, { signal }),
+    placeholderData: keepPreviousData,
+  })
+  const datos = query.data ?? null
+  const cargando = query.isFetching
+  const error = query.isError ? mensajeError(query.error, "No se pudo cargar el extracto") : null
 
   // Para el diálogo de alta, que necesita la lista completa por si se carga una
   // transferencia.
-  useEffect(() => {
-    fetch("/api/admin/cuentas")
-      .then((r) => r.json())
-      .then((d) => setCuentas(d.cuentas ?? []))
-      .catch(() => setCuentas([]))
-  }, [])
+  const { data: cuentas = SIN_CUENTAS } = useQuery({
+    queryKey: claves.url(URL_CUENTAS),
+    queryFn: ({ signal }) =>
+      pedirJson<{ cuentas?: CuentaFinanciera[] }>(URL_CUENTAS, { signal }),
+    select: (d) => d.cuentas ?? SIN_CUENTAS,
+  })
 
   const conciliar = async (f: FilaExtracto) => {
     setOcupado(f.id)
@@ -145,7 +140,7 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
         body: JSON.stringify({ conciliado: !f.conciliado }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? "No se pudo actualizar")
-      cargar()
+      invalidar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo actualizar")
     } finally {
@@ -164,16 +159,19 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
   const abrirFicha = useCallback(async () => {
     setAbriendoFicha(true)
     try {
-      const res = await fetch(`/api/admin/cuentas/${cuentaId}`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "No se pudo abrir la cuenta")
-      setFicha(data.cuenta as CuentaFinancieraDetalle)
+      const url = `/api/admin/cuentas/${cuentaId}`
+      const data = await queryClient.fetchQuery({
+        queryKey: claves.url(url),
+        queryFn: ({ signal }) =>
+          pedirJson<{ cuenta: CuentaFinancieraDetalle }>(url, { signal }),
+      })
+      setFicha(data.cuenta)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo abrir la cuenta")
+      toast.error(mensajeError(e, "No se pudo abrir la cuenta"))
     } finally {
       setAbriendoFicha(false)
     }
-  }, [cuentaId])
+  }, [cuentaId, queryClient])
 
   /**
    * Abre un renglón para corregirlo.
@@ -184,20 +182,25 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
    * en cada extracto —dos mil filas— para que las use un diálogo que se abre de
    * a una sería pagar el dato mil novecientas noventa y nueve veces de más.
    */
-  const abrirEdicion = useCallback(async (id: string) => {
-    setAbriendo(id)
-    try {
-      const res = await fetch(`/api/admin/movimientos/${id}`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "No se pudo abrir el movimiento")
-      setVer(null)
-      setEditando(data.movimiento as Movimiento)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo abrir el movimiento")
-    } finally {
-      setAbriendo(null)
-    }
-  }, [])
+  const abrirEdicion = useCallback(
+    async (id: string) => {
+      setAbriendo(id)
+      try {
+        const url = `/api/admin/movimientos/${id}`
+        const data = await queryClient.fetchQuery({
+          queryKey: claves.url(url),
+          queryFn: ({ signal }) => pedirJson<{ movimiento: Movimiento }>(url, { signal }),
+        })
+        setVer(null)
+        setEditando(data.movimiento)
+      } catch (e) {
+        toast.error(mensajeError(e, "No se pudo abrir el movimiento"))
+      } finally {
+        setAbriendo(null)
+      }
+    },
+    [queryClient]
+  )
 
   const borrar = async () => {
     if (!aBorrar) return
@@ -209,7 +212,7 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
       toast.success("Movimiento borrado")
       setABorrar(null)
       setVer(null)
-      cargar()
+      invalidar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo borrar")
     } finally {
@@ -242,8 +245,8 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
     URL.revokeObjectURL(a.href)
   }
 
-  if (cargando && !datos) return <LoadingState label="Cargando el extracto…" />
-  if (error && !datos) return <ErrorState message={error} onRetry={cargar} />
+  if (query.isPending) return <LoadingState label="Cargando el extracto…" />
+  if (error && !datos) return <ErrorState message={error} onRetry={() => query.refetch()} />
   if (!datos) return null
 
   const { cuenta, periodo: p, filas } = datos
@@ -603,8 +606,8 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
           const corregia = editando !== null
           setNuevo(null)
           setEditando(null)
+          // El extracto se refresca solo: el diálogo invalida al guardar.
           toast.success(corregia ? "Movimiento corregido" : "Movimiento registrado")
-          cargar()
         }}
       />
 
@@ -615,9 +618,9 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
         onGuardada={() => {
           setFicha(null)
           toast.success("Cuenta actualizada")
-          // El extracto entero depende de la ficha: el saldo inicial es su
-          // primer renglón y la moneda, la de cada importe.
-          cargar()
+          // El extracto entero depende de la ficha —el saldo inicial es su
+          // primer renglón y la moneda, la de cada importe—; el diálogo ya
+          // invalidó los datos, y esto rehace el encabezado del servidor.
           router.refresh()
         }}
       />

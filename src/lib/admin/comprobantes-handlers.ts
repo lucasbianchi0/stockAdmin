@@ -11,7 +11,7 @@ import {
   obtenerOCrearEntidad,
   recordarCuentaEnFicha,
 } from "@/lib/admin/entidad-de-comprobante"
-import type { Comprobante, TipoComprobante } from "@/lib/admin/comprobantes"
+import type { Comprobante, RenglonIva, TipoComprobante } from "@/lib/admin/comprobantes"
 import {
   SELECT_COMPROBANTE,
   aComprobante,
@@ -171,7 +171,18 @@ export async function crearComprobante(tipo: TipoComprobante, req: Request) {
 
   if (error) return errorDeComprobante(error, "crear")
 
-  const comprobante = aComprobante(data)
+  // El desglose por alícuota va después, como los hijos de un recibo. Su trigger
+  // rehace el asiento con los renglones ya adentro.
+  const errIvas = await guardarIvas((data as { id: string }).id, validado.ivas)
+  if (errIvas) return errIvas
+
+  const { data: completo } = await supabase
+    .from("comprobantes")
+    .select(SELECT_COMPROBANTE)
+    .eq("id", (data as { id: string }).id)
+    .single()
+
+  const comprobante = aComprobante(completo ?? data)
 
   // La cuenta elegida queda anotada en la ficha, si no tenía. Es lo que hace que
   // elegirla sea trabajo de una sola vez por proveedor y no de cada factura.
@@ -486,7 +497,25 @@ export async function editarComprobante(tipo: TipoComprobante, req: Request, id:
   if (error) return errorDeComprobante(error, "editar")
   if (!data) return NextResponse.json({ error: "Comprobante no encontrado" }, { status: 404 })
 
-  return NextResponse.json({ comprobante: aComprobante(data) })
+  /*
+   * El desglose se reescribe siempre, también con un recibo imputado.
+   *
+   * No es una excepción al candado: es la misma regla. Lo que el candado protege
+   * es cuánto se debe —`neto_gravado`, `iva` y `total` están en la lista de la
+   * deuda y ya se compararon arriba—, y repartir ese mismo IVA entre 21 y 27 no
+   * mueve un peso de ningún saldo. Cambia contra qué cuenta del plan va cada
+   * tramo, que es exactamente lo que pasa con la cuenta contable.
+   */
+  const errIvas = await guardarIvas(id, validado.ivas)
+  if (errIvas) return errIvas
+
+  const { data: completo } = await supabase
+    .from("comprobantes")
+    .select(SELECT_COMPROBANTE)
+    .eq("id", id)
+    .maybeSingle()
+
+  return NextResponse.json({ comprobante: aComprobante(completo ?? data) })
 }
 
 /* ── Borrado ──────────────────────────────────────────────────────────────── */
@@ -557,6 +586,54 @@ function enDias(n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+/**
+ * Deja el desglose por alícuota igual a lo que llegó del formulario.
+ *
+ * Borrar y reinsertar y no un diff: son dos o tres renglones, la tabla cuelga del
+ * comprobante con `on delete cascade`, y un diff acá sería más código para
+ * ahorrar una consulta que nadie va a notar. Lo que sí importa es el orden —
+ * primero el borrado, después la inserción— porque el índice único por alícuota
+ * rechazaría la fila nueva mientras la vieja siga viva.
+ */
+async function guardarIvas(
+  comprobanteId: string,
+  ivas: RenglonIva[]
+): Promise<NextResponse | null> {
+  const { error: errBorrado } = await supabase
+    .from("comprobante_ivas")
+    .delete()
+    .eq("comprobante_id", comprobanteId)
+
+  if (errBorrado) {
+    console.error("[comprobante_ivas borrado]", errBorrado)
+    return NextResponse.json(
+      { error: "No se pudo guardar el desglose de IVA" },
+      { status: 500 }
+    )
+  }
+
+  if (ivas.length === 0) return null
+
+  const { error } = await supabase.from("comprobante_ivas").insert(
+    ivas.map((r) => ({
+      comprobante_id: comprobanteId,
+      alicuota: r.alicuota,
+      neto: r.neto,
+      iva: r.iva,
+    }))
+  )
+
+  if (error) {
+    console.error("[comprobante_ivas]", error)
+    return NextResponse.json(
+      { error: "No se pudo guardar el desglose de IVA" },
+      { status: 500 }
+    )
+  }
+
+  return null
+}
+
 /* ── Qué se puede editar con un recibo ya imputado ────────────────────────── */
 
 /**
@@ -568,6 +645,10 @@ function enDias(n: number): string {
  * asiento de un comprobante que alguien ya pagó.
  */
 const DEUDA: ReadonlyArray<readonly [string, string]> = [
+  // `alicuota_iva` NO está acá a propósito. Repartir el mismo IVA entre dos
+  // alícuotas no cambia cuánto se debe —`neto_gravado`, `iva` y `total` sí están
+  // en la lista y siguen bloqueados—, sólo contra qué cuenta del plan imputa cada
+  // tramo. Es la misma categoría que la cuenta contable.
   ["clase", "el tipo de comprobante"],
   ["fecha", "la fecha"],
   ["punto_venta", "el punto de venta"],
@@ -577,7 +658,6 @@ const DEUDA: ReadonlyArray<readonly [string, string]> = [
   ["moneda", "la moneda"],
   ["tc", "el tipo de cambio"],
   ["neto_gravado", "el neto gravado"],
-  ["alicuota_iva", "la alícuota de IVA"],
   ["iva", "el IVA"],
   ["no_gravado", "el no gravado"],
   ["exento", "el exento"],

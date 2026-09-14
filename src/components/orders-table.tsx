@@ -1,6 +1,8 @@
 "use client"
 
-import { Fragment, useCallback, useEffect, useState } from "react"
+import { Fragment, useCallback, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { claveDe } from "@/lib/admin/query"
 import {
   Table,
   TableBody,
@@ -50,30 +52,41 @@ function fmtUsd(n: number | null) {
   })}`
 }
 
+const SIN_PEDIDOS: Order[] = []
+
+async function pedirPedidos(): Promise<Order[]> {
+  let data: { orders?: Order[]; error?: string }
+  try {
+    const res = await fetch("/api/orders")
+    data = await res.json()
+  } catch {
+    throw new Error("No se pudieron cargar los pedidos.")
+  }
+  if (data.error) throw new Error(data.error)
+  return data.orders ?? []
+}
+
 export function OrdersTable() {
-  const [orders, setOrders] = useState<Order[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch("/api/orders")
-      const data = await res.json()
-      if (data.error) setError(data.error)
-      else setOrders(data.orders ?? [])
-    } catch {
-      setError("No se pudieron cargar los pedidos.")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // Sin ventana de frescura: cada vez que se entra se vuelve a consultar, porque
+  // un pedido puede haberse creado desde otra pestaña. La caché solo sirve para
+  // mostrar la lista anterior mientras llega la nueva, en vez de la pantalla de
+  // carga.
+  const query = useQuery({
+    queryKey: claveDe("productos", "/api/orders"),
+    queryFn: pedirPedidos,
+    staleTime: 0,
+    retry: false,
+  })
+  const orders = query.data ?? SIN_PEDIDOS
+  const loading = query.isPending
+  const error = query.isError ? query.error.message : null
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const { refetch } = query
+  const load = useCallback(() => {
+    void refetch()
+  }, [refetch])
 
   const toggle = (id: string) =>
     setExpanded((prev) => {
@@ -118,8 +131,8 @@ export function OrdersTable() {
               La API de Distecna no expone estado de pedido — este es nuestro registro
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={load}>
-            <RefreshCw />
+          <Button variant="outline" size="sm" onClick={load} disabled={query.isFetching}>
+            <RefreshCw className={cn(query.isFetching && "animate-spin")} />
             Actualizar
           </Button>
         </div>

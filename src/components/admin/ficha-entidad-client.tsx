@@ -1,7 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
+import { useQuery } from "@tanstack/react-query"
 import {
   Download,
   FileText,
@@ -35,6 +36,7 @@ import type { Cliente, TipoEntidad } from "@/lib/admin/entidades"
 import { FORMA_JURIDICA_LABEL } from "@/lib/admin/entidades"
 import { formatearFecha } from "@/lib/admin/fecha"
 import { formatearContravalor, formatearImporte } from "@/lib/admin/moneda"
+import { claves, mensajeError, pedirJson } from "@/lib/admin/query"
 import { useTablaAdmin } from "@/lib/admin/use-tabla"
 import { cn } from "@/lib/utils"
 
@@ -101,32 +103,19 @@ export function FichaEntidadClient({
 }) {
   const voz = VOZ[tipo]
   const [solapa, setSolapa] = useState<Solapa>("resumen")
-  const [entidad, setEntidad] = useState<Cliente | null>(null)
-  const [resumen, setResumen] = useState<ResumenEntidad | null>(null)
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
   const recurso = tipo === "cliente" ? "clientes" : "proveedores"
 
-  const cargar = useCallback(async () => {
-    setCargando(true)
-    setError(null)
-    try {
-      const res = await fetch(`/api/admin/${recurso}/${entidadId}/detalle`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "No se pudo cargar la ficha")
-      setEntidad(data.entidad)
-      setResumen(data.resumen)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo cargar la ficha")
-    } finally {
-      setCargando(false)
-    }
-  }, [recurso, entidadId])
-
-  useEffect(() => {
-    cargar()
-  }, [cargar])
+  // Mismo url que el panel de detalle del listado: comparten la entrada de caché.
+  const urlDetalle = `/api/admin/${recurso}/${entidadId}/detalle`
+  const detalle = useQuery({
+    queryKey: claves.url(urlDetalle),
+    queryFn: ({ signal }) =>
+      pedirJson<{ entidad: Cliente; resumen: ResumenEntidad }>(urlDetalle, { signal }),
+  })
+  const entidad = detalle.data?.entidad ?? null
+  const resumen = detalle.data?.resumen ?? null
+  const cargando = detalle.isPending
+  const error = detalle.isError ? mensajeError(detalle.error, "No se pudo cargar la ficha") : null
 
   const filtros = useMemo(() => ({ entidadId }), [entidadId])
 
@@ -145,7 +134,7 @@ export function FichaEntidadClient({
   })
 
   if (cargando) return <LoadingState label="Cargando la ficha…" />
-  if (error) return <ErrorState message={error} onRetry={cargar} />
+  if (error) return <ErrorState message={error} onRetry={() => detalle.refetch()} />
   if (!entidad || !resumen) return null
 
   const debe = resumen.pendienteArs !== 0 || resumen.pendienteUsd !== 0
@@ -590,30 +579,17 @@ function TablaPagos({
 /* ── Cuenta corriente ─────────────────────────────────────────────────────── */
 
 function EstadoCuenta({ tipo, entidadId }: { tipo: TipoEntidad; entidadId: string }) {
-  const [filas, setFilas] = useState<FilaCuenta[]>([])
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const cargar = useCallback(async () => {
-    setCargando(true)
-    setError(null)
-    try {
-      const res = await fetch(
-        `/api/admin/reportes/estado-cuenta?tipo=${tipo}&entidadId=${entidadId}`
-      )
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "No se pudo cargar el estado de cuenta")
-      setFilas(data.filas ?? [])
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo cargar el estado de cuenta")
-    } finally {
-      setCargando(false)
-    }
-  }, [tipo, entidadId])
-
-  useEffect(() => {
-    cargar()
-  }, [cargar])
+  // Mismo url que la pantalla de cuenta corriente: comparten la entrada de caché.
+  const url = `/api/admin/reportes/estado-cuenta?tipo=${tipo}&entidadId=${entidadId}`
+  const consulta = useQuery({
+    queryKey: claves.url(url),
+    queryFn: ({ signal }) => pedirJson<{ filas?: FilaCuenta[] }>(url, { signal }),
+  })
+  const filas = consulta.data?.filas ?? []
+  const cargando = consulta.isPending
+  const error = consulta.isError
+    ? mensajeError(consulta.error, "No se pudo cargar el estado de cuenta")
+    : null
 
   const exportar = () => {
     const csv = [
@@ -641,7 +617,7 @@ function EstadoCuenta({ tipo, entidadId }: { tipo: TipoEntidad; entidadId: strin
   }
 
   if (cargando) return <LoadingState label="Cargando el estado de cuenta…" />
-  if (error) return <ErrorState message={error} onRetry={cargar} />
+  if (error) return <ErrorState message={error} onRetry={() => consulta.refetch()} />
 
   return (
     <div className="panel overflow-hidden">

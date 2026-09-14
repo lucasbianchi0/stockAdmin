@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
 import { FileSpreadsheet, Pencil } from "lucide-react"
 
 import {
@@ -22,6 +22,7 @@ import type { EntidadDetalle } from "@/lib/admin/detalle"
 import { FORMA_JURIDICA_LABEL, type TipoEntidad } from "@/lib/admin/entidades"
 import { formatearFecha, formatearFechaLarga } from "@/lib/admin/fecha"
 import { formatearImporte } from "@/lib/admin/moneda"
+import { claves, mensajeError, pedirJson } from "@/lib/admin/query"
 
 /**
  * La ficha de un cliente o un proveedor, abierta desde la tabla.
@@ -47,32 +48,19 @@ export function FichaDetalle({
   const router = useRouter()
   const recurso = tipo === "cliente" ? "clientes" : "proveedores"
 
-  const [datos, setDatos] = useState<EntidadDetalle | null>(null)
-  const [cargando, setCargando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Mismo url que la pantalla de la ficha: comparten la entrada de caché. Cada
+  // ficha tiene su clave, así que abrir la segunda nunca muestra por un instante
+  // los datos de la primera —parecería que el saldo cambió solo—.
+  const url = `/api/admin/${recurso}/${entidadId}/detalle`
+  const consulta = useQuery({
+    queryKey: claves.url(url),
+    queryFn: ({ signal }) => pedirJson<EntidadDetalle>(url, { signal }),
+    enabled: abierto && entidadId !== null,
+  })
 
-  const cargar = useCallback(async () => {
-    if (!entidadId) return
-    setCargando(true)
-    setError(null)
-    try {
-      const res = await fetch(`/api/admin/${recurso}/${entidadId}/detalle`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "No se pudo cargar la ficha")
-      setDatos(data)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo cargar la ficha")
-    } finally {
-      setCargando(false)
-    }
-  }, [entidadId, recurso])
-
-  useEffect(() => {
-    if (abierto) cargar()
-    // Se limpia al cerrar: sin esto, abrir la segunda ficha muestra por un
-    // instante los datos de la primera y parece que el saldo cambió solo.
-    else setDatos(null)
-  }, [abierto, cargar])
+  const datos = abierto ? (consulta.data ?? null) : null
+  const cargando = consulta.isLoading
+  const error = consulta.isError ? mensajeError(consulta.error, "No se pudo cargar la ficha") : null
 
   const e = datos?.entidad
   const r = datos?.resumen

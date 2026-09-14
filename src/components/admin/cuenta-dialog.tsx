@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import type { CuentaFinancieraDetalle } from "@/lib/admin/cobros"
 import { parsearImporte, type Moneda } from "@/lib/admin/moneda"
+import { useInvalidarAdmin } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
@@ -98,6 +99,7 @@ export function CuentaDialog({
   const [f, setF] = useState<Estado>(VACIA)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const invalidar = useInvalidarAdmin()
 
   useEffect(() => {
     if (!abierto) return
@@ -154,6 +156,9 @@ export function CuentaDialog({
       )
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudo guardar")
+      // La ficha cambia el saldo de la cuenta en todas las pantallas que la
+      // muestran; se invalida acá para que ningún llamador pueda olvidarse.
+      invalidar()
       onGuardada()
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar")

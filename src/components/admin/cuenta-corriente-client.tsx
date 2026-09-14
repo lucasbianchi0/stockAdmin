@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { Download, PieChart, Search } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +20,7 @@ import { descargarCsv } from "@/lib/admin/csv"
 import { formatearCuit } from "@/lib/admin/cuit"
 import type { Cliente, TipoEntidad } from "@/lib/admin/entidades"
 import { formatearImporte, formatearTc } from "@/lib/admin/moneda"
+import { claves, pedirJson } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 type FilaCuenta = {
@@ -49,64 +51,65 @@ type FilaCuenta = {
 export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
   // Alcanza con el nombre para el título y el CSV: la ficha entera la devuelve
   // el propio reporte, así que guardarla completa sería traerla dos veces.
-  const [elegida, setElegida] = useState<{
+  const [seleccion, setSeleccion] = useState<{
     id: string
     razonSocial: string
     cuit: string | null
   } | null>(null)
+  const [entidadId, setEntidadId] = useState<string | null>(null)
   const [q, setQ] = useState("")
-  const [resultados, setResultados] = useState<Cliente[]>([])
+  const [busqueda, setBusqueda] = useState("")
   const [abierto, setAbierto] = useState(false)
-  const [filas, setFilas] = useState<FilaCuenta[]>([])
-  const [saldoFinal, setSaldoFinal] = useState(0)
-  const [cargando, setCargando] = useState(false)
 
   const recurso = tipo === "cliente" ? "clientes" : "proveedores"
 
+  // Lo tipeado llega a la consulta con 250 ms de debounce.
   useEffect(() => {
     if (!abierto) return
-    const t = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({ porPagina: "8", estado: "todos" })
-        if (q.trim()) params.set("q", q.trim())
-        const res = await fetch(`/api/admin/${recurso}?${params}`)
-        const data = await res.json()
-        setResultados(data[recurso] ?? [])
-      } catch {
-        setResultados([])
-      }
-    }, 250)
+    const t = setTimeout(() => setBusqueda(q.trim()), 250)
     return () => clearTimeout(t)
-  }, [q, abierto, recurso])
+  }, [q, abierto])
 
-  const cargar = useCallback(
-    async (id: string) => {
-      setCargando(true)
-      try {
-        const res = await fetch(
-          `/api/admin/reportes/estado-cuenta?tipo=${tipo}&entidadId=${id}`
-        )
-        const data = await res.json()
-        setFilas(data.filas ?? [])
-        setSaldoFinal(data.saldoFinal ?? 0)
-        // El reporte trae la ficha en la respuesta, así que llegar con la
-        // entidad en la URL no necesita una consulta aparte para saber cómo se
-        // llama.
-        if (data.entidad) {
-          setElegida({
-            id: data.entidad.id,
-            razonSocial: data.entidad.razonSocial,
-            cuit: data.entidad.cuit ?? null,
-          })
-        }
-      } catch {
-        setFilas([])
-      } finally {
-        setCargando(false)
+  const params = new URLSearchParams({ porPagina: "8", estado: "todos" })
+  if (busqueda) params.set("q", busqueda)
+  const urlBusqueda = `/api/admin/${recurso}?${params}`
+
+  const { data: resultados = [] } = useQuery({
+    queryKey: claves.url(urlBusqueda),
+    queryFn: ({ signal }) =>
+      pedirJson<Partial<Record<string, Cliente[]>>>(urlBusqueda, { signal }),
+    select: (d) => d[recurso] ?? [],
+    enabled: abierto,
+    placeholderData: keepPreviousData,
+  })
+
+  // Mismo url que la solapa de cuenta corriente de la ficha: comparten caché.
+  // Si el reporte falla, la cuenta se muestra sin movimientos, como antes.
+  const urlCuenta = `/api/admin/reportes/estado-cuenta?tipo=${tipo}&entidadId=${entidadId}`
+  const cuenta = useQuery({
+    queryKey: claves.url(urlCuenta),
+    queryFn: ({ signal }) =>
+      pedirJson<{
+        filas?: FilaCuenta[]
+        saldoFinal?: number
+        entidad?: { id: string; razonSocial: string; cuit?: string | null }
+      }>(urlCuenta, { signal }),
+    enabled: entidadId !== null,
+  })
+  const filas = cuenta.data?.filas ?? []
+  const saldoFinal = cuenta.data?.saldoFinal ?? 0
+  const cargando = cuenta.isLoading
+
+  // El reporte trae la ficha en la respuesta, así que llegar con la entidad en
+  // la URL no necesita una consulta aparte para saber cómo se llama.
+  const entidadReporte = cuenta.data?.entidad
+  const elegida = entidadReporte
+    ? {
+        id: entidadReporte.id,
+        razonSocial: entidadReporte.razonSocial,
+        cuit: entidadReporte.cuit ?? null,
       }
-    },
-    [tipo]
-  )
+    : seleccion
 
   /**
    * La ficha puede venir en la URL: es lo que hace que el botón «Cuenta
@@ -119,9 +122,8 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
    * selector, o un click en otra ficha se revertiría solo a la de la URL.
    */
   useEffect(() => {
-    const entidadId = new URLSearchParams(window.location.search).get("entidadId")
-    if (entidadId) cargar(entidadId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const id = new URLSearchParams(window.location.search).get("entidadId")
+    if (id) setEntidadId(id)
   }, [])
 
   return (
@@ -154,9 +156,9 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
                       key={c.id}
                       type="button"
                       onMouseDown={() => {
-                        setElegida(c)
+                        setSeleccion(c)
                         setAbierto(false)
-                        cargar(c.id)
+                        setEntidadId(c.id)
                       }}
                       className="flex w-full flex-col items-start px-3 py-2 text-left transition-colors hover:bg-brand-50"
                     >

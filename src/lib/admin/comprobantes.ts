@@ -220,6 +220,41 @@ export function textoVencimiento(fechaISO: string | null): string {
 
 /* ── Cálculo del total ────────────────────────────────────────────────────── */
 
+/**
+ * Un tramo de neto gravado a una alícuota.
+ *
+ * Una factura real puede traer parte al 21 % y parte al 27 %, y con un solo par
+ * neto/alícuota había que elegir cuál mentir. El IVA se guarda además de la
+ * alícuota porque el que manda es el de la factura del proveedor, que puede
+ * diferir del producto por un centavo de redondeo propio.
+ */
+export type RenglonIva = {
+  neto: number
+  alicuota: number
+  iva: number
+}
+
+/** El neto y el IVA de toda la factura: la suma de sus tramos. */
+export function sumarIvas(renglones: RenglonIva[]): { neto: number; iva: number } {
+  const r = (n: number) => Math.round(n * 100) / 100
+  return {
+    neto: r(renglones.reduce((a, x) => a + x.neto, 0)),
+    iva: r(renglones.reduce((a, x) => a + x.iva, 0)),
+  }
+}
+
+/**
+ * La alícuota que va en la cabecera del comprobante.
+ *
+ * Con un solo tramo es la suya, como siempre. Con varios es `null`, y eso no es
+ * un dato faltante: es la respuesta correcta a «cuál es LA alícuota de esta
+ * factura» cuando no hay una sola. El desglose queda en los renglones.
+ */
+export function alicuotaDeCabecera(renglones: RenglonIva[]): number | null {
+  const conNeto = renglones.filter((x) => x.neto > 0 || x.iva > 0)
+  return conNeto.length === 1 ? conNeto[0].alicuota : null
+}
+
 export type ImportesComprobante = {
   netoGravado: number
   alicuotaIva: number
@@ -313,8 +348,13 @@ export type Comprobante = {
    */
   tc: number | null
   netoGravado: number
+  /** `null` cuando la factura tiene más de una alícuota: el desglose está en
+   *  `ivas`. */
   alicuotaIva: number | null
   iva: number
+  /** El neto abierto por alícuota. Siempre trae al menos un renglón en las
+   *  facturas con IVA; vacío en las que no tienen neto gravado. */
+  ivas: RenglonIva[]
   noGravado: number
   exento: number
   percepcionIva: number

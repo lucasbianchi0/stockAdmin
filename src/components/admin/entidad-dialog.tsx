@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { AlertTriangle, Check, Loader2, UserPlus, X } from "lucide-react"
 
 import { SelectorCuenta } from "@/components/admin/selector-cuenta"
@@ -22,6 +23,7 @@ import {
   type Vendedor,
   type CategoriaEntidad,
 } from "@/lib/admin/entidades"
+import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
@@ -122,19 +124,20 @@ export function EntidadDialog({
   const [f, setF] = useState<BorradorCliente>(VACIO)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [duplicado, setDuplicado] = useState<string | null>(null)
-  const [verificando, setVerificando] = useState(false)
+  const invalidar = useInvalidarAdmin()
 
   const editando = cliente !== null
   const esProveedor = tipo === "proveedor"
-  const [categorias, setCategorias] = useState<CategoriaEntidad[]>([])
 
-  useEffect(() => {
-    fetch(`/api/admin/categorias?tipo=${tipo}`)
-      .then((r) => r.json())
-      .then((d) => setCategorias(d.categorias ?? []))
-      .catch(() => setCategorias([]))
-  }, [tipo])
+  // Mismo url que el filtro del listado: comparten la entrada de caché. Si
+  // falla, el selector queda sin opciones y la ficha se guarda igual.
+  const urlCategorias = `/api/admin/categorias?tipo=${tipo}`
+  const { data: categorias = [] } = useQuery({
+    queryKey: claves.url(urlCategorias),
+    queryFn: ({ signal }) =>
+      pedirJson<{ categorias?: CategoriaEntidad[] }>(urlCategorias, { signal }),
+    select: (d) => d.categorias ?? [],
+  })
   const recurso = esProveedor ? "proveedores" : "clientes"
   const rotulo = esProveedor ? "proveedor" : "cliente"
 
@@ -144,7 +147,6 @@ export function EntidadDialog({
     if (abierto) {
       setF(cliente ? aBorrador(cliente) : { ...VACIO, ...(borrador ?? {}) })
       setError(null)
-      setDuplicado(null)
     }
   }, [abierto, cliente, borrador])
 
@@ -166,40 +168,42 @@ export function EntidadDialog({
    * Verificación de duplicado contra el servidor. Solo corre cuando el CUIT ya
    * es válido: consultar en cada tecleo dispararía once pedidos por CUIT, y diez
    * de ellos son de un número incompleto que nunca va a coincidir con nada.
+   *
+   * El CUIT pasa a la consulta con 400 ms de debounce; mientras tanto, y mientras
+   * viaja el pedido, se muestra "verificando".
    */
+  const digitos = abierto && cuitCompleto ? normalizarCuit(f.cuit)! : null
+  const [cuitAVerificar, setCuitAVerificar] = useState<string | null>(null)
+
   useEffect(() => {
-    if (!abierto || !cuitCompleto) {
-      setDuplicado(null)
+    if (!digitos) {
+      setCuitAVerificar(null)
       return
     }
-    const digitos = normalizarCuit(f.cuit)!
-    let vigente = true
-    setVerificando(true)
+    const t = setTimeout(() => setCuitAVerificar(digitos), 400)
+    return () => clearTimeout(t)
+  }, [digitos])
 
-    const t = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({ q: digitos, estado: "todos", porPagina: "5" })
-        const res = await fetch(`/api/admin/${recurso}?${params}`)
-        const data = await res.json()
-        if (!vigente) return
-        const otro = (data[recurso] as Cliente[] | undefined)?.find(
-          (c) => c.cuit === digitos && c.id !== cliente?.id
-        )
-        setDuplicado(otro ? otro.razonSocial : null)
-      } catch {
-        // Silencio a propósito: es una comodidad, y el índice único de la base
-        // sigue estando. Un cartel de "no se pudo verificar" al lado de un campo
-        // opcional sería ruido sobre algo que igual se va a chequear al guardar.
-      } finally {
-        if (vigente) setVerificando(false)
-      }
-    }, 400)
+  const urlDuplicado = cuitAVerificar
+    ? `/api/admin/${recurso}?${new URLSearchParams({ q: cuitAVerificar, estado: "todos", porPagina: "5" })}`
+    : ""
+  const verificacion = useQuery({
+    queryKey: claves.url(urlDuplicado),
+    queryFn: ({ signal }) =>
+      pedirJson<Partial<Record<string, Cliente[]>>>(urlDuplicado, { signal }),
+    enabled: digitos !== null && cuitAVerificar === digitos,
+  })
 
-    return () => {
-      vigente = false
-      clearTimeout(t)
-    }
-  }, [abierto, cuitCompleto, f.cuit, cliente?.id, recurso])
+  // Si la verificación falla no se dice nada, a propósito: es una comodidad, y
+  // el índice único de la base sigue estando. Un cartel de "no se pudo
+  // verificar" al lado de un campo opcional sería ruido sobre algo que igual se
+  // va a chequear al guardar.
+  const duplicado =
+    digitos !== null && cuitAVerificar === digitos
+      ? (verificacion.data?.[recurso]?.find((c) => c.cuit === digitos && c.id !== cliente?.id)
+          ?.razonSocial ?? null)
+      : null
+  const verificando = digitos !== null && (cuitAVerificar !== digitos || verificacion.isFetching)
 
   if (!abierto) return null
 
@@ -221,6 +225,7 @@ export function EntidadDialog({
       )
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudo guardar")
+      void invalidar()
       onGuardado(data[tipo] as Cliente, !editando)
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar")

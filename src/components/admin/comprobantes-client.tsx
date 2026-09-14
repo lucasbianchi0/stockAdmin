@@ -17,7 +17,7 @@ import {
 import { toast } from "sonner"
 
 import { AvisoSinAsiento } from "@/components/admin/aviso-sin-asiento"
-import { ConfirmarDialog } from "@/components/admin/confirmar-dialog"
+import { ConfirmarDialog } from "@/components/ui/confirmar-dialog"
 import { ImpactoDialog } from "@/components/admin/impacto-dialog"
 import { ComprobanteDetalle } from "@/components/admin/comprobante-detalle"
 import { ComprobanteDialog } from "@/components/admin/comprobante-dialog"
@@ -59,6 +59,7 @@ import {
   formatearImporte,
   formatearTc,
 } from "@/lib/admin/moneda"
+import { useInvalidarAdmin } from "@/lib/admin/query"
 import { useTablaAdmin } from "@/lib/admin/use-tabla"
 import { cn } from "@/lib/utils"
 
@@ -126,7 +127,9 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
   const [eliminando, setEliminando] = useState(false)
   const [importando, setImportando] = useState(false)
 
-  const { recargar } = tabla
+  /** Después de cualquier cambio se refresca todo el administrador, no solo esta
+   *  tabla: confirmar o borrar una factura mueve la cuenta corriente y el mayor. */
+  const invalidar = useInvalidarAdmin()
 
   const borradores = tabla.filas.filter((c) => c.estado === "borrador")
   const elegidosVisibles = borradores.filter((c) => elegidos.has(c.id))
@@ -148,14 +151,14 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
         if (data.impacto) setImpacto(data.impacto as Impacto)
         else toast.success("Comprobante confirmado")
         setRefrescoAvisos((n) => n + 1)
-        recargar()
+        void invalidar()
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "No se pudo confirmar")
       } finally {
         setConfirmando(null)
       }
     },
-    [recurso, recargar]
+    [recurso, invalidar]
   )
 
   /** Volver a borrador: la forma de corregir algo ya confirmado que nadie cobró
@@ -172,14 +175,14 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? "No se pudo pasar a borrador")
         toast.success("Volvió a borrador — ya se puede editar")
-        recargar()
+        void invalidar()
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "No se pudo pasar a borrador")
       } finally {
         setConfirmando(null)
       }
     },
-    [recurso, recargar]
+    [recurso, invalidar]
   )
 
   const confirmarLote = useCallback(async () => {
@@ -203,13 +206,13 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
       if (data.confirmados > 0 && data.impacto) setImpacto(data.impacto as Impacto)
       setRefrescoAvisos((n) => n + 1)
       setElegidos(new Set())
-      recargar()
+      void invalidar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudieron confirmar")
     } finally {
       setConfirmando(null)
     }
-  }, [elegidosVisibles, recurso, recargar])
+  }, [elegidosVisibles, recurso, invalidar])
 
   const alGuardar = useCallback(
     (c: Comprobante, esNuevo: boolean, imp: Impacto | null) => {
@@ -224,9 +227,9 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
             ? `${c.clase} ${formatearNumero(c.puntoVenta, c.numero)} registrado`
             : "Cambios guardados"
         )
-      recargar()
+      // Los datos ya los invalidó el formulario al guardar.
     },
-    [recargar]
+    []
   )
 
   const eliminar = async () => {
@@ -238,7 +241,7 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
       if (!res.ok) throw new Error(data.error ?? "No se pudo eliminar")
       toast.success("Factura eliminada")
       setAEliminar(null)
-      recargar()
+      void invalidar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo eliminar")
     } finally {
@@ -276,7 +279,7 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
       <AvisoSinAsiento
         key={`aviso-${refrescoAvisos}`}
         filtro={{ origen: "comprobante", tipo }}
-        onCorregido={recargar}
+        onCorregido={() => void invalidar()}
       />
 
       <div className="panel overflow-hidden">
@@ -546,8 +549,7 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
         abierto={importando}
         onCerrar={() => setImportando(false)}
         onImportadas={(i) => {
-          recargar()
-          // El diálogo de carga se cierra solo al informar: dos modales
+          // Los datos ya los invalidó el diálogo al guardar. El diálogo de carga se cierra solo al informar: dos modales
           // apilados no se leen, y lo que sigue —revisar los borradores— está
           // atrás, no adentro.
           setImportando(false)

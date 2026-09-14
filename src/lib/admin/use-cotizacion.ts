@@ -1,6 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback } from "react"
+import { useQuery } from "@tanstack/react-query"
+
+import { claves } from "@/lib/admin/query"
 
 /**
  * La cotización del dólar oficial venta (Banco Nación), compartida por todo el
@@ -15,6 +18,9 @@ import { useCallback, useEffect, useState } from "react"
  * propio TC y el formulario deja pisarlo. La operación real pudo cerrarse a otro
  * tipo de cambio, y el sistema tiene que poder reflejar lo que pasó y no lo que
  * debería haber pasado.
+ *
+ * Una sola entrada de caché para toda la pestaña: la tira y cada formulario
+ * que se abre leen la misma, en vez de pedir el dólar cada uno.
  */
 
 export type Cotizacion = {
@@ -27,33 +33,34 @@ export type Cotizacion = {
   refrescar: () => void
 }
 
+type Dolar = { venta: number; updatedAt: string | null }
+
+async function pedirDolar(): Promise<Dolar> {
+  const res = await fetch("/api/dolar")
+  const data = await res.json()
+  if (!res.ok || typeof data.venta !== "number") throw new Error("sin cotización")
+  return { venta: data.venta, updatedAt: data.updatedAt ?? null }
+}
+
 export function useCotizacion(): Cotizacion {
-  const [venta, setVenta] = useState<number | null>(null)
-  const [actualizado, setActualizado] = useState<string | null>(null)
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState(false)
+  const query = useQuery({
+    queryKey: claves.cotizacion,
+    queryFn: pedirDolar,
+    staleTime: 5 * 60_000,
+  })
 
-  const cargar = useCallback(async () => {
-    setCargando(true)
-    try {
-      const res = await fetch("/api/dolar")
-      const data = await res.json()
-      if (!res.ok || typeof data.venta !== "number") throw new Error("sin cotización")
-      setVenta(data.venta)
-      setActualizado(data.updatedAt ?? null)
-      setError(false)
-    } catch {
-      // No se limpia `venta`: si ya había una cotización, seguir mostrándola
-      // vieja es mejor que dejar el campo del TC vacío en medio de una carga.
-      setError(true)
-    } finally {
-      setCargando(false)
-    }
-  }, [])
+  const { refetch } = query
+  const refrescar = useCallback(() => {
+    void refetch()
+  }, [refetch])
 
-  useEffect(() => {
-    cargar()
-  }, [cargar])
-
-  return { venta, actualizado, cargando, error, refrescar: cargar }
+  // Si un refresco falla, TanStack conserva la cotización anterior: seguir
+  // mostrándola vieja es mejor que dejar el TC vacío en medio de una carga.
+  return {
+    venta: query.data?.venta ?? null,
+    actualizado: query.data?.updatedAt ?? null,
+    cargando: query.isFetching,
+    error: query.isError,
+    refrescar,
+  }
 }

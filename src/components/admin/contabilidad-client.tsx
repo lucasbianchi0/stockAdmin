@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { AlertTriangle, BookOpen, Check, Download, Layers, Scale } from "lucide-react"
 
 import { SelectorCuenta } from "@/components/admin/selector-cuenta"
@@ -29,6 +30,7 @@ import {
 import { descargarCsv } from "@/lib/admin/csv"
 import { formatearImporte } from "@/lib/admin/moneda"
 import { TIPO_CUENTA_LABEL } from "@/lib/admin/plan-cuentas"
+import { claves, pedirJson } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
@@ -46,6 +48,19 @@ import { cn } from "@/lib/utils"
 
 type Solapa = "diario" | "mayor" | "saldos" | "pendientes"
 
+/** Sin filtro: el mismo URL que el aviso de cada módulo, así comparten caché. */
+const URL_PENDIENTES = "/api/admin/contabilidad/pendientes"
+
+type RespuestaPendientes = { documentos?: DocumentoSinAsiento[]; cantidad?: number }
+
+/** Una sola query para el contador de la solapa y para la lista: se invalidan juntas. */
+function usePendientes() {
+  return useQuery({
+    queryKey: claves.url(URL_PENDIENTES),
+    queryFn: ({ signal }) => pedirJson<RespuestaPendientes>(URL_PENDIENTES, { signal }),
+  })
+}
+
 const SOLAPAS: { valor: Solapa; etiqueta: string; icono: typeof BookOpen }[] = [
   { valor: "diario", etiqueta: "Libro diario", icono: BookOpen },
   { valor: "mayor", etiqueta: "Mayor", icono: Layers },
@@ -55,17 +70,10 @@ const SOLAPAS: { valor: Solapa; etiqueta: string; icono: typeof BookOpen }[] = [
 
 export function ContabilidadClient() {
   const [solapa, setSolapa] = useState<Solapa>("diario")
-  const [pendientes, setPendientes] = useState(0)
-
   // El contador de pendientes vive acá y no adentro de su solapa: es una alerta,
   // y una alerta que solo se ve entrando a la pantalla donde está el problema no
   // sirve de nada.
-  useEffect(() => {
-    fetch("/api/admin/contabilidad/pendientes")
-      .then((r) => r.json())
-      .then((d) => setPendientes(d.cantidad ?? 0))
-      .catch(() => setPendientes(0))
-  }, [])
+  const pendientes = usePendientes().data?.cantidad ?? 0
 
   return (
     <>
@@ -96,7 +104,7 @@ export function ContabilidadClient() {
       {solapa === "diario" && <Diario />}
       {solapa === "mayor" && <MayorDeCuenta />}
       {solapa === "saldos" && <Saldos />}
-      {solapa === "pendientes" && <Pendientes onContar={setPendientes} />}
+      {solapa === "pendientes" && <Pendientes />}
     </>
   )
 }
@@ -143,29 +151,26 @@ function RangoFechas({
 /* ── 1 · Libro diario ─────────────────────────────────────────────────────── */
 
 function Diario() {
-  const [asientos, setAsientos] = useState<Asiento[]>([])
-  const [cargando, setCargando] = useState(true)
-  const [truncado, setTruncado] = useState(false)
   const [desde, setDesde] = useState("")
   const [hasta, setHasta] = useState("")
   const [origen, setOrigen] = useState("")
 
-  useEffect(() => {
-    setCargando(true)
-    const p = new URLSearchParams()
-    if (desde) p.set("desde", desde)
-    if (hasta) p.set("hasta", hasta)
-    if (origen) p.set("origen", origen)
+  const p = new URLSearchParams()
+  if (desde) p.set("desde", desde)
+  if (hasta) p.set("hasta", hasta)
+  if (origen) p.set("origen", origen)
+  const url = `/api/admin/contabilidad/diario?${p}`
 
-    fetch(`/api/admin/contabilidad/diario?${p}`)
-      .then((r) => r.json())
-      .then((d) => {
-        setAsientos(d.asientos ?? [])
-        setTruncado(Boolean(d.truncado))
-      })
-      .catch(() => setAsientos([]))
-      .finally(() => setCargando(false))
-  }, [desde, hasta, origen])
+  // Al cambiar el filtro se sigue viendo el período anterior hasta que llega el nuevo.
+  const query = useQuery({
+    queryKey: claves.url(url),
+    queryFn: ({ signal }) =>
+      pedirJson<{ asientos?: Asiento[]; truncado?: boolean }>(url, { signal }),
+    placeholderData: keepPreviousData,
+  })
+  const asientos = query.data?.asientos ?? []
+  const truncado = Boolean(query.data?.truncado)
+  const cargando = query.isPending
 
   const exportar = () =>
     descargarCsv(
@@ -306,25 +311,25 @@ function MayorDeCuenta() {
   const [cuenta, setCuenta] = useState("")
   const [desde, setDesde] = useState("")
   const [hasta, setHasta] = useState("")
-  const [mayor, setMayor] = useState<Mayor | null>(null)
-  const [cargando, setCargando] = useState(false)
 
-  useEffect(() => {
-    if (!cuenta) {
-      setMayor(null)
-      return
-    }
-    setCargando(true)
-    const p = new URLSearchParams({ cuenta })
-    if (desde) p.set("desde", desde)
-    if (hasta) p.set("hasta", hasta)
+  const p = new URLSearchParams({ cuenta })
+  if (desde) p.set("desde", desde)
+  if (hasta) p.set("hasta", hasta)
+  const url = `/api/admin/contabilidad/mayor?${p}`
 
-    fetch(`/api/admin/contabilidad/mayor?${p}`)
-      .then((r) => r.json())
-      .then((d) => setMayor(d.cuenta ? d : null))
-      .catch(() => setMayor(null))
-      .finally(() => setCargando(false))
-  }, [cuenta, desde, hasta])
+  const query = useQuery({
+    queryKey: claves.url(url),
+    queryFn: ({ signal }) => pedirJson<Partial<Mayor>>(url, { signal }),
+    enabled: Boolean(cuenta),
+    placeholderData: keepPreviousData,
+  })
+  const datos = query.data
+  // Mientras llega otra cuenta no se muestra el mayor de la anterior: con fechas
+  // nuevas sí se deja el período viejo a la vista, pero confundir una cuenta con
+  // otra es peor que esperar.
+  const deOtraCuenta = query.isPlaceholderData && datos?.cuenta?.id !== cuenta
+  const cargando = query.isPending || deOtraCuenta
+  const mayor = !deOtraCuenta && datos?.cuenta ? (datos as Mayor) : null
 
   const exportar = () => {
     if (!mayor) return
@@ -475,25 +480,22 @@ function MayorDeCuenta() {
 /* ── 3 · Sumas y saldos ───────────────────────────────────────────────────── */
 
 function Saldos() {
-  const [datos, setDatos] = useState<(SumasYSaldos & { truncado?: boolean }) | null>(null)
-  const [cargando, setCargando] = useState(true)
   const [desde, setDesde] = useState("")
   const [hasta, setHasta] = useState("")
 
-  const cargar = useCallback(() => {
-    setCargando(true)
-    const p = new URLSearchParams()
-    if (desde) p.set("desde", desde)
-    if (hasta) p.set("hasta", hasta)
+  const p = new URLSearchParams()
+  if (desde) p.set("desde", desde)
+  if (hasta) p.set("hasta", hasta)
+  const url = `/api/admin/contabilidad/sumas-y-saldos?${p}`
 
-    fetch(`/api/admin/contabilidad/sumas-y-saldos?${p}`)
-      .then((r) => r.json())
-      .then((d) => setDatos(d.filas ? d : null))
-      .catch(() => setDatos(null))
-      .finally(() => setCargando(false))
-  }, [desde, hasta])
-
-  useEffect(cargar, [cargar])
+  const query = useQuery({
+    queryKey: claves.url(url),
+    queryFn: ({ signal }) =>
+      pedirJson<Partial<SumasYSaldos> & { truncado?: boolean }>(url, { signal }),
+    placeholderData: keepPreviousData,
+  })
+  const cargando = query.isPending
+  const datos = query.data?.filas ? (query.data as SumasYSaldos & { truncado?: boolean }) : null
 
   const exportar = () => {
     if (!datos) return
@@ -611,27 +613,14 @@ function Saldos() {
 
 /* ── 4 · Sin asentar ──────────────────────────────────────────────────────── */
 
-function Pendientes({ onContar }: { onContar: (n: number) => void }) {
-  const [docs, setDocs] = useState<DocumentoSinAsiento[]>([])
-  const [cargando, setCargando] = useState(true)
+function Pendientes() {
   const [corrigiendo, setCorrigiendo] = useState(false)
 
-  const cargar = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/contabilidad/pendientes")
-      const d = await res.json()
-      setDocs(d.documentos ?? [])
-      onContar(d.cantidad ?? 0)
-    } catch {
-      setDocs([])
-    } finally {
-      setCargando(false)
-    }
-  }, [onContar])
-
-  useEffect(() => {
-    void cargar()
-  }, [cargar])
+  // La misma query que el contador de la solapa: al corregir, el diálogo
+  // invalida la caché y los dos se actualizan juntos.
+  const query = usePendientes()
+  const docs = query.data?.documentos ?? []
+  const cargando = query.isPending
 
   if (cargando) return <LoadingState label="Buscando documentos sin asentar…" />
 
@@ -692,7 +681,6 @@ function Pendientes({ onContar }: { onContar: (n: number) => void }) {
         abierto={corrigiendo}
         documentos={docs}
         onCerrar={() => setCorrigiendo(false)}
-        onCorregido={cargar}
       />
     </div>
   )

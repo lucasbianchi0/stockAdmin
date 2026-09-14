@@ -21,7 +21,9 @@
  *     es lo que hace que 224 no se sientan.
  */
 
-import { useEffect, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+
+import { claves, getQueryClient, pedirJson } from "@/lib/admin/query"
 
 /* ── Vocabulario ──────────────────────────────────────────────────────────── */
 
@@ -147,48 +149,35 @@ export function recordarCuenta(id: string): void {
 
 /* ── Carga ────────────────────────────────────────────────────────────────── */
 
-/** La promesa, no el resultado: si dos formularios se abren a la vez, los dos
- *  esperan el mismo fetch en vez de disparar uno cada uno. */
-let cache: Promise<CuentaContable[]> | null = null
+/* Vive en la caché de TanStack Query: si dos formularios se abren a la vez, los
+ * dos esperan el mismo fetch, y un error no envenena la caché —el próximo
+ * formulario vuelve a intentar—. Se considera fresco una hora; cualquier
+ * escritura del administrador lo invalida igual. */
+
+const opcionesPlan = {
+  queryKey: claves.planCuentas,
+  queryFn: () =>
+    pedirJson<{ cuentas?: CuentaContable[] }>("/api/admin/plan-cuentas").then(
+      (d) => d.cuentas ?? []
+    ),
+  staleTime: 60 * 60_000,
+}
 
 export function cargarPlanCuentas(): Promise<CuentaContable[]> {
-  if (!cache) {
-    cache = fetch("/api/admin/plan-cuentas")
-      .then((r) => r.json())
-      .then((d) => (d.cuentas ?? []) as CuentaContable[])
-      .catch((e) => {
-        // Sin esto, un error de red deja la caché envenenada con una promesa
-        // rechazada y el selector no se recupera nunca, ni recargando el
-        // formulario.
-        cache = null
-        throw e
-      })
-  }
-  return cache
+  return getQueryClient().fetchQuery(opcionesPlan)
 }
 
 /** Para después de tocar el plan de cuentas desde su pantalla de mantenimiento. */
 export function olvidarPlanCuentas(): void {
-  cache = null
+  void getQueryClient().invalidateQueries({ queryKey: claves.planCuentas })
 }
+
+const SIN_CUENTAS: CuentaContable[] = []
 
 /** El plan, listo para un formulario. Devuelve lista vacía mientras carga: los
  *  selectores ya manejan ese caso y un `undefined` obligaría a chequearlo en
  *  cada uno. */
 export function usePlanCuentas(): { cuentas: CuentaContable[]; cargando: boolean } {
-  const [cuentas, setCuentas] = useState<CuentaContable[]>([])
-  const [cargando, setCargando] = useState(true)
-
-  useEffect(() => {
-    let vigente = true
-    cargarPlanCuentas()
-      .then((c) => vigente && setCuentas(c))
-      .catch(() => vigente && setCuentas([]))
-      .finally(() => vigente && setCargando(false))
-    return () => {
-      vigente = false
-    }
-  }, [])
-
-  return { cuentas, cargando }
+  const query = useQuery(opcionesPlan)
+  return { cuentas: query.data ?? SIN_CUENTAS, cargando: query.isPending }
 }

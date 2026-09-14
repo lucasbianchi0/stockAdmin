@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useRef, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { FileText, ImageIcon, Loader2, Paperclip, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 
@@ -13,6 +14,7 @@ import {
   tipoAceptado,
   type Adjunto,
 } from "@/lib/admin/adjuntos"
+import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
@@ -27,29 +29,22 @@ import { cn } from "@/lib/utils"
  * para saber cuál es cuál.
  */
 export function AdjuntosPanel({ comprobanteId }: { comprobanteId: string }) {
-  const [adjuntos, setAdjuntos] = useState<Adjunto[]>([])
-  const [cargando, setCargando] = useState(true)
   const [subiendo, setSubiendo] = useState(false)
   const [encima, setEncima] = useState(false)
   const [borrando, setBorrando] = useState<string | null>(null)
   const entrada = useRef<HTMLInputElement>(null)
+  const qc = useQueryClient()
+  const invalidar = useInvalidarAdmin()
 
-  const cargar = useCallback(async () => {
-    setCargando(true)
-    try {
-      const res = await fetch(`/api/admin/adjuntos?comprobanteId=${comprobanteId}`)
-      const data = await res.json()
-      setAdjuntos(data.adjuntos ?? [])
-    } catch {
-      setAdjuntos([])
-    } finally {
-      setCargando(false)
-    }
-  }, [comprobanteId])
-
-  useEffect(() => {
-    cargar()
-  }, [cargar])
+  const url = `/api/admin/adjuntos?comprobanteId=${comprobanteId}`
+  const query = useQuery({
+    queryKey: claves.url(url),
+    queryFn: ({ signal }) => pedirJson<{ adjuntos?: Adjunto[] }>(url, { signal }),
+  })
+  // Si no se pudieron traer, se muestra como sin archivos: el panel sigue
+  // sirviendo para adjuntar.
+  const adjuntos = query.data?.adjuntos ?? []
+  const cargando = query.isPending
 
   const subir = useCallback(
     async (archivos: FileList | File[]) => {
@@ -91,11 +86,11 @@ export function AdjuntosPanel({ comprobanteId }: { comprobanteId: string }) {
 
       if (ok > 0) {
         toast.success(ok === 1 ? "Archivo adjuntado" : `${ok} archivos adjuntados`)
-        cargar()
+        void invalidar()
       }
       setSubiendo(false)
     },
-    [comprobanteId, cargar]
+    [comprobanteId, invalidar]
   )
 
   const borrar = async (a: Adjunto) => {
@@ -103,7 +98,11 @@ export function AdjuntosPanel({ comprobanteId }: { comprobanteId: string }) {
     try {
       const res = await fetch(`/api/admin/adjuntos/${a.id}`, { method: "DELETE" })
       if (!res.ok) throw new Error((await res.json()).error ?? "No se pudo borrar")
-      setAdjuntos((prev) => prev.filter((x) => x.id !== a.id))
+      // Se saca de la caché en el acto, sin esperar a que vuelva la lista.
+      qc.setQueryData<{ adjuntos?: Adjunto[] }>(claves.url(url), (prev) =>
+        prev ? { ...prev, adjuntos: prev.adjuntos?.filter((x) => x.id !== a.id) } : prev
+      )
+      void invalidar()
       toast.success("Archivo borrado")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo borrar")

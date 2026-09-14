@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { Fragment } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { Pencil } from "lucide-react"
 
 import {
@@ -31,6 +32,7 @@ import {
 import type { ComprobanteDetalle as Datos } from "@/lib/admin/detalle"
 import { formatearFecha, formatearFechaLarga } from "@/lib/admin/fecha"
 import { formatearContravalor, formatearImporte, formatearTc } from "@/lib/admin/moneda"
+import { claves, mensajeError, pedirJson } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
@@ -56,30 +58,18 @@ export function ComprobanteDetalle({
 }) {
   const recurso = tipo === "compra" ? "compras" : "ventas"
 
-  const [datos, setDatos] = useState<Datos | null>(null)
-  const [cargando, setCargando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Se pide solo con el panel abierto; reabrir la misma factura la muestra de
+  // la caché mientras se refresca.
+  const url = `/api/admin/${recurso}/${comprobanteId}/detalle`
+  const query = useQuery({
+    queryKey: claves.url(url),
+    queryFn: ({ signal }) => pedirJson<Datos>(url, { signal }),
+    enabled: abierto && comprobanteId !== null,
+  })
 
-  const cargar = useCallback(async () => {
-    if (!comprobanteId) return
-    setCargando(true)
-    setError(null)
-    try {
-      const res = await fetch(`/api/admin/${recurso}/${comprobanteId}/detalle`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "No se pudo cargar el comprobante")
-      setDatos(data)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo cargar el comprobante")
-    } finally {
-      setCargando(false)
-    }
-  }, [comprobanteId, recurso])
-
-  useEffect(() => {
-    if (abierto) cargar()
-    else setDatos(null)
-  }, [abierto, cargar])
+  const datos = abierto ? (query.data ?? null) : null
+  const cargando = abierto && query.isPending
+  const error = query.isError ? mensajeError(query.error, "No se pudo cargar el comprobante") : null
 
   const c = datos?.comprobante
   const esCompra = tipo === "compra"
@@ -166,14 +156,43 @@ export function ComprobanteDetalle({
 
           <Bloque titulo="Composición del total">
             <div className="overflow-hidden rounded-lg border border-line">
-              <Importe rotulo="Neto gravado" valor={c.netoGravado} moneda={c.moneda} />
-              <Importe
-                rotulo={`IVA${
-                  c.alicuotaIva !== null ? ` ${ALICUOTA_LABEL[String(c.alicuotaIva)] ?? ""}` : ""
-                }`}
-                valor={c.iva}
-                moneda={c.moneda}
-              />
+              {/*
+                Con una sola alícuota se ve como siempre: neto e «IVA 21 %».
+
+                Con varias, mostrar un «IVA» a secas escondería la única pregunta
+                que importa —cuánto va a cada alícuota—, que es la que hay que
+                contestar en la declaración jurada. Así que cada tramo se abre en
+                su propio par de renglones.
+              */}
+              {c.ivas.length > 1 ? (
+                c.ivas.map((r) => (
+                  <Fragment key={r.alicuota}>
+                    <Importe
+                      rotulo={`Neto gravado al ${ALICUOTA_LABEL[String(r.alicuota)] ?? ""}`}
+                      valor={r.neto}
+                      moneda={c.moneda}
+                    />
+                    <Importe
+                      rotulo={`IVA ${ALICUOTA_LABEL[String(r.alicuota)] ?? ""}`}
+                      valor={r.iva}
+                      moneda={c.moneda}
+                    />
+                  </Fragment>
+                ))
+              ) : (
+                <>
+                  <Importe rotulo="Neto gravado" valor={c.netoGravado} moneda={c.moneda} />
+                  <Importe
+                    rotulo={`IVA${
+                      c.alicuotaIva !== null
+                        ? ` ${ALICUOTA_LABEL[String(c.alicuotaIva)] ?? ""}`
+                        : ""
+                    }`}
+                    valor={c.iva}
+                    moneda={c.moneda}
+                  />
+                </>
+              )}
               <Importe rotulo="No gravado" valor={c.noGravado} moneda={c.moneda} />
               <Importe rotulo="Exento" valor={c.exento} moneda={c.moneda} />
               <Importe rotulo="Percepción IVA" valor={c.percepcionIva} moneda={c.moneda} />

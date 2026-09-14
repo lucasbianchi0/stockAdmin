@@ -1,11 +1,12 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { ArrowLeftRight, FileInput, Plus, Receipt, Search } from "lucide-react"
 import { toast } from "sonner"
 
 import { AvisoSinAsiento } from "@/components/admin/aviso-sin-asiento"
-import { ConfirmarDialog } from "@/components/admin/confirmar-dialog"
+import { ConfirmarDialog } from "@/components/ui/confirmar-dialog"
 import { LecturaGastoDialog } from "@/components/admin/lectura-gasto-dialog"
 import { MovimientoDetalle } from "@/components/admin/movimiento-detalle"
 import {
@@ -34,8 +35,12 @@ import {
   esEditable,
   type Movimiento,
 } from "@/lib/admin/movimientos"
+import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { useTablaAdmin } from "@/lib/admin/use-tabla"
 import { cn } from "@/lib/utils"
+
+const URL_CUENTAS = "/api/admin/cuentas"
+const SIN_CUENTAS: CuentaFinanciera[] = []
 
 /**
  * Otros movimientos — el punto 2.3.B del pliego.
@@ -63,7 +68,14 @@ import { cn } from "@/lib/utils"
  */
 export function MovimientosClient() {
   const [cuentaId, setCuentaId] = useState("")
-  const [cuentas, setCuentas] = useState<CuentaFinanciera[]>([])
+  const invalidar = useInvalidarAdmin()
+
+  const { data: cuentas = SIN_CUENTAS } = useQuery({
+    queryKey: claves.url(URL_CUENTAS),
+    queryFn: ({ signal }) =>
+      pedirJson<{ cuentas?: CuentaFinanciera[] }>(URL_CUENTAS, { signal }),
+    select: (d) => d.cuentas ?? SIN_CUENTAS,
+  })
 
   const tabla = useTablaAdmin<Movimiento>({
     endpoint: "/api/admin/movimientos",
@@ -81,24 +93,12 @@ export function MovimientosClient() {
   const [aBorrar, setABorrar] = useState<Movimiento | null>(null)
   const [borrando, setBorrando] = useState(false)
 
-  const { recargar } = tabla
-
-  useEffect(() => {
-    fetch("/api/admin/cuentas")
-      .then((r) => r.json())
-      .then((d) => setCuentas(d.cuentas ?? []))
-      .catch(() => setCuentas([]))
+  // La tabla se refresca sola: el diálogo invalida el administrador al guardar.
+  const alGuardar = useCallback((corregido = false) => {
+    setDialogo(null)
+    setBorrador(null)
+    toast.success(corregido ? "Movimiento corregido" : "Movimiento registrado")
   }, [])
-
-  const alGuardar = useCallback(
-    (corregido = false) => {
-      setDialogo(null)
-      setBorrador(null)
-      toast.success(corregido ? "Movimiento corregido" : "Movimiento registrado")
-      recargar()
-    },
-    [recargar]
-  )
 
   const conciliar = async (m: Movimiento) => {
     try {
@@ -110,7 +110,7 @@ export function MovimientosClient() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudo conciliar")
       setVer(null)
-      recargar()
+      invalidar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo conciliar")
     }
@@ -126,7 +126,7 @@ export function MovimientosClient() {
       toast.success("Movimiento borrado")
       setABorrar(null)
       setVer(null)
-      recargar()
+      invalidar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo borrar")
     } finally {

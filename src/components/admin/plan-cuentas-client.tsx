@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { BookOpen, Loader2, Search, Upload } from "lucide-react"
 import { toast } from "sonner"
 
@@ -24,6 +25,7 @@ import {
   type CuentaContable,
 } from "@/lib/admin/plan-cuentas"
 import type { ResultadoImportacion } from "@/lib/admin/plan-cuentas-importar"
+import { claves, mensajeError, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
@@ -46,6 +48,8 @@ import { cn } from "@/lib/utils"
 /** El plan entero, no solo lo imputable y activo que piden los selectores. */
 const ENDPOINT = "/api/admin/plan-cuentas?todas=1"
 
+const SIN_CUENTAS: CuentaContable[] = []
+
 type Filtro = "todas" | "activas" | "inactivas"
 
 const FILTROS: { valor: Filtro; etiqueta: string }[] = [
@@ -55,9 +59,6 @@ const FILTROS: { valor: Filtro; etiqueta: string }[] = [
 ]
 
 export function PlanCuentasClient() {
-  const [cuentas, setCuentas] = useState<CuentaContable[]>([])
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState("")
   const [filtro, setFiltro] = useState<Filtro>("todas")
   const [importando, setImportando] = useState(false)
@@ -66,24 +67,19 @@ export function PlanCuentasClient() {
 
   const archivo = useRef<HTMLInputElement>(null)
 
-  const cargar = async () => {
-    setCargando(true)
-    setError(null)
-    try {
-      const res = await fetch(ENDPOINT)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "No se pudo cargar el plan")
-      setCuentas((data.cuentas ?? []) as CuentaContable[])
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo cargar el plan")
-    } finally {
-      setCargando(false)
-    }
-  }
+  const qc = useQueryClient()
+  const invalidar = useInvalidarAdmin()
 
-  useEffect(() => {
-    void cargar()
-  }, [])
+  // No comparte caché con `usePlanCuentas`: los selectores piden solo lo activo
+  // e imputable, y acá hace falta el plan entero. Cualquier escritura invalida
+  // las dos igual.
+  const query = useQuery({
+    queryKey: claves.url(ENDPOINT),
+    queryFn: ({ signal }) => pedirJson<{ cuentas?: CuentaContable[] }>(ENDPOINT, { signal }),
+  })
+  const cuentas = query.data?.cuentas ?? SIN_CUENTAS
+  const cargando = query.isPending
+  const error = query.isError ? mensajeError(query.error, "No se pudo cargar el plan") : null
 
   const visibles = useMemo(() => {
     const porEstado = cuentas.filter((c) =>
@@ -121,7 +117,7 @@ export function PlanCuentasClient() {
           ? "El plan ya estaba al día"
           : `${r.altas} cuentas nuevas y ${r.cambios} actualizadas`
       )
-      await cargar()
+      await invalidar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo importar")
     } finally {
@@ -140,10 +136,19 @@ export function PlanCuentasClient() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudo actualizar")
-      setCuentas((prev) =>
-        prev.map((x) => (x.id === c.id ? { ...x, activo: !c.activo } : x))
+      // La fila cambia en el acto; la invalidación confirma contra el servidor.
+      qc.setQueryData<{ cuentas?: CuentaContable[] }>(claves.url(ENDPOINT), (prev) =>
+        prev?.cuentas
+          ? {
+              ...prev,
+              cuentas: prev.cuentas.map((x) =>
+                x.id === c.id ? { ...x, activo: !c.activo } : x
+              ),
+            }
+          : prev
       )
       olvidarPlanCuentas()
+      void invalidar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo actualizar")
     } finally {
@@ -257,7 +262,7 @@ export function PlanCuentasClient() {
         {cargando ? (
           <LoadingState label="Cargando el plan de cuentas…" />
         ) : error ? (
-          <ErrorState message={error} onRetry={cargar} />
+          <ErrorState message={error} onRetry={() => void query.refetch()} />
         ) : visibles.length === 0 ? (
           <EmptyState
             icon={BookOpen}

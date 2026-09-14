@@ -1,3 +1,4 @@
+import { cache } from "react"
 import { notFound } from "next/navigation"
 
 import { ExtractoClient } from "@/components/admin/extracto-client"
@@ -13,14 +14,15 @@ import { supabase } from "@/lib/supabase"
  * evitable.
  */
 
-async function cuentaDe(id: string) {
+/** Con `cache`, el título y la página comparten una sola lectura por pedido. */
+const cuentaDe = cache(async (id: string) => {
   const { data } = await supabase
     .from("cuentas_financieras")
     .select("id, nombre, tipo, moneda, banco, numero_cuenta, cbu, alias")
     .eq("id", id)
     .maybeSingle()
   return data
-}
+})
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params

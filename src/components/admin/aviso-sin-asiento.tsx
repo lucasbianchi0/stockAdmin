@@ -1,11 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { AlertTriangle } from "lucide-react"
 
 import { CorregirImputacionDialog } from "@/components/admin/corregir-imputacion-dialog"
 import { Button } from "@/components/ui/button"
 import type { DocumentoSinAsiento } from "@/lib/admin/asientos"
+import { claves, pedirJson } from "@/lib/admin/query"
 import type { FiltroPendientes } from "@/lib/admin/pendientes-contables-server"
 
 /**
@@ -34,34 +36,28 @@ export function AvisoSinAsiento({
   filtro: FiltroPendientes
   onCorregido?: () => void
 }) {
-  const [docs, setDocs] = useState<DocumentoSinAsiento[]>([])
-  const [cargando, setCargando] = useState(true)
   const [abierto, setAbierto] = useState(false)
 
   const { origen, tipo } = filtro
+  const params = new URLSearchParams()
+  if (origen) params.set("origen", origen)
+  if (tipo) params.set("tipo", tipo)
+  // Sin filtro, el mismo URL que la solapa de Contabilidad: comparten caché.
+  const qs = params.toString()
+  const url = `/api/admin/contabilidad/pendientes${qs ? `?${qs}` : ""}`
 
-  const cargar = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      if (origen) params.set("origen", origen)
-      if (tipo) params.set("tipo", tipo)
-      const res = await fetch(`/api/admin/contabilidad/pendientes?${params}`)
-      const data = await res.json()
-      setDocs(data.documentos ?? [])
-    } catch {
-      // Un fallo acá no puede romper la pantalla: el aviso es información
-      // adicional sobre otra cosa, y sin él el módulo sigue siendo usable.
-      setDocs([])
-    } finally {
-      setCargando(false)
-    }
-  }, [origen, tipo])
+  const query = useQuery({
+    queryKey: claves.url(url),
+    queryFn: ({ signal }) =>
+      pedirJson<{ documentos?: DocumentoSinAsiento[] }>(url, { signal }),
+  })
 
-  useEffect(() => {
-    void cargar()
-  }, [cargar])
+  // Un fallo acá no puede romper la pantalla: el aviso es información adicional
+  // sobre otra cosa, y sin él el módulo sigue siendo usable. Por eso un error se
+  // lee igual que "no hay pendientes".
+  const docs = query.data?.documentos ?? []
 
-  if (cargando || docs.length === 0) return null
+  if (query.isPending || docs.length === 0) return null
 
   const total = docs.length
   // "Se arregla en dos clicks" sólo es cierto cuando todo lo que falta es elegir
@@ -103,10 +99,7 @@ export function AvisoSinAsiento({
         abierto={abierto}
         documentos={docs}
         onCerrar={() => setAbierto(false)}
-        onCorregido={() => {
-          void cargar()
-          onCorregido?.()
-        }}
+        onCorregido={onCorregido}
       />
     </>
   )

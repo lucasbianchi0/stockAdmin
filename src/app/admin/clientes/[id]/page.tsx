@@ -1,3 +1,4 @@
+import { cache } from "react"
 import { notFound } from "next/navigation"
 
 import { FichaEntidadClient } from "@/components/admin/ficha-entidad-client"
@@ -11,14 +12,15 @@ import { supabase } from "@/lib/supabase"
  * pestaña salgan bien en el primer render, en vez de parpadear un "Cargando…".
  */
 
-async function clienteDe(id: string) {
+/** Con `cache`, el título y la página comparten una sola lectura por pedido. */
+const clienteDe = cache(async (id: string) => {
   const { data } = await supabase
     .from("clientes")
     .select("id, razon_social, activo")
     .eq("id", id)
     .maybeSingle()
   return data
-}
+})
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params

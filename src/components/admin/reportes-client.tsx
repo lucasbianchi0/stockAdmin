@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { Download, PieChart, Wallet } from "lucide-react"
 
 import { SemaforoVencimiento } from "@/components/admin/semaforo-vencimiento"
@@ -18,6 +19,7 @@ import {
 import { descargarCsv } from "@/lib/admin/csv"
 import type { CuentaFinanciera } from "@/lib/admin/cobros"
 import { formatearImporte } from "@/lib/admin/moneda"
+import { claves, pedirJson } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
@@ -117,23 +119,17 @@ export function ReportesClient() {
 /* ── Pendientes de cobro / de pago ────────────────────────────────────────── */
 
 function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
-  const [filas, setFilas] = useState<Pendiente[]>([])
-  const [totales, setTotales] = useState<Totales | null>(null)
-  const [cargando, setCargando] = useState(true)
-
   const esVenta = tipo === "venta"
 
-  useEffect(() => {
-    setCargando(true)
-    fetch(`/api/admin/reportes/pendientes?tipo=${tipo}`)
-      .then((r) => r.json())
-      .then((d) => {
-        setFilas(d.filas ?? [])
-        setTotales(d.totales ?? null)
-      })
-      .catch(() => setFilas([]))
-      .finally(() => setCargando(false))
-  }, [tipo])
+  const url = `/api/admin/reportes/pendientes?tipo=${tipo}`
+  const query = useQuery({
+    queryKey: claves.url(url),
+    queryFn: ({ signal }) =>
+      pedirJson<{ filas?: Pendiente[]; totales?: Totales }>(url, { signal }),
+  })
+  const filas = query.data?.filas ?? []
+  const totales = query.data?.totales ?? null
+  const cargando = query.isPending
 
   const exportar = () =>
     descargarCsv(
@@ -256,17 +252,17 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
 
 /* ── Saldos por cuenta ────────────────────────────────────────────────────── */
 
-function Saldos() {
-  const [cuentas, setCuentas] = useState<CuentaFinanciera[]>([])
-  const [cargando, setCargando] = useState(true)
+const URL_CUENTAS = "/api/admin/cuentas"
 
-  useEffect(() => {
-    fetch("/api/admin/cuentas")
-      .then((r) => r.json())
-      .then((d) => setCuentas(d.cuentas ?? []))
-      .catch(() => setCuentas([]))
-      .finally(() => setCargando(false))
-  }, [])
+function Saldos() {
+  // El mismo URL que usan movimientos y los formularios de cobro: comparten caché.
+  const query = useQuery({
+    queryKey: claves.url(URL_CUENTAS),
+    queryFn: ({ signal }) =>
+      pedirJson<{ cuentas?: CuentaFinanciera[] }>(URL_CUENTAS, { signal }),
+  })
+  const cuentas = query.data?.cuentas ?? []
+  const cargando = query.isPending
 
   if (cargando) return <LoadingState label="Cargando saldos…" />
 

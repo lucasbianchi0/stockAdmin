@@ -7,7 +7,7 @@ import { toast } from "sonner"
 import { AvisoSinAsiento } from "@/components/admin/aviso-sin-asiento"
 import { PagoDialog } from "@/components/admin/pago-dialog"
 import { PagoDetalle } from "@/components/admin/pago-detalle"
-import { ConfirmarDialog } from "@/components/admin/confirmar-dialog"
+import { ConfirmarDialog } from "@/components/ui/confirmar-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Paginacion } from "@/components/ui/paginacion"
@@ -25,6 +25,7 @@ import type { Cobro } from "@/lib/admin/cobros"
 import type { TipoPago } from "@/lib/admin/cobros-server"
 import { formatearFecha } from "@/lib/admin/fecha"
 import { formatearImporte } from "@/lib/admin/moneda"
+import { useInvalidarAdmin } from "@/lib/admin/query"
 import { useTablaAdmin } from "@/lib/admin/use-tabla"
 import { cn } from "@/lib/utils"
 
@@ -71,15 +72,15 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
    *  que así vuelve a preguntar en vez de quedarse con la foto vieja. */
   const [refrescoAvisos, setRefrescoAvisos] = useState(0)
 
-  const { recargar } = tabla
+  const invalidar = useInvalidarAdmin()
 
+  // El listado se refresca solo: el formulario invalida el admin al guardar.
   const alGuardar = useCallback(() => {
     setNuevo(false)
     setEditando(null)
     toast.success(esCobro ? "Cobro registrado" : "Pago registrado")
     setRefrescoAvisos((n) => n + 1)
-    recargar()
-  }, [recargar, esCobro])
+  }, [esCobro])
 
   const anular = async () => {
     if (!aAnular) return
@@ -94,7 +95,7 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
       setAAnular(null)
       setVer(null)
       setRefrescoAvisos((n) => n + 1)
-      recargar()
+      void invalidar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo anular")
     } finally {
@@ -110,7 +111,7 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
       <AvisoSinAsiento
         key={`aviso-${refrescoAvisos}`}
         filtro={{ origen: "pago", tipo: esCobro ? "venta" : "compra" }}
-        onCorregido={recargar}
+        onCorregido={invalidar}
       />
 
       <div className="panel overflow-hidden">
