@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Check, CloudUpload, Download, Inbox, Loader2, Mail, Trophy, UserCheck } from "lucide-react"
+import { Check, CloudUpload, Download, Inbox, Loader2, Mail, Trophy, Undo2, UserCheck } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -276,6 +276,37 @@ function FilaLead({
     }
   }
 
+  /**
+   * Marca (o desmarca) esta dirección como del equipo.
+   *
+   * Es lo que cierra el agujero que la regla de dominio no puede: las casillas
+   * personales de gente de adentro. Lo decide quien está mirando el lead, que es
+   * el único que sabe quién es — y aplica hacia atrás, porque el filtro corre al
+   * leer, no al guardar.
+   */
+  async function marcarEquipo(esEquipo: boolean) {
+    setGuardando(true)
+    try {
+      const res = esEquipo
+        ? await fetch(`/api/marketing/equipo?email=${encodeURIComponent(lead.email)}`, { method: "DELETE" })
+        : await fetch("/api/marketing/equipo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: lead.email }),
+          })
+      if (!res.ok) {
+        const cuerpo = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(cuerpo.error ?? "No se pudo guardar")
+      }
+      toast.success(esEquipo ? "Vuelve a contar como consulta" : "Descontado de todos los números")
+      recargar()
+    } catch (e) {
+      toast.error(mensajeError(e, "No se pudo cambiar"))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
   const fecha = new Date(lead.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short" })
   const recorrido = lead.recorrido.slice(0, 3)
   const resto = lead.recorrido.length - recorrido.length
@@ -293,11 +324,23 @@ function FilaLead({
           {lead.email}
         </a>
         {lead.empresa && <p className="text-[11px] text-ink-faint">{lead.empresa}</p>}
-        {lead.equipo && (
-          <span className="mt-1 inline-block">
-            <Badge tone="warning">Del equipo</Badge>
-          </span>
-        )}
+        <div className="mt-1 flex items-center gap-1.5">
+          {lead.equipo && <Badge tone="warning">Del equipo</Badge>}
+          <button
+            type="button"
+            disabled={guardando}
+            onClick={() => void marcarEquipo(lead.equipo)}
+            title={
+              lead.equipo
+                ? "Sacarlo de la lista del equipo y volver a contarlo como consulta"
+                : "Es alguien de adentro: descontarlo de todos los números"
+            }
+            className="inline-flex items-center gap-1 rounded border border-line px-1.5 py-px text-[10px] font-medium text-ink-faint transition-colors hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50"
+          >
+            {lead.equipo ? <Undo2 className="h-2.5 w-2.5" /> : <UserCheck className="h-2.5 w-2.5" />}
+            {lead.equipo ? "No es del equipo" : "Es del equipo"}
+          </button>
+        </div>
       </td>
 
       <td className="px-3 py-2 align-top">
