@@ -139,9 +139,9 @@ export async function leerDocumento(clave: unknown, documentos: Documento[]): Pr
         type: "document",
         source: { type: "base64", media_type: "application/pdf", data: bytes.toString("base64") },
         title: doc.titulo.slice(0, 200),
-        // Si en la misma respuesta hace falta otra vuelta, el PDF se lee de la
-        // caché y no se vuelve a pagar entero.
-        cache_control: { type: "ephemeral" },
+        // Sin marca de caché propia: la caché automática de la ruta cae al
+        // final de cada vuelta y ya cubre el PDF. Con marca, dos lecturas más
+        // los bloques del sistema pasaban el tope de cuatro de la API.
       },
     ]
   } catch (e) {

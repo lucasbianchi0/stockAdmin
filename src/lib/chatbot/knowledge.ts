@@ -25,15 +25,19 @@ import type { Acceso, Modulo } from "@/lib/permisos"
 
 const bloque = (id: string) => BLOQUES_CONTEXTO.find((b) => b.id === id)?.texto ?? ""
 
-const COMUN = `# El backoffice
+export const COMUN = `# El backoffice
 Tiene tres módulos —Productos, Marketing y Administración— y cada persona ve los que tiene habilitados; el acceso lo asigna un administrador. La barra lateral agrupa las pantallas por módulo; en el teléfono se abre con el botón de menú de arriba a la izquierda.
+
+# Ticketera — la ve todo el equipo
+- \`/tickets\` Ticketera — el tablero de actividades, el primero de la barra lateral. Tres columnas: Backlog, En progreso y Hecho; las tarjetas se arrastran de una a otra y lo terminado se archiva para que Hecho no se llene. Arriba, los avatares del equipo filtran por persona y los chips filtran por proyecto. Cada ticket tiene título, descripción, quién lo pidió, a quién está asignado, un proyecto opcional e imágenes.
+No pertenece a ningún módulo: la ve cualquiera que tenga alguno, porque su valor es que se vea en qué anda el resto sin preguntar. Con \`crear_ticket\` podés anotar ahí lo que la persona te pida —y sólo lo que te pida—; nace sin asignar, y el reparto se hace en esa pantalla.
 
 # Datos públicos de Accedra
 ${bloque("identidad")}
 
 ${bloque("ficha")}`
 
-const PRODUCTOS = `# Módulo Productos
+export const PRODUCTOS = `# Módulo Productos
 - \`/\` Inventario — el catálogo completo de Distecna, el mayorista: stock, precios e impuestos. Cada producto abre su ficha.
 - \`/mis-productos\` Nuestros Productos — la selección de Accedra, con precio mínimo y semáforo de publicación.
 - \`/orders\` Pedidos — los pedidos generados a Distecna desde Nuestros Productos, con su estado.`
@@ -100,7 +104,7 @@ Es la fuente de verdad de la marca. Todo lo que respondas de marca sale de acá.
 
 ${armarPrompt(PROMPTS[0])}`
 
-const ADMINISTRACION = `# Módulo Administración
+export const ADMINISTRACION = `# Módulo Administración
 Ordenado como el organigrama del contador:
 1. \`/admin/maestros\` Datos maestros — el plan de cuentas del estudio contable y el Excel con el que se actualiza.
 2. Proveedores

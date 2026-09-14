@@ -1,4 +1,7 @@
 import type { Acceso, Modulo } from "@/lib/permisos"
+import type { Atajo } from "@/lib/chatbot/agentes"
+
+export type { Atajo }
 
 /**
  * Los accesos rápidos del asistente.
@@ -11,8 +14,6 @@ import type { Acceso, Modulo } from "@/lib/permisos"
  * El criterio para elegirlos: lo que cada persona necesita hacer, no lo que el
  * sistema sabe hacer.
  */
-
-export type Atajo = { emoji: string; corto: string; texto: string }
 
 const POR_MODULO: Record<Modulo, Atajo[]> = {
   marketing: [
