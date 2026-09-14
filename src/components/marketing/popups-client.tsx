@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { MessageSquareDashed, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -9,6 +10,7 @@ import { Badge, Dot } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
+import { claveDe, mensajeError, pedirJson, useInvalidar } from "@/lib/admin/query"
 import {
   ACCION_LABEL,
   ALCANCE_LABEL,
@@ -22,6 +24,11 @@ import {
   type Popup,
 } from "@/lib/marketing/popups"
 import { cn } from "@/lib/utils"
+
+const URL_POPUPS = "/api/marketing/popups"
+const SIN_POPUPS: Popup[] = []
+
+type RespuestaPopups = { popups?: Popup[] }
 
 /**
  * La pantalla de popups: la lista, y el editor cuando se está cargando uno.
@@ -40,30 +47,30 @@ import { cn } from "@/lib/utils"
  * un diálogo entra a 400 px: justo el tamaño con el que no se puede juzgar nada.
  */
 export function PopupsClient() {
-  const [popups, setPopups] = useState<Popup[]>([])
-  const [cargando, setCargando] = useState(true)
-  const [errorCarga, setErrorCarga] = useState<string | null>(null)
+  const qc = useQueryClient()
+  const invalidar = useInvalidar("marketing")
+  const query = useQuery({
+    queryKey: claveDe("marketing", URL_POPUPS),
+    queryFn: ({ signal }) => pedirJson<RespuestaPopups>(URL_POPUPS, { signal }),
+  })
+  const popups = query.data?.popups ?? SIN_POPUPS
+  const cargando = query.isPending
+  const errorCarga = query.isError
+    ? mensajeError(query.error, "No se pudieron cargar los popups")
+    : null
 
   /** `null` = lista. `"nuevo"` = alta. Un popup = edición. */
   const [editando, setEditando] = useState<Popup | "nuevo" | null>(null)
 
-  const cargar = useCallback(async () => {
-    setErrorCarga(null)
-    try {
-      const r = await fetch("/api/marketing/popups")
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? "No se pudieron cargar los popups")
-      setPopups(d.popups ?? [])
-    } catch (e) {
-      setErrorCarga(e instanceof Error ? e.message : "No se pudieron cargar los popups")
-    } finally {
-      setCargando(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    cargar()
-  }, [cargar])
+  /** Retoca la lista en caché para que el cambio se vea ya, sin esperar a que
+   *  la invalidación la vuelva a pedir. */
+  const retocar = useCallback(
+    (cambio: (lista: Popup[]) => Popup[]) =>
+      qc.setQueryData<RespuestaPopups>(claveDe("marketing", URL_POPUPS), (prev) =>
+        prev ? { ...prev, popups: cambio(prev.popups ?? SIN_POPUPS) } : prev
+      ),
+    [qc]
+  )
 
   /** El que está al aire ahora mismo, con la misma regla que usa el sitio. */
   const vigente = useMemo(() => vigenteDe(popups), [popups])
@@ -73,7 +80,7 @@ export function PopupsClient() {
   async function cambiarActivo(p: Popup, activo: boolean) {
     // Optimista: prender y apagar tiene que sentirse instantáneo, y si falla se
     // vuelve atrás. Es la única acción de esta pantalla que se hace apurado.
-    setPopups((prev) => prev.map((x) => (x.id === p.id ? { ...x, activo } : x)))
+    retocar((prev) => prev.map((x) => (x.id === p.id ? { ...x, activo } : x)))
     try {
       const r = await fetch(`/api/marketing/popups/${p.id}/activo`, {
         method: "POST",
@@ -83,12 +90,13 @@ export function PopupsClient() {
       const d = await r.json()
       if (!r.ok) throw new Error(d.error ?? "No se pudo cambiar el estado")
 
-      setPopups((prev) => prev.map((x) => (x.id === p.id ? (d.popup as Popup) : x)))
+      retocar((prev) => prev.map((x) => (x.id === p.id ? (d.popup as Popup) : x)))
+      void invalidar()
       toast.success(
         activo ? "Publicado. Tarda hasta un minuto en verse." : "Apagado. Sale del sitio en un minuto."
       )
     } catch (e) {
-      setPopups((prev) => prev.map((x) => (x.id === p.id ? { ...x, activo: !activo } : x)))
+      retocar((prev) => prev.map((x) => (x.id === p.id ? { ...x, activo: !activo } : x)))
       toast.error(e instanceof Error ? e.message : "No se pudo cambiar el estado")
     }
   }
@@ -108,15 +116,17 @@ export function PopupsClient() {
         const d = await r.json().catch(() => ({}))
         throw new Error(d.error ?? "No se pudo borrar")
       }
-      setPopups((prev) => prev.filter((x) => x.id !== p.id))
+      retocar((prev) => prev.filter((x) => x.id !== p.id))
+      void invalidar()
       toast.success("Popup borrado")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo borrar")
     }
   }
 
+  // El editor ya invalidó marketing; esto es solo para no esperar la vuelta.
   function alGuardar(p: Popup, esNuevo: boolean) {
-    setPopups((prev) => (esNuevo ? [p, ...prev] : prev.map((x) => (x.id === p.id ? p : x))))
+    retocar((prev) => (esNuevo ? [p, ...prev] : prev.map((x) => (x.id === p.id ? p : x))))
     setEditando(null)
     toast.success(esNuevo ? "Popup creado" : "Cambios guardados")
   }
@@ -134,7 +144,7 @@ export function PopupsClient() {
   }
 
   if (cargando) return <LoadingState label="Cargando popups…" />
-  if (errorCarga) return <ErrorState message={errorCarga} onRetry={cargar} />
+  if (errorCarga) return <ErrorState message={errorCarga} onRetry={() => void query.refetch()} />
 
   if (popups.length === 0) {
     return (

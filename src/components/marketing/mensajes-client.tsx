@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowLeft,
   Check,
@@ -20,6 +21,7 @@ import { MensajeDialog } from "@/components/marketing/mensaje-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
+import { claveDe, mensajeError, pedirJson, useInvalidar } from "@/lib/admin/query"
 import {
   CANAL_LABEL,
   CIRCUNSTANCIAS,
@@ -38,6 +40,12 @@ import {
 import { inicialesDe } from "@/lib/usuario"
 import { cn } from "@/lib/utils"
 
+const URL_MENSAJES = "/api/marketing/mensajes"
+const SIN_MENSAJES: MensajePlantilla[] = []
+const YO_POR_DEFECTO: Yo = { id: null, nombre: "vos" }
+
+type RespuestaMensajes = { mensajes?: MensajePlantilla[]; yo?: Yo }
+
 /**
  * El panel de plantillas de mensajes.
  *
@@ -53,10 +61,18 @@ import { cn } from "@/lib/utils"
  * mañana se desincroniza del primero.
  */
 export function MensajesClient() {
-  const [mensajes, setMensajes] = useState<MensajePlantilla[]>([])
-  const [yo, setYo] = useState<Yo>({ id: null, nombre: "vos" })
-  const [cargando, setCargando] = useState(true)
-  const [errorCarga, setErrorCarga] = useState<string | null>(null)
+  const qc = useQueryClient()
+  const invalidar = useInvalidar("marketing")
+  const query = useQuery({
+    queryKey: claveDe("marketing", URL_MENSAJES),
+    queryFn: ({ signal }) => pedirJson<RespuestaMensajes>(URL_MENSAJES, { signal }),
+  })
+  const mensajes = query.data?.mensajes ?? SIN_MENSAJES
+  const yo = query.data?.yo ?? YO_POR_DEFECTO
+  const cargando = query.isPending
+  const errorCarga = query.isError
+    ? mensajeError(query.error, "No se pudieron cargar las plantillas")
+    : null
 
   const [busqueda, setBusqueda] = useState("")
   const [filtro, setFiltro] = useState<Circunstancia | "todas">("todas")
@@ -68,32 +84,26 @@ export function MensajesClient() {
 
   const buscador = useRef<HTMLInputElement>(null)
 
-  const cargar = useCallback(async () => {
-    setErrorCarga(null)
-    try {
-      const r = await fetch("/api/marketing/mensajes")
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? "No se pudieron cargar las plantillas")
-
-      setMensajes(d.mensajes ?? [])
-      if (d.yo) setYo(d.yo)
-
-      // Preseleccionar la primera solo donde hay dos columnas. En el celular la
-      // ficha es una hoja a pantalla completa: abrirla sola taparía la lista
-      // antes de que la persona haya elegido nada.
-      if (window.matchMedia("(min-width: 1024px)").matches) {
-        setSeleccionId((prev) => prev ?? (d.mensajes?.[0]?.id ?? null))
-      }
-    } catch (e) {
-      setErrorCarga(e instanceof Error ? e.message : "No se pudieron cargar las plantillas")
-    } finally {
-      setCargando(false)
-    }
-  }, [])
-
+  // Cada vez que llega la lista. Preseleccionar la primera solo donde hay dos
+  // columnas. En el celular la ficha es una hoja a pantalla completa: abrirla
+  // sola taparía la lista antes de que la persona haya elegido nada.
+  const datos = query.data
   useEffect(() => {
-    cargar()
-  }, [cargar])
+    if (!datos) return
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      setSeleccionId((prev) => prev ?? (datos.mensajes?.[0]?.id ?? null))
+    }
+  }, [datos])
+
+  /** Retoca la lista en caché para que el cambio se vea ya, sin esperar a que
+   *  la invalidación la vuelva a pedir. */
+  const retocar = useCallback(
+    (cambio: (lista: MensajePlantilla[]) => MensajePlantilla[]) =>
+      qc.setQueryData<RespuestaMensajes>(claveDe("marketing", URL_MENSAJES), (prev) =>
+        prev ? { ...prev, mensajes: cambio(prev.mensajes ?? SIN_MENSAJES) } : prev
+      ),
+    [qc]
+  )
 
   // "/" enfoca el buscador, salvo que ya se esté escribiendo en algún campo.
   useEffect(() => {
@@ -169,8 +179,9 @@ export function MensajesClient() {
     setDialogoAbierto(true)
   }
 
+  // El diálogo ya invalidó marketing; esto es solo para no esperar la vuelta.
   function alGuardar(m: MensajePlantilla, esNuevo: boolean) {
-    setMensajes((prev) =>
+    retocar((prev) =>
       esNuevo ? [m, ...prev] : prev.map((x) => (x.id === m.id ? m : x))
     )
     setSeleccionId(m.id)
@@ -184,7 +195,8 @@ export function MensajesClient() {
       toast.error("No se pudo borrar")
       return
     }
-    setMensajes((prev) => prev.filter((x) => x.id !== m.id))
+    retocar((prev) => prev.filter((x) => x.id !== m.id))
+    void invalidar()
     setSeleccionId((prev) => (prev === m.id ? null : prev))
     toast.success("Plantilla eliminada")
   }
@@ -209,9 +221,10 @@ export function MensajesClient() {
       .then(async (r) => {
         if (!r.ok) return
         const d = await r.json()
-        setMensajes((prev) =>
+        retocar((prev) =>
           prev.map((x) => (x.id === m.id ? { ...x, usos: d.usos ?? x.usos + 1 } : x))
         )
+        void invalidar()
       })
       .catch(() => {})
   }
@@ -219,7 +232,7 @@ export function MensajesClient() {
   /* ── Render ─────────────────────────────────────────────────────────────── */
 
   if (cargando) return <LoadingState label="Cargando plantillas…" />
-  if (errorCarga) return <ErrorState message={errorCarga} onRetry={cargar} />
+  if (errorCarga) return <ErrorState message={errorCarga} onRetry={() => void query.refetch()} />
 
   const hayAlgunaCargada = mensajes.length > 0
 

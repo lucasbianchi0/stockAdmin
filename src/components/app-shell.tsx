@@ -26,11 +26,15 @@ export function AppShell({
     setSidebarOpen(false)
   }, [pathname])
 
-  if (pathname === "/login" || pathname === "/sin-acceso") {
+  // Las hojas de certificados se imprimen: la sidebar y el `h-screen` con
+  // overflow cortarían todo menos la primera hoja.
+  const esImpresion = /^\/marketing\/eventos\/[^/]+\/certificados$/.test(pathname)
+
+  if (pathname === "/login" || pathname === "/sin-acceso" || esImpresion) {
     return <>{children}</>
   }
 
-  return (
+  const shell = (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar modulos={modulos} />
 
@@ -42,7 +46,7 @@ export function AppShell({
             onClick={() => setSidebarOpen(false)}
           />
           <div className="absolute left-0 top-0 h-full shadow-e4 animate-in slide-in-from-left-full duration-250">
-            <Sidebar mobile modulos={modulos} />
+            <Sidebar mobile modulos={modulos} onAbrirAgentes={() => setSidebarOpen(false)} />
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
@@ -79,14 +83,19 @@ export function AppShell({
             página se ancla al área de contenido y no al viewport completo. */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
       </div>
-
-      {/* El asistente vive acá y no en una página: el shell no se remonta al
-          navegar, así que la conversación sigue ahí al cambiar de pantalla. La
-          `key` es el usuario —si en la misma pestaña entra otra persona, arranca
-          de cero— y no cambia al navegar. */}
-      {usuarioId && modulos.length > 0 && (
-        <ChatbotProvider key={usuarioId} usuarioId={usuarioId} acceso={acceso} />
-      )}
     </div>
+  )
+
+  if (!usuarioId || modulos.length === 0) return shell
+
+  /* El asistente envuelve el shell y no vive en una página: el shell no se
+     remonta al navegar, así que la conversación sigue ahí al cambiar de
+     pantalla, y la barra lateral lo alcanza para abrir "Agentes". La `key` es
+     el usuario —si en la misma pestaña entra otra persona, arranca de cero— y
+     no cambia al navegar. */
+  return (
+    <ChatbotProvider key={usuarioId} usuarioId={usuarioId} acceso={acceso}>
+      {shell}
+    </ChatbotProvider>
   )
 }

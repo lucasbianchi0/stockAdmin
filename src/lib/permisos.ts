@@ -31,7 +31,7 @@ export const NOMBRE_MODULO: Record<Modulo, string> = {
 /** Adónde va cada módulo cuando es lo único que tiene un usuario. */
 export const HOME_DE_MODULO: Record<Modulo, string> = {
   productos: "/",
-  marketing: "/marketing",
+  marketing: "/marketing/informes",
   administracion: "/admin/clientes",
 }
 
@@ -74,6 +74,10 @@ const RUTAS: { prefijo: string; modulos: Modulo[] }[] = [
   { prefijo: "/api/settings", modulos: ["administracion"] },
 
   // Compartidas
+  // La ticketera es del equipo entero, no de un área: alcanza con tener algún
+  // módulo. Quien no tiene ninguno no entra a la app y tampoco acá.
+  { prefijo: "/tickets", modulos: [...MODULOS] },
+  { prefijo: "/api/tickets", modulos: [...MODULOS] },
   { prefijo: "/api/dolar", modulos: ["productos", "administracion"] },
   // El asistente es de todos los que tienen algún módulo. Lo que ve cada uno lo
   // recorta la propia ruta según el acceso de la sesión.

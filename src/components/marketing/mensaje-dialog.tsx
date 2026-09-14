@@ -7,6 +7,7 @@ import { CanalIcono } from "@/components/marketing/canal-icono"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { useInvalidar } from "@/lib/admin/query"
 import {
   BORRADOR_VACIO,
   CANALES,
@@ -62,6 +63,7 @@ export function MensajeDialog({
   const [etiquetaNueva, setEtiquetaNueva] = useState("")
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const invalidar = useInvalidar("marketing")
 
   const editando = mensaje !== null
 
@@ -130,6 +132,7 @@ export function MensajeDialog({
       const d = await r.json()
       if (!r.ok) throw new Error(d.error ?? "No se pudo guardar")
 
+      void invalidar()
       onGuardado(d.mensaje as MensajePlantilla, !editando)
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar")

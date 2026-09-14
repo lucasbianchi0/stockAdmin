@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { useInvalidar } from "@/lib/admin/query"
 import {
   ACCIONES,
   ACCION_LABEL,
@@ -71,6 +72,7 @@ export function PopupEditor({
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dispositivo, setDispositivo] = useState<Dispositivo>("escritorio")
+  const invalidar = useInvalidar("marketing")
 
   const inputArchivo = useRef<HTMLInputElement>(null)
 
@@ -181,6 +183,7 @@ export function PopupEditor({
       const d = await r.json()
       if (!r.ok) throw new Error(d.error ?? "No se pudo guardar")
 
+      void invalidar()
       onGuardado(d.popup as Popup, !editando)
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar")

@@ -65,6 +65,28 @@ El cambio impacta cuando el usuario renueva su token. Si querés que sea
 inmediato, cerrale la sesión: `select auth.uid()` no alcanza — hay que revocar
 desde el panel de Supabase (Authentication → Users → el usuario → Sign out).
 
+## Las pantallas compartidas
+
+Dos cosas no pertenecen a ningún módulo y las ve **cualquiera que tenga al menos
+uno**:
+
+- **La ticketera** (`/tickets` y `/api/tickets`). Es el tablero del equipo, no de
+  un área: su valor es que alguien pueda mirarlo y saber en qué anda el resto sin
+  preguntar, y eso se pierde si cada uno ve sólo lo suyo. Está declarada en
+  `RUTAS` con los tres módulos, que es cómo se escribe "alcanza con tener alguno".
+- **El asistente**, con el agente *Asistente* (`modulos: []` en
+  `src/lib/chatbot/agentes.ts`). Los agentes especialistas sí van por módulo:
+  *Marketing* pide `marketing`, *Auditor financiero* pide `administracion`,
+  *E-commerce* pide `productos`.
+
+Así, alguien con `modulos: ["marketing"]` —el caso de Sofía— ve exactamente
+cuatro cosas: la **Ticketera**, **Agentes** con el Asistente y el de Marketing, y
+el grupo **Marketing** de la barra lateral. Nada de Productos ni de
+Administración, ni en el menú ni en las API.
+
+Quien no tiene ningún módulo no ve ninguna de las dos: cae en `/sin-acceso`
+antes.
+
 ## Las tres barreras
 
 Están en este orden a propósito, de la más lejana al dato a la más cercana.

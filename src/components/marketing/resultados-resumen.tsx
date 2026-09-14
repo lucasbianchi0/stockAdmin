@@ -1,6 +1,6 @@
 "use client"
 
-import { AlertTriangle, ArrowDown, ArrowUp, Receipt, Trophy, Users, Wallet } from "lucide-react"
+import { ArrowDown, ArrowUp, Receipt, Trophy, Users, Wallet } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { StatCard } from "@/components/ui/stat-card"
@@ -12,102 +12,6 @@ import {
   type Resultados,
 } from "@/lib/marketing/resultados"
 import { cn } from "@/lib/utils"
-
-/* ── Alertas ──────────────────────────────────────────────────────────────── */
-
-type Alerta = { nivel: "critico" | "advertencia"; titulo: string; texto: string }
-
-/**
- * Las alertas se DEDUCEN de los números, no se escriben.
- *
- * Es la diferencia entre un tablero y un informe: un texto fijo queda viejo el
- * día que el problema se arregla, y nadie lo saca — la pantalla sigue gritando
- * algo que ya no pasa y el equipo aprende a ignorarla. Estas aparecen y
- * desaparecen solas.
- *
- * Los umbrales están elegidos contra el volumen real de esta cuenta: pedirle
- * significancia estadística a 135 clics no tendría sentido, pero "gastaste y no
- * entró nada" sí es accionable con cualquier volumen.
- */
-function alertasDe(r: Resultados): Alerta[] {
-  const a: Alerta[] = []
-  const t = r.sitio.totales
-  const gasto = r.ads.campanas.reduce((s, c) => s + c.coste, 0)
-  const conversiones = r.ads.campanas.reduce((s, c) => s + c.conversiones, 0)
-  const clics = r.ads.campanas.reduce((s, c) => s + c.clics, 0)
-
-  // No hay tag: las consultas se suben a mano desde Leads y los clics a
-  // WhatsApp/teléfono los lee Google solo cada día. Si no hay nada de ninguno de
-  // los dos, el cero es consecuencia de la alerta siguiente y no un problema
-  // aparte.
-  const { pendientes, contactosAutomaticos } = r.conversiones
-  if (gasto > 0 && conversiones === 0) {
-    if (pendientes > 0) {
-      a.push({
-        nivel: "critico",
-        titulo: "Hay consultas de anuncios que Google no recibió",
-        texto: `${pendientes} ${pendientes === 1 ? "consulta llegó" : "consultas llegaron"} desde un anuncio y la cuenta sigue en cero conversiones. Subilas desde la pestaña de Leads: sin eso, Google optimiza a ciegas.`,
-      })
-    } else if (contactosAutomaticos > 0) {
-      // Van solos, así que si Google sigue en cero el problema es la subida
-      // programada, no alguien que se olvidó de apretar un botón.
-      a.push({
-        nivel: "advertencia",
-        titulo: "Google todavía no muestra los contactos de los anuncios",
-        texto: `${contactosAutomaticos} ${contactosAutomaticos === 1 ? "persona tocó" : "personas tocaron"} WhatsApp o teléfono después de un anuncio y la cuenta sigue en cero. Se envían solos cada día y Google tarda hasta 2 días en mostrarlos; si pasa más, revisá Google Ads → Objetivos → Subidas.`,
-      })
-    } else {
-      a.push({
-        nivel: "advertencia",
-        titulo: "Google no registra ninguna conversión",
-        texto: `${clics.toLocaleString("es-AR")} clics y cero conversiones. No es un tag faltante: se informan cuando alguien que vino de un anuncio consulta o toca WhatsApp o teléfono, y todavía no pasó.`,
-      })
-    }
-  }
-
-  if (t.de_ads >= 20 && t.leads_de_ads === 0) {
-    const tocaron = t.contactos_de_ads ?? 0
-    a.push({
-      nivel: "critico",
-      titulo: "El tráfico pago no deja una sola consulta",
-      texto: `${t.de_ads} visitas llegaron desde un anuncio y ninguna dejó el mail${
-        tocaron ? ` (${tocaron} tocaron WhatsApp o teléfono)` : ""
-      }. Con ${pesos(gasto)} invertidos, el problema está en la página donde caen, no en la puja.`,
-    })
-  }
-
-  if (t.leads_equipo > 0 && t.leads_reales === 0) {
-    a.push({
-      nivel: "advertencia",
-      titulo: "Los únicos leads del período son del propio equipo",
-      texto: `${t.leads_equipo} de ${t.leads} son direcciones nuestras probando los formularios. Están descontados de todos los números de esta pantalla; se ven en la pestaña de Leads.`,
-    })
-  }
-
-  // La página que más gente expulsa sin convertir. Una sola: un tablero con seis
-  // alertas del mismo tipo no se lee, se cierra.
-  const fuga = [...r.sitio.paginas]
-    .filter((p) => p.vistas >= 20 && p.leads === 0 && p.salidas / p.vistas > 0.6)
-    .sort((x, y) => y.vistas - x.vistas)[0]
-  if (fuga) {
-    a.push({
-      nivel: "advertencia",
-      titulo: "Una página recibe tráfico y no convierte",
-      texto: `${fuga.path} tuvo ${fuga.vistas} vistas de ${fuga.visitantes} personas y ninguna consulta. ${fuga.salidas} de esas vistas terminaron la visita ahí mismo.`,
-    })
-  }
-
-  const afuera = r.sitio.paises.find((p) => p.clave === "Fuera de Argentina")?.valor ?? 0
-  if (t.sesiones > 50 && afuera / t.sesiones > 0.3) {
-    a.push({
-      nivel: "advertencia",
-      titulo: "Buena parte del tráfico no es de Argentina",
-      texto: `${afuera} de ${t.sesiones} sesiones vienen de afuera. Para una empresa que vende en CABA y AMBA, eso infla el tráfico y ensucia la comparación mes a mes.`,
-    })
-  }
-
-  return a
-}
 
 /* ── Titular ──────────────────────────────────────────────────────────────── */
 
@@ -183,7 +87,6 @@ function Variacion({ ahora, antes, invertido }: { ahora: number; antes: number |
 export function ResultadosResumen({ datos }: { datos: Resultados }) {
   const t = datos.sitio.totales
   const prev = datos.anterior
-  const alertas = alertasDe(datos)
   const cabecera = titular(datos)
 
   const gasto = datos.ads.campanas.reduce((s, c) => s + c.coste, 0)
@@ -284,36 +187,6 @@ export function ResultadosResumen({ datos }: { datos: Resultados }) {
           hint={t.ganados ? pesos(t.monto_ganado) : "Ningún lead marcado como ganado"}
         />
       </div>
-
-      {/* ── Alertas ──────────────────────────────────────────────────────── */}
-      {alertas.length > 0 && (
-        <section className="panel">
-          <div className="panel-header">
-            <h3 className="text-[15px] font-semibold tracking-[-0.015em]">Qué hay que arreglar</h3>
-            <span className="text-[11.5px] text-ink-subtle">Se calculan solas; desaparecen cuando el problema se va</span>
-          </div>
-          <div className="divide-y divide-line">
-            {alertas.map((a) => (
-              <div key={a.titulo} className="flex gap-3 px-4 py-3">
-                <span
-                  className={cn(
-                    "mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md",
-                    a.nivel === "critico"
-                      ? "bg-danger-soft text-danger-text ring-1 ring-inset ring-danger-line"
-                      : "bg-warning-soft text-warning-text ring-1 ring-inset ring-warning-line"
-                  )}
-                >
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[12.5px] font-semibold text-ink">{a.titulo}</p>
-                  <p className="mt-0.5 max-w-[84ch] text-[12.5px] text-ink-muted">{a.texto}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* ── Los dos recorridos ───────────────────────────────────────────── */}
       <div className="grid gap-4 xl:grid-cols-2">

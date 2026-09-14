@@ -1,12 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Download, ExternalLink, FileText, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { BrochureDialog } from "@/components/marketing/brochure-dialog"
 import { Button } from "@/components/ui/button"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
+import { claveDe, mensajeError, pedirJson, useInvalidar } from "@/lib/admin/query"
 import {
   SOLUCIONES,
   SOLUCION_LABEL,
@@ -16,6 +18,11 @@ import {
   type Solucion,
 } from "@/lib/marketing/brochures"
 import { cn } from "@/lib/utils"
+
+const URL_BROCHURES = "/api/marketing/brochures"
+const SIN_BROCHURES: Brochure[] = []
+
+type RespuestaBrochures = { brochures?: Brochure[] }
 
 /**
  * El panel de brochures: los filtros de categoría y los PDF. Nada más.
@@ -32,32 +39,32 @@ import { cn } from "@/lib/utils"
  * cosa que pongamos acá adentro.
  */
 export function BrochuresClient() {
-  const [brochures, setBrochures] = useState<Brochure[]>([])
-  const [cargando, setCargando] = useState(true)
-  const [errorCarga, setErrorCarga] = useState<string | null>(null)
+  const qc = useQueryClient()
+  const invalidar = useInvalidar("marketing")
+  const query = useQuery({
+    queryKey: claveDe("marketing", URL_BROCHURES),
+    queryFn: ({ signal }) => pedirJson<RespuestaBrochures>(URL_BROCHURES, { signal }),
+  })
+  const brochures = query.data?.brochures ?? SIN_BROCHURES
+  const cargando = query.isPending
+  const errorCarga = query.isError
+    ? mensajeError(query.error, "No se pudieron cargar los brochures")
+    : null
 
   const [solucion, setSolucion] = useState<Solucion | "todas">("todas")
 
   const [editando, setEditando] = useState<Brochure | null>(null)
   const [dialogoAbierto, setDialogoAbierto] = useState(false)
 
-  const cargar = useCallback(async () => {
-    setErrorCarga(null)
-    try {
-      const r = await fetch("/api/marketing/brochures")
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? "No se pudieron cargar los brochures")
-      setBrochures(d.brochures ?? [])
-    } catch (e) {
-      setErrorCarga(e instanceof Error ? e.message : "No se pudieron cargar los brochures")
-    } finally {
-      setCargando(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    cargar()
-  }, [cargar])
+  /** Retoca la lista en caché para que el cambio se vea ya, sin esperar a que
+   *  la invalidación la vuelva a pedir. */
+  const retocar = useCallback(
+    (cambio: (lista: Brochure[]) => Brochure[]) =>
+      qc.setQueryData<RespuestaBrochures>(claveDe("marketing", URL_BROCHURES), (prev) =>
+        prev ? { ...prev, brochures: cambio(prev.brochures ?? SIN_BROCHURES) } : prev
+      ),
+    [qc]
+  )
 
   /* ── Filtrado ───────────────────────────────────────────────────────────── */
 
@@ -90,15 +97,17 @@ export function BrochuresClient() {
         const d = await r.json().catch(() => ({}))
         throw new Error(d.error ?? "No se pudo borrar")
       }
-      setBrochures((prev) => prev.filter((x) => x.id !== b.id))
+      retocar((prev) => prev.filter((x) => x.id !== b.id))
+      void invalidar()
       toast.success("Brochure borrado")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo borrar")
     }
   }
 
+  // El diálogo ya invalidó marketing; esto es solo para no esperar la vuelta.
   function alGuardar(b: Brochure, esNuevo: boolean) {
-    setBrochures((prev) => (esNuevo ? [b, ...prev] : prev.map((x) => (x.id === b.id ? b : x))))
+    retocar((prev) => (esNuevo ? [b, ...prev] : prev.map((x) => (x.id === b.id ? b : x))))
     setDialogoAbierto(false)
     setEditando(null)
     toast.success(esNuevo ? "Brochure subido" : "Brochure actualizado")
@@ -112,7 +121,7 @@ export function BrochuresClient() {
   /* ── Render ─────────────────────────────────────────────────────────────── */
 
   if (cargando) return <LoadingState label="Cargando brochures…" />
-  if (errorCarga) return <ErrorState message={errorCarga} onRetry={cargar} />
+  if (errorCarga) return <ErrorState message={errorCarga} onRetry={() => void query.refetch()} />
 
   return (
     <>

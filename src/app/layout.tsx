@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { AppShell } from "@/components/app-shell"
+import { QueryProvider } from "@/components/query-provider"
 import { Toaster } from "sonner"
 import { createSupabaseServer } from "@/lib/supabase-server"
 import { accesoDeUsuario } from "@/lib/permisos"
@@ -51,9 +52,11 @@ export default async function RootLayout({
   return (
     <html lang="es" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased" suppressHydrationWarning>
-        <AppShell acceso={acceso} usuarioId={user?.id ?? null}>
-          {children}
-        </AppShell>
+        <QueryProvider>
+          <AppShell acceso={acceso} usuarioId={user?.id ?? null}>
+            {children}
+          </AppShell>
+        </QueryProvider>
         <Toaster
           position="top-center"
           richColors

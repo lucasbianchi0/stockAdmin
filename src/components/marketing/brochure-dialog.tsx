@@ -5,6 +5,7 @@ import { FileText, FileUp, Loader2, Plus, RefreshCw, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useInvalidar } from "@/lib/admin/query"
 import {
   BORRADOR_VACIO,
   LIMITES,
@@ -47,6 +48,7 @@ export function BrochureDialog({
   const [archivo, setArchivo] = useState<File | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const invalidar = useInvalidar("marketing")
 
   const editando = brochure !== null
 
@@ -114,6 +116,7 @@ export function BrochureDialog({
       const d = await r.json()
       if (!r.ok) throw new Error(d.error ?? "No se pudo guardar")
 
+      void invalidar()
       onGuardado(d.brochure as Brochure, !editando)
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar")
