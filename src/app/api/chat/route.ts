@@ -44,8 +44,14 @@ import { nombreDeUsuario } from "@/lib/usuario"
  * una respuesta que dice "error".
  */
 
-/** Un especialista razona y puede leer un informe entero antes de contestar. */
-export const maxDuration = 120
+/**
+ * Un especialista razona y puede leer un informe entero antes de contestar, así
+ * que usa el máximo que permite el plan: 60 segundos es el techo de las
+ * funciones en el plan hobby de Vercel. Con más, el build compila pero el deploy
+ * se rechaza al publicar ("invalid maxDuration value"). Si la cuenta pasa a Pro,
+ * se puede subir.
+ */
+export const maxDuration = 60
 
 /**
  * Un modelo por tipo de trabajo.
