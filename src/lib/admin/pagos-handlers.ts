@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase"
 import { createSupabaseServer } from "@/lib/supabase-server"
 import { POR_PAGINA_MAX } from "@/lib/admin/entidades-server"
 import { esMoneda, redondear } from "@/lib/admin/moneda"
+import { ERROR_FECHA_FUTURA, esFechaFutura } from "@/lib/admin/fecha"
 import {
   RETENCIONES,
   balancear,
@@ -114,6 +115,20 @@ async function validarPago(
     ? raw.fecha
     : null
   if (!fecha) return { respuesta: NextResponse.json({ error: "La fecha es obligatoria" }, { status: 400 }) }
+
+  /* La fecha del recibo es el día en que entró o salió la plata, no el
+     vencimiento de la factura. Al editar sólo se frena si se la cambia: un
+     recibo viejo mal fechado tiene que poder corregirse de a un campo. */
+  if (esFechaFutura(fecha)) {
+    let fechaGuardada: string | null = null
+    if (pagoId) {
+      const { data } = await supabase.from("pagos").select("fecha").eq("id", pagoId).maybeSingle()
+      fechaGuardada = (data?.fecha as string | undefined) ?? null
+    }
+    if (fecha !== fechaGuardada) {
+      return { respuesta: NextResponse.json({ error: ERROR_FECHA_FUTURA }, { status: 400 }) }
+    }
+  }
 
   const moneda = esMoneda(raw.moneda) ? raw.moneda : "ARS"
 

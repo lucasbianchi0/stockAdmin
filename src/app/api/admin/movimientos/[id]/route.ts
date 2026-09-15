@@ -4,6 +4,7 @@ import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
 import { esMoneda } from "@/lib/admin/moneda"
+import { ERROR_FECHA_FUTURA, esFechaFutura } from "@/lib/admin/fecha"
 import {
   CATEGORIAS_GASTO,
   esEditable,
@@ -13,6 +14,7 @@ import {
 import {
   SELECT_MOVIMIENTO,
   aMovimiento,
+  cuentaPropiaDeContable,
   esFechaISO,
   monedasDeCuentas,
   numeroPositivo,
@@ -152,6 +154,11 @@ export const PATCH = ruta("movimientos PATCH", async (req: Request, ctx: Ctx) =>
     if (!esFechaISO(fecha)) {
       return NextResponse.json({ error: "La fecha es obligatoria" }, { status: 400 })
     }
+    // Sólo la fecha que se está escribiendo: corregir el detalle de un
+    // movimiento viejo mal fechado no puede quedar trabado por su fecha.
+    if ("fecha" in body && fecha !== actual.fecha && esFechaFutura(fecha)) {
+      return NextResponse.json({ error: ERROR_FECHA_FUTURA }, { status: 400 })
+    }
     if ("fecha" in body) parche.fecha = fecha
 
     /* La cuenta: corregir en cuál se cargó es la mitad de las correcciones
@@ -251,6 +258,49 @@ export const PATCH = ruta("movimientos PATCH", async (req: Request, ctx: Ctx) =>
     return NextResponse.json({ error: "No mandaste nada para cambiar" }, { status: 400 })
   }
 
+  /*
+   * La misma regla que el alta: un gasto o ajuste que al corregirlo queda
+   * imputado a la cuenta contable de OTRA cuenta propia es una transferencia.
+   * Pasa a serlo, y la otra cuenta recibe su pata. Sin esto, arreglar la
+   * imputación de un movimiento como el del 4/9 dejaba el asiento bien y la
+   * cuenta de destino otra vez sin la plata.
+   */
+  let nuevaPata: Record<string, unknown> | null = null
+  const contableFinal =
+    "cuenta_contable_id" in parche
+      ? (parche.cuenta_contable_id as string | null)
+      : null
+  if (origen !== "transferencia" && contableFinal) {
+    const cuentaFinal = (parche.cuenta_id as string | undefined) ?? (actual.cuenta_id as string)
+    const destino = await cuentaPropiaDeContable(contableFinal, cuentaFinal)
+    const moneda = (parche.moneda as string | undefined) ?? (actual.moneda as string)
+    const convertido = "moneda_origen" in parche ? parche.moneda_origen !== null : false
+
+    if (destino && destino.moneda === moneda && !convertido) {
+      const fechaFinal = (parche.fecha as string | undefined) ?? (actual.fecha as string)
+      const referencia =
+        ("referencia" in parche ? (parche.referencia as string | null) : (actual.referencia as string | null)) ??
+        `Transferencia ${fechaFinal}`
+      const tipoFinal = (parche.tipo as string | undefined) ?? (actual.tipo as string)
+
+      parche.origen = "transferencia"
+      parche.categoria = null
+      parche.referencia = referencia
+
+      nuevaPata = {
+        cuenta_id: destino.id,
+        fecha: fechaFinal,
+        tipo: tipoFinal === "egreso" ? "ingreso" : "egreso",
+        importe: (parche.importe as number | undefined) ?? Number(actual.importe),
+        moneda,
+        tc: (parche.tc as number | undefined) ?? (Number(actual.tc) || 1),
+        origen: "transferencia",
+        referencia,
+        detalle: "detalle" in parche ? parche.detalle : null,
+      }
+    }
+  }
+
   const { data, error } = await supabase
     .from("movimientos")
     .update(parche)
@@ -261,6 +311,21 @@ export const PATCH = ruta("movimientos PATCH", async (req: Request, ctx: Ctx) =>
   if (error || !data) {
     console.error("[movimientos PATCH]", error)
     return NextResponse.json({ error: "No se pudo actualizar el movimiento" }, { status: 500 })
+  }
+
+  if (nuevaPata) {
+    const { error: errPata } = await supabase.from("movimientos").insert(nuevaPata)
+    if (errPata) {
+      console.error("[movimientos PATCH pata de transferencia]", errPata)
+      return NextResponse.json(
+        {
+          error:
+            "El movimiento se corrigió, pero no se pudo registrar la plata en la otra cuenta. Cargá esa pata desde Transferencia.",
+        },
+        { status: 500 }
+      )
+    }
+    return NextResponse.json({ movimiento: aMovimiento(data), pareja: true })
   }
 
   const pareja = origen === "transferencia" ? await espejarLaOtraPata(actual, parche) : false

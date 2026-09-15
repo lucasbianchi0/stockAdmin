@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import type { CuentaFinanciera } from "@/lib/admin/cobros"
 import { CATEGORIAS_GASTO, CATEGORIA_LABEL, type Movimiento } from "@/lib/admin/movimientos"
+import { hoyArgentina } from "@/lib/admin/fecha"
 import {
   NOMBRE_MONEDA,
   formatearImporte,
@@ -81,7 +82,8 @@ export function MovimientoDialog({
   onCerrar: () => void
   onGuardado: () => void
 }) {
-  const hoy = new Date().toISOString().slice(0, 10)
+  // En horario argentino: `toISOString()` es UTC y desde las 21 h ya dice mañana.
+  const hoy = hoyArgentina()
 
   const [fecha, setFecha] = useState(hoy)
   const [cuentaId, setCuentaId] = useState("")
@@ -384,6 +386,8 @@ export function MovimientoDialog({
             type="date"
             value={fecha}
             onChange={(e) => setFecha(e.target.value)}
+            // La plata no se mueve en el futuro; el servidor lo rechaza igual.
+            max={hoy}
             className="num"
             disabled={guardando || bloqueado}
           />

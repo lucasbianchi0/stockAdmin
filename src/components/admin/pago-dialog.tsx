@@ -36,6 +36,7 @@ import {
   type Moneda,
 } from "@/lib/admin/moneda"
 import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
+import { hoyArgentina } from "@/lib/admin/fecha"
 import { useCotizacion } from "@/lib/admin/use-cotizacion"
 import { cn } from "@/lib/utils"
 
@@ -54,7 +55,8 @@ import { cn } from "@/lib/utils"
  * como un descuadre de caja que nadie sabe de dónde salió.
  */
 
-const hoyISO = () => new Date().toISOString().slice(0, 10)
+/** En horario argentino: `toISOString()` es UTC y desde las 21 h ya dice mañana. */
+const hoyISO = hoyArgentina
 
 /** Referencias fijas para "todavía no hay nada": un `[]` nuevo en cada render
  *  dispararía de nuevo los efectos y memos que dependen de la lista. */
@@ -481,6 +483,9 @@ export function PagoDialog({
                 type="date"
                 value={fecha}
                 onChange={(e) => setFecha(e.target.value)}
+                // El día en que entró o salió la plata: no puede ser posterior a
+                // hoy. Sin tope se cargaban cobros con el vencimiento de la factura.
+                max={hoyISO()}
                 className="num"
                 disabled={guardando}
               />
