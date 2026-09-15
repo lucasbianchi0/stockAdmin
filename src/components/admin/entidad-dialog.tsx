@@ -8,7 +8,7 @@ import { SelectorCuenta } from "@/components/admin/selector-cuenta"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { errorDeCuit, formatearCuit, normalizarCuit } from "@/lib/admin/cuit"
+import { errorDeDocumento, formatearCuit, normalizarCuit, tipoDeDocumento } from "@/lib/admin/cuit"
 import {
   FORMAS_CLIENTE,
   FORMAS_PROVEEDOR,
@@ -161,8 +161,13 @@ export function EntidadDialog({
   const set = <K extends keyof BorradorCliente>(k: K, v: BorradorCliente[K]) =>
     setF((prev) => ({ ...prev, [k]: v }))
 
-  const errorCuit = useMemo(() => errorDeCuit(f.cuit), [f.cuit])
-  const cuitCompleto = (normalizarCuit(f.cuit)?.length ?? 0) === 11 && !errorCuit
+  /** Un cliente consumidor final no tiene CUIT: se lo identifica por DNI. Un
+   *  proveedor siempre factura con CUIT. Ver `esDniValido`. */
+  const permitirDni = !esProveedor
+  const errorCuit = useMemo(() => errorDeDocumento(f.cuit, { permitirDni }), [f.cuit, permitirDni])
+  const documento = tipoDeDocumento(f.cuit)
+  const cuitCompleto =
+    (documento === "CUIT" || (permitirDni && documento === "DNI")) && !errorCuit
 
   /**
    * Verificación de duplicado contra el servidor. Solo corre cuando el CUIT ya
@@ -311,12 +316,18 @@ export function EntidadDialog({
             />
           </Campo>
 
-          {/* CUIT — con la verificación de duplicado en vivo */}
+          {/* CUIT (o DNI, en un cliente) — con la verificación de duplicado en vivo */}
           <Campo
             id="cuit"
-            rotulo="CUIT"
+            rotulo={permitirDni ? "CUIT o DNI" : "CUIT"}
             opcional
-            ayuda={delExterior ? `Un ${rotulo} del exterior no tiene CUIT` : undefined}
+            ayuda={
+              delExterior
+                ? `Un ${rotulo} del exterior no tiene CUIT`
+                : permitirDni
+                  ? "Un consumidor final sin CUIT se carga con su DNI"
+                  : undefined
+            }
           >
             <div className="relative">
               <Input
@@ -324,7 +335,7 @@ export function EntidadDialog({
                 value={f.cuit}
                 onChange={(e) => set("cuit", e.target.value)}
                 onBlur={() => f.cuit && set("cuit", formatearCuit(f.cuit) || f.cuit)}
-                placeholder="30-50054729-0"
+                placeholder={permitirDni ? "30-50054729-0 o 38.081.715" : "30-50054729-0"}
                 inputMode="numeric"
                 className={cn(
                   "num pr-9",
@@ -346,7 +357,7 @@ export function EntidadDialog({
 
             {duplicado && !errorCuit && (
               <Aviso tono="warning">
-                Ya existe {esProveedor ? "un proveedor" : "un cliente"} con este CUIT: <strong>{duplicado}</strong>. Si es la
+                Ya existe {esProveedor ? "un proveedor" : "un cliente"} con este {documento ?? "CUIT"}: <strong>{duplicado}</strong>. Si es la
                 misma empresa, editá esa ficha en vez de crear una nueva.
               </Aviso>
             )}

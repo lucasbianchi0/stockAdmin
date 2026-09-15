@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { supabase } from "@/lib/supabase"
-import { esCuitValido, normalizarCuit } from "@/lib/admin/cuit"
+import { esDocumentoValido, formatearCuit, normalizarCuit, tipoDeDocumento } from "@/lib/admin/cuit"
 import {
   LARGO_MAX,
   emailPlausible,
@@ -56,8 +56,15 @@ export async function validarEntidad(
 
   const cuit = normalizarCuit(typeof raw.cuit === "string" ? raw.cuit : null)
   if (cuit) {
-    if (!esCuitValido(cuit)) {
-      return { error: "El CUIT no es válido — revisá los dígitos", status: 400 }
+    // Un cliente consumidor final puede ir con DNI; un proveedor, sólo con CUIT.
+    const permitirDni = tabla === "clientes"
+    if (!esDocumentoValido(cuit, { permitirDni })) {
+      return {
+        error: permitirDni
+          ? "El CUIT o DNI no es válido — revisá los dígitos"
+          : "El CUIT no es válido — revisá los dígitos",
+        status: 400,
+      }
     }
 
     let dup = supabase.from(tabla).select("razon_social").eq("cuit", cuit).limit(1)
@@ -65,7 +72,39 @@ export async function validarEntidad(
     const { data: existente } = await dup.maybeSingle()
 
     if (existente) {
-      return { error: `Ese CUIT ya está cargado en «${existente.razon_social}»`, status: 409 }
+      return {
+        error: `Ese ${tipoDeDocumento(cuit) ?? "CUIT"} ya está cargado en «${existente.razon_social}»`,
+        status: 409,
+      }
+    }
+
+    /*
+     * La misma persona con los dos documentos. El CUIT de una persona humana
+     * lleva su DNI en el medio (27-38081715-4), así que un consumidor final
+     * cargado con DNI que después se inscribe no es un cliente nuevo: es la
+     * misma ficha, y con dos la cuenta corriente queda repartida.
+     */
+    if (permitirDni) {
+      const otros =
+        cuit.length === 11
+          ? [cuit.slice(2, 10), cuit.slice(2, 10).replace(/^0/, "")]
+          : null
+      let cruce = otros
+        ? supabase.from(tabla).select("razon_social, cuit").in("cuit", otros).limit(1)
+        : supabase
+            .from(tabla)
+            .select("razon_social, cuit")
+            .like("cuit", `__${cuit.padStart(8, "0")}_`)
+            .limit(1)
+      if (excluirId) cruce = cruce.neq("id", excluirId)
+      const { data: mismaPersona } = await cruce.maybeSingle()
+
+      if (mismaPersona) {
+        return {
+          error: `«${mismaPersona.razon_social}» ya está cargado con ${tipoDeDocumento(mismaPersona.cuit) ?? "documento"} ${formatearCuit(mismaPersona.cuit)}, que es la misma persona. Editá esa ficha en vez de crear otra.`,
+          status: 409,
+        }
+      }
     }
   }
 
@@ -181,7 +220,7 @@ export function respuestaDeErrorDeBase(
   entidad = "el cliente"
 ) {
   if (error.code === "23505") {
-    return NextResponse.json({ error: "Ese CUIT ya está cargado en otra ficha" }, { status: 409 })
+    return NextResponse.json({ error: "Ese CUIT o DNI ya está cargado en otra ficha" }, { status: 409 })
   }
   console.error(`[${entidad} ${accion}]`, error)
   return NextResponse.json({ error: `No se pudo ${accion} ${entidad}` }, { status: 500 })

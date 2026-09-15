@@ -82,6 +82,40 @@ export async function monedasDeCuentas(ids: string[]): Promise<Map<string, Moned
   return new Map((data ?? []).map((c) => [c.id as string, c.moneda as Moneda]))
 }
 
+/** La cuenta contable de una cuenta financiera. `null` si no tiene o no existe. */
+export async function contableDeCuenta(id: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("cuentas_financieras")
+    .select("cuenta_contable_id")
+    .eq("id", id)
+    .maybeSingle()
+  return (data?.cuenta_contable_id as string | null | undefined) ?? null
+}
+
+/**
+ * La otra cuenta propia que usa esa cuenta contable, si hay exactamente una.
+ *
+ * Es lo que delata una transferencia cargada como gasto: un egreso del Galicia
+ * contra la "17 Cta. Cte Mercado Libre" no es un gasto, es plata que pasó a
+ * Mercado Pago. Con dos cuentas financieras sobre la misma contable no se sabe
+ * a cuál fue, y ahí no se adivina.
+ */
+export async function cuentaPropiaDeContable(
+  cuentaContableId: string,
+  excluirCuentaId: string
+): Promise<{ id: string; moneda: Moneda } | null> {
+  const { data } = await supabase
+    .from("cuentas_financieras")
+    .select("id, moneda")
+    .eq("cuenta_contable_id", cuentaContableId)
+    .eq("activo", true)
+    .neq("id", excluirCuentaId)
+    .limit(2)
+
+  if (!data || data.length !== 1) return null
+  return { id: data[0].id as string, moneda: data[0].moneda as Moneda }
+}
+
 export function numeroPositivo(v: unknown): number | null {
   const n = Number(v)
   return Number.isFinite(n) && n > 0 ? redondear(n, 4) : null

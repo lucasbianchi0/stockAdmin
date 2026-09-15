@@ -10,6 +10,8 @@ import { CATEGORIAS_GASTO, type CategoriaGasto } from "@/lib/admin/movimientos"
 import {
   SELECT_MOVIMIENTO,
   aMovimiento,
+  contableDeCuenta,
+  cuentaPropiaDeContable,
   esFechaISO,
   monedasDeCuentas,
   numeroPositivo,
@@ -169,6 +171,15 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
     const referencia = textoCorto(raw.referencia) ?? `Transferencia ${fecha}`
     const detalle = textoCorto(raw.detalle)
 
+    // El asiento de una transferencia es uno solo y va en la pata que sale:
+    // debe la cuenta contable del destino, haber la del origen. La que entra no
+    // lleva cuenta a propósito — `documentos_sin_asiento` ya no la da por
+    // pendiente, y si llevara una el mayor contaría la plata dos veces. Entre
+    // monedas distintas no se imputa sola: ese asiento necesita la diferencia
+    // de cambio, y eso lo decide quien lleva la contabilidad.
+    const contableDestino =
+      monedaOrigen === monedaDestino ? await contableDeCuenta(cuentaDestino) : null
+
     const { data: salida, error: errSalida } = await supabase
       .from("movimientos")
       .insert({
@@ -179,6 +190,7 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
         moneda: monedaOrigen,
         tc,
         origen: "transferencia",
+        cuenta_contable_id: contableDestino,
         referencia,
         detalle,
         created_by: creador,
@@ -249,6 +261,30 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
       ? (raw.categoria as CategoriaGasto)
       : null
 
+  const cuentaContableId =
+    typeof raw.cuentaContableId === "string" && raw.cuentaContableId ? raw.cuentaContableId : null
+
+  /*
+   * Un gasto imputado a la cuenta contable de OTRA cuenta propia es una
+   * transferencia mal cargada. Pasó el 4/9/2026: 500.000 salieron del Galicia
+   * como "gasto" contra la 17 Cta. Cte Mercado Libre; el asiento quedó bien,
+   * pero Mercado Pago nunca recibió el ingreso y su extracto no lo mostraba.
+   *
+   * Se registra como lo que es: esta pata con la cuenta contable (y con ella el
+   * único asiento) más la pata opuesta en la otra cuenta, las dos como
+   * transferencia y con la misma referencia. Sólo con la misma moneda y sin
+   * conversión: con dólares en juego la operación es otra y no se adivina.
+   */
+  const destinoPropio = cuentaContableId
+    ? await cuentaPropiaDeContable(cuentaContableId, cuentaId)
+    : null
+  const esTransferencia =
+    destinoPropio !== null && destinoPropio.moneda === plata.moneda && plata.monedaOrigen === null
+  const referencia = esTransferencia
+    ? (textoCorto(raw.referencia) ?? `Transferencia ${fecha}`)
+    : textoCorto(raw.referencia)
+  const detalle = textoCorto(raw.detalle, 500)
+
   const { data, error } = await supabase
     .from("movimientos")
     .insert({
@@ -262,14 +298,11 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
       ...(plata.tc !== null && { tc: plata.tc }),
       importe_origen: plata.importeOrigen,
       moneda_origen: plata.monedaOrigen,
-      origen: origen === "gasto" ? "gasto" : "manual",
-      cuenta_contable_id:
-        typeof raw.cuentaContableId === "string" && raw.cuentaContableId
-          ? raw.cuentaContableId
-          : null,
-      referencia: textoCorto(raw.referencia),
-      detalle: textoCorto(raw.detalle, 500),
-      categoria,
+      origen: esTransferencia ? "transferencia" : origen === "gasto" ? "gasto" : "manual",
+      cuenta_contable_id: cuentaContableId,
+      referencia,
+      detalle,
+      categoria: esTransferencia ? null : categoria,
       created_by: creador,
     })
     .select(SELECT_MOVIMIENTO)
@@ -278,6 +311,31 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
   if (error) {
     console.error("[movimientos POST]", error)
     return NextResponse.json({ error: "No se pudo registrar el movimiento" }, { status: 500 })
+  }
+
+  if (esTransferencia && destinoPropio) {
+    const { error: errPar } = await supabase.from("movimientos").insert({
+      cuenta_id: destinoPropio.id,
+      fecha,
+      tipo: tipo === "egreso" ? "ingreso" : "egreso",
+      importe: plata.importe,
+      moneda: plata.moneda,
+      ...(plata.tc !== null && { tc: plata.tc }),
+      origen: "transferencia",
+      referencia,
+      detalle,
+      created_by: creador,
+    })
+
+    if (errPar) {
+      // Media transferencia hace desaparecer plata: se deshace la primera pata.
+      await supabase.from("movimientos").delete().eq("id", (data as { id: string }).id)
+      console.error("[movimientos POST pata de transferencia]", errPar)
+      return NextResponse.json(
+        { error: "No se pudo registrar la otra cuenta de la transferencia" },
+        { status: 500 }
+      )
+    }
   }
 
   return NextResponse.json({ movimiento: aMovimiento(data) }, { status: 201 })

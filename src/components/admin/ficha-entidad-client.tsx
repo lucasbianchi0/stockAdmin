@@ -30,7 +30,7 @@ import {
 import type { Comprobante } from "@/lib/admin/comprobantes"
 import { estadoDeSaldo, etiquetaSaldo, formatearNumero } from "@/lib/admin/comprobantes"
 import type { Cobro } from "@/lib/admin/cobros"
-import { formatearCuit } from "@/lib/admin/cuit"
+import { formatearCuit, tipoDeDocumento } from "@/lib/admin/cuit"
 import type { ResumenEntidad } from "@/lib/admin/detalle"
 import type { Cliente, TipoEntidad } from "@/lib/admin/entidades"
 import { FORMA_JURIDICA_LABEL } from "@/lib/admin/entidades"
@@ -163,7 +163,11 @@ export function FichaEntidadClient({
           </div>
 
           <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-ink-muted">
-            {entidad.cuit && <span className="num">CUIT {formatearCuit(entidad.cuit)}</span>}
+            {entidad.cuit && (
+              <span className="num">
+                {tipoDeDocumento(entidad.cuit) ?? "CUIT"} {formatearCuit(entidad.cuit)}
+              </span>
+            )}
             {entidad.provincia && (
               <span className="inline-flex items-center gap-1">
                 <MapPin className="h-3 w-3" />
@@ -693,7 +697,10 @@ function EstadoCuenta({ tipo, entidadId }: { tipo: TipoEntidad; entidadId: strin
 function DatosFicha({ entidad, tipo }: { entidad: Cliente; tipo: TipoEntidad }) {
   const datos: [string, string | null][] = [
     ["Razón social", entidad.razonSocial],
-    ["CUIT", entidad.cuit ? formatearCuit(entidad.cuit) : null],
+    [
+      tipoDeDocumento(entidad.cuit) === "DNI" ? "DNI" : "CUIT",
+      entidad.cuit ? formatearCuit(entidad.cuit) : null,
+    ],
     ["Condición frente al IVA", entidad.formaJuridica ? FORMA_JURIDICA_LABEL[entidad.formaJuridica] : null],
     ["Categoría", entidad.categoriaNombre],
     ["Origen", entidad.origen === "exterior" ? "Del exterior" : "Nacional"],

@@ -6,7 +6,7 @@ import { Check, Loader2, Plus, Search, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { errorDeCuit, esCuitValido, formatearCuit } from "@/lib/admin/cuit"
+import { errorDeDocumento, esDocumentoValido, formatearCuit } from "@/lib/admin/cuit"
 import type { Cliente } from "@/lib/admin/entidades"
 import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
@@ -244,8 +244,11 @@ function AltaRapida({
   const [error, setError] = useState<string | null>(null)
   const invalidar = useInvalidarAdmin()
 
-  const problemaCuit = cuit.trim() ? errorDeCuit(cuit) : null
-  const puedeCrear = razonSocial.trim().length >= 2 && esCuitValido(cuit) && !guardando
+  // Un cliente consumidor final se da de alta con DNI; un proveedor, sólo con CUIT.
+  const permitirDni = tipo === "cliente"
+  const problemaCuit = cuit.trim() ? errorDeDocumento(cuit, { permitirDni }) : null
+  const puedeCrear =
+    razonSocial.trim().length >= 2 && esDocumentoValido(cuit, { permitirDni }) && !guardando
 
   const crear = async () => {
     if (!puedeCrear) return
@@ -312,13 +315,13 @@ function AltaRapida({
 
         <div>
           <label className="text-[10.5px] font-medium uppercase tracking-[0.06em] text-ink-subtle">
-            CUIT
+            {permitirDni ? "CUIT o DNI" : "CUIT"}
           </label>
           <Input
             value={cuit}
             onChange={(e) => setCuit(e.target.value)}
             disabled={guardando}
-            placeholder="30-50054729-0"
+            placeholder={permitirDni ? "30-50054729-0 o 38.081.715" : "30-50054729-0"}
             className="num mt-1 h-8 text-[12.5px]"
             onKeyDown={(e) => {
               if (e.key === "Enter") {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { supabase } from "@/lib/supabase"
-import { esCuitValido, normalizarCuit } from "@/lib/admin/cuit"
+import { esDocumentoValido, normalizarCuit, tipoDeDocumento } from "@/lib/admin/cuit"
 import { buscarClase, totalDe, type TipoComprobante } from "@/lib/admin/comprobantes"
 import { TABLA_DE_TIPO, buscarFicha } from "@/lib/admin/entidad-de-comprobante"
 import { sumarDias } from "@/lib/admin/fecha"
@@ -175,13 +175,15 @@ async function enriquecer(
       avisos.push(
         `No se pudo leer el CUIT del ${rotulo}. Es el dato que lo identifica: cargalo a mano o elegí una ficha existente — sin él no se puede dar de alta.`
       )
-    } else if (!esCuitValido(alta.cuit)) {
+    } else if (!esDocumentoValido(alta.cuit, { permitirDni: rotulo === "cliente" })) {
       avisos.push(
-        `El CUIT ${alta.cuit} no pasa el dígito verificador, así que está mal leído o mal impreso. Corregilo contra el papel antes de guardar.`
+        rotulo === "cliente"
+          ? `El CUIT o DNI ${alta.cuit} no es válido, así que está mal leído o mal impreso. Corregilo contra el papel antes de guardar.`
+          : `El CUIT ${alta.cuit} no pasa el dígito verificador, así que está mal leído o mal impreso. Corregilo contra el papel antes de guardar.`
       )
     } else {
       avisos.push(
-        `El ${rotulo} no está en el sistema: se va a dar de alta con CUIT ${alta.cuit}.`
+        `El ${rotulo} no está en el sistema: se va a dar de alta con ${tipoDeDocumento(alta.cuit) ?? "CUIT"} ${alta.cuit}.`
       )
     }
   } else if (ficha) {

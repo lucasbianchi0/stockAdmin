@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase"
-import { esCuitValido, normalizarCuit } from "@/lib/admin/cuit"
+import { esDocumentoValido, normalizarCuit } from "@/lib/admin/cuit"
 import type { TipoComprobante } from "@/lib/admin/comprobantes"
 import { esFormaJuridica, esOrigen, type FormaJuridica, type Origen } from "@/lib/admin/entidades"
 import type { TablaEntidad } from "@/lib/admin/entidades-server"
@@ -199,10 +199,14 @@ export async function obtenerOCrearEntidad(
 
   const cuit = normalizarCuit(datos.cuit)
   const delExterior = datos.origen === "exterior"
+  // La factura B a un consumidor final trae su DNI en lugar de un CUIT.
+  const permitirDni = tabla === "clientes"
 
-  if (cuit && !esCuitValido(cuit)) {
+  if (cuit && !esDocumentoValido(cuit, { permitirDni })) {
     return {
-      error: `El CUIT ${cuit} no pasa el dígito verificador. Corregilo o elegí la ficha a mano.`,
+      error: permitirDni
+        ? `El CUIT o DNI ${cuit} no es válido. Corregilo o elegí la ficha a mano.`
+        : `El CUIT ${cuit} no pasa el dígito verificador. Corregilo o elegí la ficha a mano.`,
       status: 400,
     }
   }
@@ -234,7 +238,7 @@ export async function obtenerOCrearEntidad(
       error:
         tabla === "proveedores"
           ? `No se puede dar de alta «${razonSocial}» sin CUIT: es lo que identifica al proveedor. Cargalo o elegí una ficha existente.`
-          : `No se puede dar de alta «${razonSocial}» sin CUIT: es lo que identifica al cliente. Cargalo o elegí una ficha existente.`,
+          : `No se puede dar de alta «${razonSocial}» sin CUIT ni DNI: es lo que identifica al cliente. Cargalo o elegí una ficha existente.`,
       status: 400,
     }
   }
@@ -294,7 +298,7 @@ export async function completarCuit(
   id: string,
   cuit: string
 ): Promise<void> {
-  if (!esCuitValido(cuit)) return
+  if (!esDocumentoValido(cuit, { permitirDni: tabla === "clientes" })) return
   const { error } = await supabase
     .from(tabla)
     .update({ cuit })

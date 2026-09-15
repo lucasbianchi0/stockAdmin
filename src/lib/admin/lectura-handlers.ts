@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { supabase } from "@/lib/supabase"
-import { esCuitValido, normalizarCuit } from "@/lib/admin/cuit"
+import { esDocumentoValido, normalizarCuit } from "@/lib/admin/cuit"
 import type { TipoEntidad } from "@/lib/admin/entidades"
 import {
   PROMPT_FICHA,
@@ -54,7 +54,9 @@ async function enriquecerFicha(tipo: TipoEntidad, l: LecturaFicha): Promise<Borr
 
   const candidatos: CandidatoFicha[] = l.empresas.map((e) => {
     const normalizado = normalizarCuit(e.cuit)
-    const valido = normalizado !== null && esCuitValido(normalizado)
+    // Un cliente consumidor final puede venir identificado por DNI.
+    const valido =
+      normalizado !== null && esDocumentoValido(normalizado, { permitirDni: !esProveedor })
     return {
       ...e,
       cuitNormalizado: valido ? normalizado : null,
