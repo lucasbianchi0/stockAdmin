@@ -4,7 +4,6 @@ import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
 import { esMoneda } from "@/lib/admin/moneda"
-import { ERROR_FECHA_FUTURA, esFechaFutura } from "@/lib/admin/fecha"
 import {
   CATEGORIAS_GASTO,
   esEditable,
@@ -153,11 +152,6 @@ export const PATCH = ruta("movimientos PATCH", async (req: Request, ctx: Ctx) =>
     const fecha = "fecha" in body ? body.fecha : actual.fecha
     if (!esFechaISO(fecha)) {
       return NextResponse.json({ error: "La fecha es obligatoria" }, { status: 400 })
-    }
-    // Sólo la fecha que se está escribiendo: corregir el detalle de un
-    // movimiento viejo mal fechado no puede quedar trabado por su fecha.
-    if ("fecha" in body && fecha !== actual.fecha && esFechaFutura(fecha)) {
-      return NextResponse.json({ error: ERROR_FECHA_FUTURA }, { status: 400 })
     }
     if ("fecha" in body) parche.fecha = fecha
 

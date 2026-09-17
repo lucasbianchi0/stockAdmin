@@ -26,7 +26,7 @@ import { textoONull } from "@/lib/admin/entidades"
 
 export const SELECT_COMPROBANTE = `
   *,
-  ivas:comprobante_ivas (alicuota, neto, iva),
+  ivas:comprobante_ivas (alicuota, neto, iva, cuenta_contable_id),
   cliente:clientes (id, razon_social),
   proveedor:proveedores (id, razon_social),
   cuenta:plan_cuentas (id, codigo, nombre),
@@ -51,6 +51,10 @@ function importe(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v)
   if (!Number.isFinite(n) || n < 0) return 0
   return redondear(n)
+}
+
+function idONull(v: unknown): string | null {
+  return typeof v === "string" && v ? v : null
 }
 
 function entero(v: unknown): number | null {
@@ -128,6 +132,20 @@ export function validarComprobante(
     otrosImpuestos: importe(raw.otrosImpuestos),
   }
 
+  /*
+   * Las cuentas. Cada renglón puede ir a la suya y el que no tiene usa la de la
+   * cabecera. Si la cabecera llega vacía se completa con la primera que haya en
+   * los renglones: el motor de asientos necesita una, y `documentos_sin_asiento`
+   * mira esa columna para decir qué factura está a medio cargar.
+   */
+  const cuentaNoGravado = importes.noGravado > 0 ? idONull(raw.cuentaNoGravadoId) : null
+  const cuentaExento = importes.exento > 0 ? idONull(raw.cuentaExentoId) : null
+  const cuentaDeCabecera =
+    idONull(raw.cuentaContableId) ??
+    ivas.find((r) => r.cuentaContableId)?.cuentaContableId ??
+    cuentaNoGravado ??
+    cuentaExento
+
   const total = totalDe(importes)
   if (total <= 0) {
     return { error: "El comprobante no puede tener total cero", status: 400 }
@@ -146,9 +164,9 @@ export function validarComprobante(
     fecha_estimada_pago: fechaONull(raw.fechaEstimadaPago),
     punto_venta: entero(raw.puntoVenta),
     numero: entero(raw.numero),
-    cuenta_contable_id: typeof raw.cuentaContableId === "string" && raw.cuentaContableId
-      ? raw.cuentaContableId
-      : null,
+    cuenta_contable_id: cuentaDeCabecera,
+    cuenta_no_gravado_id: cuentaNoGravado,
+    cuenta_exento_id: cuentaExento,
     detalle: textoONull(raw.detalle, 500),
     moneda,
     tc,
@@ -189,8 +207,9 @@ export function validarComprobante(
 /**
  * El desglose por alícuota, venga como venga.
  *
- * Dos renglones a la misma alícuota se suman en uno: la base los rechazaría por
- * el índice único, y de todas formas son el mismo tramo escrito dos veces. Un
+ * Dos renglones a la misma alícuota y la misma cuenta se suman en uno: la base
+ * los rechazaría por el índice único, y de todas formas son el mismo tramo
+ * escrito dos veces. Al 21 % con cuentas distintas son dos renglones. Un
  * renglón sin neto ni IVA es una fila que quedó vacía en el formulario y se
  * descarta acá para que no llegue a la base.
  */
@@ -205,6 +224,7 @@ function leerIvas(raw: Record<string, unknown>): RenglonIva[] {
         return {
           neto,
           alicuota,
+          cuentaContableId: idONull(n.cuentaContableId),
           // El IVA escrito a mano gana sobre el calculado: la factura manda.
           iva: n.iva === undefined || n.iva === null ? ivaDe(neto, alicuota) : importe(n.iva),
         }
@@ -214,22 +234,25 @@ function leerIvas(raw: Record<string, unknown>): RenglonIva[] {
           neto: importe(raw.netoGravado),
           alicuota: alicuotaValida(raw.alicuotaIva),
           iva: importe(raw.iva),
+          cuentaContableId: null,
         },
       ]
 
-  const porAlicuota = new Map<number, RenglonIva>()
+  const porClave = new Map<string, RenglonIva>()
   for (const f of filas) {
     if (f.neto <= 0 && f.iva <= 0) continue
-    const previo = porAlicuota.get(f.alicuota)
+    const clave = `${f.alicuota}|${f.cuentaContableId ?? ""}`
+    const previo = porClave.get(clave)
     if (previo) {
       previo.neto = redondear(previo.neto + f.neto)
       previo.iva = redondear(previo.iva + f.iva)
     } else {
-      porAlicuota.set(f.alicuota, { ...f })
+      porClave.set(clave, { ...f })
     }
   }
 
-  return [...porAlicuota.values()].sort((a, b) => a.alicuota - b.alicuota)
+  // Estable dentro de la misma alícuota: el orden en que se cargaron.
+  return [...porClave.values()].sort((a, b) => a.alicuota - b.alicuota)
 }
 
 /** La alícuota, acotada a lo que la base acepta. Fuera de rango es cero, que es
@@ -263,7 +286,12 @@ export function errorDeComprobante(
 }
 
 type FilaCompleta = Record<string, unknown> & {
-  ivas?: { alicuota: number | string; neto: number | string; iva: number | string }[] | null
+  ivas?: {
+    alicuota: number | string
+    neto: number | string
+    iva: number | string
+    cuenta_contable_id?: string | null
+  }[] | null
   cliente?: { id: string; razon_social: string } | null
   proveedor?: { id: string; razon_social: string } | null
   cuenta?: { id: string; codigo: string; nombre: string } | null
@@ -305,11 +333,18 @@ export function aComprobante(fila: FilaCompleta): Comprobante {
         ? null
         : num(fila.alicuota_iva),
     ivas: [...(fila.ivas ?? [])]
-      .map((r) => ({ neto: num(r.neto), alicuota: num(r.alicuota), iva: num(r.iva) }))
+      .map((r) => ({
+        neto: num(r.neto),
+        alicuota: num(r.alicuota),
+        iva: num(r.iva),
+        cuentaContableId: r.cuenta_contable_id ?? null,
+      }))
       .sort((a, b) => a.alicuota - b.alicuota),
     iva: num(fila.iva),
     noGravado: num(fila.no_gravado),
+    cuentaNoGravadoId: (fila.cuenta_no_gravado_id as string | null) ?? null,
     exento: num(fila.exento),
+    cuentaExentoId: (fila.cuenta_exento_id as string | null) ?? null,
     percepcionIva: num(fila.percepcion_iva),
     percepcionIibbBsas: num(fila.percepcion_iibb_bsas),
     percepcionIibbCaba: num(fila.percepcion_iibb_caba),

@@ -35,20 +35,6 @@ export function hoyArgentina(): string {
   )
 }
 
-/**
- * La plata no se mueve en el futuro. Un cobro, un pago o un movimiento de banco
- * lleva la fecha en que el dinero entró o salió de la cuenta, y el sistema no
- * maneja cheques diferidos. Una fecha posterior a hoy es un error de carga —
- * casi siempre el vencimiento de la factura tipeado en lugar del día del
- * cobro— y corre el saldo de "este mes", la conciliación y el mayor.
- */
-export function esFechaFutura(iso: string): boolean {
-  return iso > hoyArgentina()
-}
-
-export const ERROR_FECHA_FUTURA =
-  "La fecha no puede ser posterior a hoy: es el día en que la plata entró o salió de la cuenta, no el vencimiento de la factura."
-
 /** `2026-08-01` → `1/8/26`. Corto porque en una tabla la columna compite con
  *  datos que importan más, y el año de cuatro cifras no agrega nada. */
 export function formatearFecha(iso: string | null): string {

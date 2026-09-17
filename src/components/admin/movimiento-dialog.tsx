@@ -386,8 +386,6 @@ export function MovimientoDialog({
             type="date"
             value={fecha}
             onChange={(e) => setFecha(e.target.value)}
-            // La plata no se mueve en el futuro; el servidor lo rechaza igual.
-            max={hoy}
             className="num"
             disabled={guardando || bloqueado}
           />

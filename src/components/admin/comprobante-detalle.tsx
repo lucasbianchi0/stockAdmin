@@ -165,8 +165,8 @@ export function ComprobanteDetalle({
                 su propio par de renglones.
               */}
               {c.ivas.length > 1 ? (
-                c.ivas.map((r) => (
-                  <Fragment key={r.alicuota}>
+                c.ivas.map((r, i) => (
+                  <Fragment key={i}>
                     <Importe
                       rotulo={`Neto gravado al ${ALICUOTA_LABEL[String(r.alicuota)] ?? ""}`}
                       valor={r.neto}

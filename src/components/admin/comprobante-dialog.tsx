@@ -51,6 +51,8 @@ type RenglonNeto = {
    *  número escrito: el IVA de la factura de papel es la verdad, aunque no dé
    *  exacto por redondeo del sistema que la emitió. */
   ivaPisado: boolean
+  /** Vacío = la cuenta de la cabecera. */
+  cuentaContableId: string
 }
 
 const RENGLON_VACIO = (alicuota = "0.21"): RenglonNeto => ({
@@ -58,6 +60,7 @@ const RENGLON_VACIO = (alicuota = "0.21"): RenglonNeto => ({
   alicuota,
   ivaManual: "",
   ivaPisado: false,
+  cuentaContableId: "",
 })
 
 type Borrador = {
@@ -75,7 +78,9 @@ type Borrador = {
    *  siempre— y se agregan los que la factura traiga. */
   netos: RenglonNeto[]
   noGravado: string
+  cuentaNoGravadoId: string
   exento: string
+  cuentaExentoId: string
   percepcionIva: string
   percepcionIibbBsas: string
   percepcionIibbCaba: string
@@ -85,6 +90,12 @@ type Borrador = {
 }
 
 const hoyISO = () => new Date().toISOString().slice(0, 10)
+
+/** Importe · alícuota · IVA · cuenta. La cuenta es la más ancha porque su
+ *  rótulo es texto («809 · Ventas de Servicios») y los importes no. No gravado y
+ *  exento usan la misma grilla para que sus cuentas queden en la misma columna. */
+const GRILLA_IMPORTES =
+  "grid items-end gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1.5fr)]"
 
 const VACIO = (): Borrador => ({
   entidadId: "",
@@ -99,7 +110,9 @@ const VACIO = (): Borrador => ({
   tc: "",
   netos: [RENGLON_VACIO()],
   noGravado: "",
+  cuentaNoGravadoId: "",
   exento: "",
+  cuentaExentoId: "",
   percepcionIva: "",
   percepcionIibbBsas: "",
   percepcionIibbCaba: "",
@@ -133,6 +146,7 @@ function aBorrador(c: Comprobante): Borrador {
             alicuota: String(r.alicuota),
             ivaManual: String(r.iva || ""),
             ivaPisado: true,
+            cuentaContableId: r.cuentaContableId ?? "",
           }))
         : [
             {
@@ -140,10 +154,13 @@ function aBorrador(c: Comprobante): Borrador {
               alicuota: c.alicuotaIva !== null ? String(c.alicuotaIva) : "0",
               ivaManual: String(c.iva || ""),
               ivaPisado: true,
+              cuentaContableId: "",
             },
           ],
     noGravado: String(c.noGravado || ""),
+    cuentaNoGravadoId: c.cuentaNoGravadoId ?? "",
     exento: String(c.exento || ""),
+    cuentaExentoId: c.cuentaExentoId ?? "",
     percepcionIva: String(c.percepcionIva || ""),
     percepcionIibbBsas: String(c.percepcionIibbBsas || ""),
     percepcionIibbCaba: String(c.percepcionIibbCaba || ""),
@@ -222,6 +239,7 @@ export function ComprobanteDialog({
         return {
           neto,
           alicuota,
+          cuentaContableId: r.cuentaContableId,
           calculado,
           iva: r.ivaPisado ? (parsearImporte(r.ivaManual) ?? 0) : calculado,
         }
@@ -232,17 +250,19 @@ export function ComprobanteDialog({
   const neto = redondear(renglones.reduce((a, r) => a + r.neto, 0))
   const iva = redondear(renglones.reduce((a, r) => a + r.iva, 0))
 
-  /** Dos renglones a la misma alícuota son el mismo tramo escrito dos veces: la
-   *  base los rechaza por índice único, así que se avisa antes de guardar. */
+  /** Dos renglones a la misma alícuota y la misma cuenta son el mismo tramo
+   *  escrito dos veces. Al 21 % con cuentas distintas —productos y servicios en
+   *  la misma factura— son dos renglones legítimos. */
   const alicuotaRepetida = useMemo(() => {
-    const vistas = new Set<number>()
+    const vistas = new Set<string>()
     for (const r of renglones) {
       if (r.neto <= 0 && r.iva <= 0) continue
-      if (vistas.has(r.alicuota)) return true
-      vistas.add(r.alicuota)
+      const clave = `${r.alicuota}|${r.cuentaContableId || f.cuentaContableId}`
+      if (vistas.has(clave)) return true
+      vistas.add(clave)
     }
     return false
-  }, [renglones])
+  }, [renglones, f.cuentaContableId])
 
   const importes = useMemo(
     () => ({
@@ -283,6 +303,9 @@ export function ComprobanteDialog({
   if (!abierto) return null
 
   const faltaTc = f.moneda === "USD" && tc <= 0
+
+  // Un importe sin cuenta propia va a la de la cabecera; el placeholder lo dice.
+  const placeholderCuenta = f.cuentaContableId ? "La de la factura" : "Buscar por código o nombre…"
   const puedeGuardar =
     Boolean(f.entidadId) && total > 0 && !faltaTc && !alicuotaRepetida && !guardando
 
@@ -317,7 +340,14 @@ export function ComprobanteDialog({
             // quedan para que el payload se explique solo.
             netos: renglones
               .filter((r) => r.neto > 0 || r.iva > 0)
-              .map((r) => ({ neto: r.neto, alicuota: r.alicuota, iva: r.iva })),
+              .map((r) => ({
+                neto: r.neto,
+                alicuota: r.alicuota,
+                iva: r.iva,
+                cuentaContableId: r.cuentaContableId || null,
+              })),
+            cuentaNoGravadoId: f.cuentaNoGravadoId || null,
+            cuentaExentoId: f.cuentaExentoId || null,
             condicionPago: f.condicionPago,
             observaciones: f.observaciones,
           }),
@@ -493,6 +523,7 @@ export function ComprobanteDialog({
                   ? "Contra qué cuenta va el gasto o la compra"
                   : "Contra qué cuenta va la venta"
               }
+              // Cada importe de abajo puede ir a otra; el que no elige usa esta.
             >
               <SelectorCuenta
                 id="cuentaContableId"
@@ -606,7 +637,7 @@ export function ComprobanteDialog({
                 }))
 
               return (
-                <div key={i} className="grid items-end gap-4 sm:grid-cols-3">
+                <div key={i} className={GRILLA_IMPORTES}>
                   <Campo
                     id={`neto-${i}`}
                     rotulo={i === 0 ? "Neto gravado" : `Neto gravado del tramo ${i + 1}`}
@@ -641,23 +672,38 @@ export function ComprobanteDialog({
                     />
                   </Campo>
 
+                  <Campo
+                    id={`iva-${i}`}
+                    rotulo={i === 0 ? "IVA" : `IVA del tramo ${i + 1}`}
+                    rotuloOculto={i > 0}
+                    ayuda={
+                      i === 0 ? (r.ivaPisado ? "Editado a mano" : "Calculado") : undefined
+                    }
+                  >
+                    <CampoMoneda
+                      id={`iva-${i}`}
+                      valor={r.ivaPisado ? r.ivaManual : calc ? String(calc) : ""}
+                      onChange={(v) => cambiar({ ivaManual: v, ivaPisado: true })}
+                      moneda={f.moneda}
+                      tc={tc}
+                      disabled={guardando}
+                    />
+                  </Campo>
+
                   <div className="flex items-end gap-2">
                     <div className="min-w-0 flex-1">
                       <Campo
-                        id={`iva-${i}`}
-                        rotulo={i === 0 ? "IVA" : `IVA del tramo ${i + 1}`}
+                        id={`cuenta-${i}`}
+                        rotulo={i === 0 ? "Cuenta contable" : `Cuenta contable del tramo ${i + 1}`}
                         rotuloOculto={i > 0}
-                        ayuda={
-                          i === 0 ? (r.ivaPisado ? "Editado a mano" : "Calculado") : undefined
-                        }
                       >
-                        <CampoMoneda
-                          id={`iva-${i}`}
-                          valor={r.ivaPisado ? r.ivaManual : calc ? String(calc) : ""}
-                          onChange={(v) => cambiar({ ivaManual: v, ivaPisado: true })}
-                          moneda={f.moneda}
-                          tc={tc}
+                        <SelectorCuenta
+                          id={`cuenta-${i}`}
+                          valor={r.cuentaContableId}
+                          onElegir={(v) => cambiar({ cuentaContableId: v })}
                           disabled={guardando}
+                          placeholder={placeholderCuenta}
+                          tipoSugerido={esCompra ? "egreso" : "ingreso"}
                         />
                       </Campo>
                     </div>
@@ -712,7 +758,7 @@ export function ComprobanteDialog({
               disabled={guardando}
             >
               <Plus className="h-3.5 w-3.5" />
-              Agregar alícuota
+              Agregar renglón
             </Button>
 
             {f.netos.length > 1 && (
@@ -723,12 +769,14 @@ export function ComprobanteDialog({
 
             {alicuotaRepetida && (
               <p className="text-[11.5px] text-danger-text">
-                Hay dos tramos con la misma alícuota: juntalos en uno solo.
+                Hay dos tramos con la misma alícuota y la misma cuenta: juntalos en uno solo.
               </p>
             )}
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
+          {/* No gravado y exento, cada uno con su cuenta en la misma columna que
+              la de los tramos gravados. */}
+          <div className={GRILLA_IMPORTES}>
             <Campo id="noGravado" rotulo="No gravado" opcional>
               <CampoMoneda
                 id="noGravado"
@@ -739,6 +787,21 @@ export function ComprobanteDialog({
                 disabled={guardando}
               />
             </Campo>
+            <div className="sm:col-start-4">
+              <Campo id="cuentaNoGravadoId" rotulo="Cuenta del no gravado" rotuloOculto>
+                <SelectorCuenta
+                  id="cuentaNoGravadoId"
+                  valor={f.cuentaNoGravadoId}
+                  onElegir={(v) => set("cuentaNoGravadoId", v)}
+                  disabled={guardando}
+                  placeholder={placeholderCuenta}
+                  tipoSugerido={esCompra ? "egreso" : "ingreso"}
+                />
+              </Campo>
+            </div>
+          </div>
+
+          <div className={GRILLA_IMPORTES}>
             <Campo id="exento" rotulo="Exento" opcional>
               <CampoMoneda
                 id="exento"
@@ -749,6 +812,25 @@ export function ComprobanteDialog({
                 disabled={guardando}
               />
             </Campo>
+            <div className="sm:col-start-4">
+              <Campo id="cuentaExentoId" rotulo="Cuenta del exento" rotuloOculto>
+                <SelectorCuenta
+                  id="cuentaExentoId"
+                  valor={f.cuentaExentoId}
+                  onElegir={(v) => set("cuentaExentoId", v)}
+                  disabled={guardando}
+                  placeholder={placeholderCuenta}
+                  tipoSugerido={esCompra ? "egreso" : "ingreso"}
+                />
+              </Campo>
+            </div>
+          </div>
+
+          {/* Ingresos Brutos va abierto por jurisdicción y no en un campo
+              único con un selector al lado: una misma factura puede traer las
+              dos, y cada una imputa contra su propia cuenta —50 BS AS y 51
+              CABA—. Es el punto 3 del pliego de compras. */}
+          <div className="grid gap-4 sm:grid-cols-4">
             <Campo id="otrosImpuestos" rotulo="Otros impuestos" opcional>
               <CampoMoneda
                 id="otrosImpuestos"
@@ -759,13 +841,6 @@ export function ComprobanteDialog({
                 disabled={guardando}
               />
             </Campo>
-          </div>
-
-          {/* Ingresos Brutos va abierto por jurisdicción y no en un campo
-              único con un selector al lado: una misma factura puede traer las
-              dos, y cada una imputa contra su propia cuenta —50 BS AS y 51
-              CABA—. Es el punto 3 del pliego de compras. */}
-          <div className="grid gap-4 sm:grid-cols-3">
             <Campo id="percepcionIva" rotulo="Percepción IVA" opcional>
               <CampoMoneda
                 id="percepcionIva"

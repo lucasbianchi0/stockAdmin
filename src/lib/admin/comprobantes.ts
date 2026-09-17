@@ -232,6 +232,9 @@ export type RenglonIva = {
   neto: number
   alicuota: number
   iva: number
+  /** Contra qué cuenta va este neto. `null` es la cuenta de la cabecera: una
+   *  factura con productos y servicios abre el neto en una cuenta por renglón. */
+  cuentaContableId: string | null
 }
 
 /** El neto y el IVA de toda la factura: la suma de sus tramos. */
@@ -356,7 +359,10 @@ export type Comprobante = {
    *  facturas con IVA; vacío en las que no tienen neto gravado. */
   ivas: RenglonIva[]
   noGravado: number
+  /** La cuenta del no gravado y la del exento; `null` es la de la cabecera. */
+  cuentaNoGravadoId: string | null
   exento: number
+  cuentaExentoId: string | null
   percepcionIva: number
   percepcionIibbBsas: number
   percepcionIibbCaba: number

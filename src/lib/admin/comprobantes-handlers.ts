@@ -592,8 +592,8 @@ function enDias(n: number): string {
  * Borrar y reinsertar y no un diff: son dos o tres renglones, la tabla cuelga del
  * comprobante con `on delete cascade`, y un diff acá sería más código para
  * ahorrar una consulta que nadie va a notar. Lo que sí importa es el orden —
- * primero el borrado, después la inserción— porque el índice único por alícuota
- * rechazaría la fila nueva mientras la vieja siga viva.
+ * primero el borrado, después la inserción— porque el índice único por alícuota y
+ * cuenta rechazaría la fila nueva mientras la vieja siga viva.
  */
 async function guardarIvas(
   comprobanteId: string,
@@ -620,6 +620,7 @@ async function guardarIvas(
       alicuota: r.alicuota,
       neto: r.neto,
       iva: r.iva,
+      cuenta_contable_id: r.cuentaContableId,
     }))
   )
 
@@ -673,6 +674,8 @@ const DEUDA: ReadonlyArray<readonly [string, string]> = [
  *  el recibo canceló. */
 export const CAMPOS_EDITABLES_CON_RECIBO = [
   "cuenta_contable_id",
+  "cuenta_no_gravado_id",
+  "cuenta_exento_id",
   "detalle",
   "observaciones",
   "condicion_pago",

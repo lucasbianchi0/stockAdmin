@@ -19,7 +19,6 @@ import {
   textoCorto,
 } from "@/lib/admin/movimientos-server"
 import { cotizacionHasta } from "@/lib/admin/cotizaciones-server"
-import { ERROR_FECHA_FUTURA, esFechaFutura } from "@/lib/admin/fecha"
 
 /* ── GET · listado ────────────────────────────────────────────────────────── */
 
@@ -113,9 +112,6 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
 
   const fecha = esFechaISO(raw.fecha) ? raw.fecha : null
   if (!fecha) return NextResponse.json({ error: "La fecha es obligatoria" }, { status: 400 })
-  if (esFechaFutura(fecha)) {
-    return NextResponse.json({ error: ERROR_FECHA_FUTURA }, { status: 400 })
-  }
 
   const supabaseUsuario = await createSupabaseServer()
   const {

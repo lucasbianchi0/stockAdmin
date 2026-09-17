@@ -483,9 +483,6 @@ export function PagoDialog({
                 type="date"
                 value={fecha}
                 onChange={(e) => setFecha(e.target.value)}
-                // El día en que entró o salió la plata: no puede ser posterior a
-                // hoy. Sin tope se cargaban cobros con el vencimiento de la factura.
-                max={hoyISO()}
                 className="num"
                 disabled={guardando}
               />
