@@ -1074,7 +1074,7 @@ function PieDeFirma() {
       id="firma"
       num="19"
       titulo="Pie de firma"
-      bajada="Completá tus datos una vez y las dos opciones se arman abajo con ellos. Van con tablas y estilo inline porque Gmail y Outlook borran el <style> de las firmas; las imágenes salen del sitio, nunca incrustadas."
+      bajada="Completá tus datos una vez y las tres opciones se arman abajo con ellos. Van con tablas y estilo inline porque Gmail y Outlook borran el <style> de las firmas; las imágenes salen del sitio, nunca incrustadas."
     >
       <FirmaCorreoGenerador />
     </Section>

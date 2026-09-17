@@ -85,25 +85,33 @@ def _recortado(archivo):
     return im.crop(caja) if caja else im
 
 
-def _medida(im, ajuste):
-    """El tamano al que va ese logo: misma area que el resto, con los dos topes."""
+def _medida(im, ajuste, area=None, alto_max=None, ancho_max=None):
+    """El tamano al que va ese logo: misma area que el resto, con los dos topes.
+
+    Los tres topes se pueden pisar porque la banda del modelo homonimo usa otra
+    grilla: con 4 columnas de 140 en vez de 6 de 93, los logos entran mucho mas
+    grandes sin tocarse.
+    """
+    area = (AREA if area is None else area) * ajuste
+    alto_max = ALTO_MAXIMO if alto_max is None else alto_max
+    ancho_max = ANCHO_MAXIMO if ancho_max is None else ancho_max
     aspecto = im.width / im.height
-    area = AREA * ajuste
     alto = math.sqrt(area / aspecto)
     ancho = area / alto
-    if ancho > ANCHO_MAXIMO:
-        alto *= ANCHO_MAXIMO / ancho
-        ancho = ANCHO_MAXIMO
-    if alto > ALTO_MAXIMO:
-        ancho *= ALTO_MAXIMO / alto
-        alto = ALTO_MAXIMO
+    if ancho > ancho_max:
+        alto *= ancho_max / ancho
+        ancho = ancho_max
+    if alto > alto_max:
+        ancho *= alto_max / alto
+        alto = alto_max
     return max(1, round(ancho)), max(1, round(alto))
 
 
-def nombre_archivo(cantidad=None, tono='claro'):
+def nombre_archivo(cantidad=None, tono='claro', variante=''):
     """El nombre que pide la firma. Lo lee tambien src/lib/firma-correo.ts."""
-    return 'accedra-firma-partners-%d%s-v%d.png' % (
-        cantidad or len(PARTNERS), '' if tono == 'claro' else '-' + tono, REVISION)
+    return 'accedra-firma-partners-%d%s%s-v%d.png' % (
+        cantidad or len(PARTNERS), '-' + variante if variante else '',
+        '' if tono == 'claro' else '-' + tono, REVISION)
 
 
 def _entintado(im):
@@ -114,26 +122,37 @@ def _entintado(im):
     return blanco
 
 
-def escribir(items=None, ancho=ANCHO, tono='claro'):
+def escribir(items=None, ancho=ANCHO, tono='claro', por_fila=POR_FILA, aire=AIRE_FILAS,
+             pad=0, variante='', area=None, alto_max=None, ancho_max=None):
+    """Dibuja la tira y la deja en los dos repos. Devuelve nombre, ancho y alto.
+
+    `pad` es el aire adentro del navy. En la tira de siempre va en cero porque el
+    borde de la imagen es el borde del bloque blanco y el aire lo pone la tabla;
+    en la banda el navy ES el contenedor, y sin pad los logos de las puntas
+    quedan al ras del borde y se lee apretada.
+    """
     items = items or PARTNERS
-    piezas = [(_recortado(a),) + (lambda im: _medida(im, j))(_recortado(a)) for a, _, j in items]
-    filas = [piezas[i:i + POR_FILA] for i in range(0, len(piezas), POR_FILA)]
+    piezas = []
+    for archivo, _, ajuste in items:
+        im = _recortado(archivo)
+        piezas.append((im,) + _medida(im, ajuste, area, alto_max, ancho_max))
+    filas = [piezas[i:i + por_fila] for i in range(0, len(piezas), por_fila)]
     alto_fila = max(h for fila in filas for _, _, h in fila)
-    alto = len(filas) * alto_fila + (len(filas) - 1) * AIRE_FILAS
+    alto = len(filas) * alto_fila + (len(filas) - 1) * aire + pad * 2
 
     fondo = NAVY + (255,) if tono == 'oscuro' else (0, 0, 0, 0)
     lienzo = Image.new('RGBA', (ancho * 2, alto * 2), fondo)
-    columna = ancho / POR_FILA
+    columna = (ancho - pad * 2) / por_fila
     for i, fila in enumerate(filas):
         for j, (im, w, h) in enumerate(fila):
             escalado = im.resize((w * 2, h * 2), Image.LANCZOS)
             if tono == 'oscuro':
                 escalado = _entintado(escalado)
-            x = j * columna
-            y = i * (alto_fila + AIRE_FILAS) + (alto_fila - h) // 2
+            x = pad + j * columna
+            y = pad + i * (alto_fila + aire) + (alto_fila - h) // 2
             lienzo.alpha_composite(escalado, (round(x * 2), y * 2))
 
-    nombre = nombre_archivo(len(items), tono)
+    nombre = nombre_archivo(len(items), tono, variante)
     # PNG8 con alfa: son logos planos, no fotos. Baja el peso a un tercio sin diferencia visible.
     lienzo.quantize(colors=200, method=Image.FASTOCTREE).save(LOGOS / nombre, optimize=True)
     COPIA.mkdir(exist_ok=True)
@@ -145,3 +164,12 @@ def escribir(items=None, ancho=ANCHO, tono='claro'):
 if __name__ == '__main__':
     escribir()
     escribir(tono='oscuro')
+    # La banda del modelo homonimo. Va a 4 por fila y no a 6 porque con columnas
+    # de 93 los logos anchos —Nutanix, Check Point, CommScope— se tocan antes de
+    # llegar a agrandarse: la columna es el techo, no el area. Con 4 columnas de
+    # 140 entran a 30px de alto contra los 19 de la tira normal.
+    #
+    # Y va a 600 de ancho, no a 560, porque la banda es de borde a borde de la
+    # firma: el navy es el contenedor, no algo apoyado adentro del bloque blanco.
+    escribir(tono='oscuro', variante='banda', ancho=600, por_fila=4,
+             area=1800, alto_max=30, ancho_max=120, aire=14, pad=20)

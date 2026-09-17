@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, Code2, Copy, RotateCcw } from "lucide-react"
+import { Check, Code2, Copy, Download, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,10 +20,10 @@ import {
 /**
  * Generador del pie de firma.
  *
- * Se completa una vez arriba y las dos opciones se dibujan abajo con esos
- * mismos datos: elegir entre dos firmas es una decisión visual, y con un
- * selector hay que ir y venir para compararlas. Cada una tiene su propio botón
- * de copiar, así que la elección y la acción están en el mismo lugar.
+ * Se completa una vez arriba y las tres opciones se dibujan abajo con esos
+ * mismos datos: elegir entre firmas es una decisión visual, y con un selector
+ * hay que ir y venir para compararlas. Cada una tiene su propio botón de
+ * copiar, así que la elección y la acción están en el mismo lugar.
  *
  * No hay nada que guardar: los campos viven en el estado del componente y se
  * pierden al recargar, a propósito — es una herramienta de un solo uso, no un
@@ -33,12 +33,23 @@ import {
  * copia las trae del sitio: son los mismos archivos, pero la previa no tiene por
  * qué esperar a un deploy para mostrarlas.
  *
- * Las cuatro se dibujan a la vez —dos modelos por dos tonos—, no detrás de un
+ * Se dibujan todas a la vez —tres modelos por dos tonos—, no detrás de un
  * selector: elegir firma es una decisión visual, y con un selector hay que ir y
- * venir para comparar lo que se podría estar mirando junto. Cada una tiene su
- * propio par de botones, así que la elección y la acción están en el mismo
- * lugar.
+ * venir para comparar lo que se podría estar mirando junto. Cada una tiene sus
+ * propios botones, así que la elección y la acción están en el mismo lugar.
  */
+
+/** "Carlos Bianchi" → "carlos-bianchi", para que el archivo se llame como alguien. */
+function archivo(nombre: string) {
+  return (
+    nombre
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "accedra"
+  )
+}
 
 const CAMPOS: { k: keyof DatosFirma; label: string; ph: string }[] = [
   { k: "nombre", label: "Nombre y apellido", ph: "Carlos Bianchi" },
@@ -103,6 +114,39 @@ export function FirmaCorreoGenerador() {
     setCopiado(`${modelo}:${tono}:html`)
   }
 
+  /**
+   * El PNG lo dibuja el servidor, no el navegador.
+   *
+   * La previa de acá al lado no sirve para exportar: un canvas no rasteriza
+   * HTML, y el truco de meterlo en un `<foreignObject>` se rompe justo con lo
+   * que esta firma tiene —imágenes y una tipografía que hay que embeber—. Del
+   * otro lado está Satori, que es el mismo motor con el que se generan las
+   * placas.
+   */
+  async function descargarPng(modelo: ModeloFirma, tono: Tono) {
+    setCopiado(`${modelo}:${tono}:bajando`)
+    try {
+      const r = await fetch("/api/marketing/firma-png", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ datos, modelo, tono }),
+      })
+      if (!r.ok) throw new Error(String(r.status))
+
+      const url = URL.createObjectURL(await r.blob())
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `firma-${archivo(datos.nombre)}-${modelo}-${tono}.png`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      setCopiado(`${modelo}:${tono}:png`)
+    } catch {
+      setCopiado(`${modelo}:${tono}:error`)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Los datos, una sola vez */}
@@ -153,30 +197,69 @@ export function FirmaCorreoGenerador() {
                 className="overflow-hidden rounded-xl border border-line bg-surface shadow-e1"
               >
                 <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line px-4 py-2.5">
-                  <span className="text-[12px] font-medium text-ink-secondary">
-                    Fondo {t.nombre.toLowerCase()}
-                  </span>
+                  <div className="min-w-0">
+                    <span className="text-[12px] font-medium text-ink-secondary">
+                      Fondo {t.nombre.toLowerCase()}
+                    </span>
+                    {t.nota ? (
+                      <p className="mt-0.5 max-w-lg text-[11px] leading-relaxed text-ink-muted">
+                        {t.nota}
+                      </p>
+                    ) : null}
+                  </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <Button type="button" size="sm" onClick={() => copiarFirma(m.id, t.id)}>
-                      {copiado === `${m.id}:${t.id}:firma` ? (
-                        <Check className="text-white" />
-                      ) : (
-                        <Copy />
-                      )}
-                      {copiado === `${m.id}:${t.id}:firma` ? "Copiada" : "Copiar firma"}
-                    </Button>
+                    {t.correo ? (
+                      <>
+                        {/* Los nombres dicen qué te llevás, no en qué formato está.
+                            Con "Copiar firma" y "HTML" al lado, es fácil apretar
+                            el segundo y terminar pegando el código fuente adentro
+                            del mail. */}
+                        <Button
+                          type="button"
+                          size="sm"
+                          title="Copia la firma con formato, lista para pegar en Gmail, Outlook o Apple Mail"
+                          onClick={() => copiarFirma(m.id, t.id)}
+                        >
+                          {copiado === `${m.id}:${t.id}:firma` ? (
+                            <Check className="text-white" />
+                          ) : (
+                            <Copy />
+                          )}
+                          {copiado === `${m.id}:${t.id}:firma` ? "Copiada" : "Copiar para el correo"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          title="Copia el código HTML como texto. Para pegarlo en otra herramienta, no en el mail."
+                          onClick={() => copiarHtml(m.id, t.id)}
+                        >
+                          {copiado === `${m.id}:${t.id}:html` ? (
+                            <Check className="text-success-text" />
+                          ) : (
+                            <Code2 />
+                          )}
+                          Copiar código
+                        </Button>
+                      </>
+                    ) : null}
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => copiarHtml(m.id, t.id)}
+                      disabled={copiado === `${m.id}:${t.id}:bajando`}
+                      onClick={() => descargarPng(m.id, t.id)}
                     >
-                      {copiado === `${m.id}:${t.id}:html` ? (
+                      {copiado === `${m.id}:${t.id}:png` ? (
                         <Check className="text-success-text" />
                       ) : (
-                        <Code2 />
+                        <Download />
                       )}
-                      HTML
+                      {copiado === `${m.id}:${t.id}:bajando`
+                        ? "Generando…"
+                        : copiado === `${m.id}:${t.id}:error`
+                          ? "Falló"
+                          : "PNG"}
                     </Button>
                   </div>
                 </div>
@@ -196,10 +279,12 @@ export function FirmaCorreoGenerador() {
       ))}
 
       <p className="text-[12px] leading-relaxed text-ink-muted">
-        <span className="font-medium text-ink-secondary">Copiar firma</span> te la lleva con
-        formato: se pega directo en Gmail → Configuración → Firma, o en Redactar para probarla.{" "}
-        <span className="font-medium text-ink-secondary">HTML</span> te da el código, para Outlook o
-        para pegarlo en otra herramienta.
+        <span className="font-medium text-ink-secondary">Copiar para el correo</span> es el que
+        querés casi siempre: te lleva la firma con formato y se pega directo en Gmail →
+        Configuración → Firma, o en Redactar para probarla.{" "}
+        <span className="font-medium text-ink-secondary">Copiar código</span> te da el HTML como
+        texto, para pegarlo en otra herramienta. Si lo pegás en el mail vas a ver el código escrito,
+        no la firma.
       </p>
     </div>
   )
