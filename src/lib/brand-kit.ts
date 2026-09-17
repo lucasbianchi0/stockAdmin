@@ -300,6 +300,49 @@ export const LOGOS: LogoAsset[] = [
     fondo: "oscuro",
     ratio: 1073 / 160,
   },
+  /*
+   * El lockup: el logotipo con "IT SOLUTIONS" debajo, el mismo que va al pie de
+   * los mails. Es la firma de la empresa cuando la pieza tiene que decir a qué
+   * se dedica —una portada, una propuesta, un stand—, y el logotipo solo cuando
+   * el contexto ya lo dice.
+   *
+   * La bajada viene en curvas y no como texto: un SVG con `font-family:'Inter'`
+   * se dibuja con otra fuente en la máquina que no la tiene instalada, y la
+   * imprenta no la tiene. Se genera con `public/brand/generar-lockup-svg.py`,
+   * con la misma geometría que la firma de correo.
+   */
+  {
+    id: "lockup-navy",
+    nombre: "Lockup con bajada",
+    archivo: "/brand/accedra-lockup-navy.svg",
+    uso: "Logotipo + IT SOLUTIONS, el del pie de firma. Para portadas, propuestas y piezas donde hay que decir a qué se dedica la empresa.",
+    fondo: "claro",
+    ratio: 1073 / 263,
+  },
+  {
+    id: "lockup-blanco",
+    nombre: "Lockup en blanco",
+    archivo: "/brand/accedra-lockup-blanco.svg",
+    uso: "El mismo lockup sobre navy, foto oscura o el azul de marca.",
+    fondo: "oscuro",
+    ratio: 1073 / 263,
+  },
+  {
+    id: "lockup-mono-navy",
+    nombre: "Lockup monocromo navy",
+    archivo: "/brand/accedra-lockup-mono-navy.svg",
+    uso: "Con bajada, a una sola tinta: impresión económica, grabado, sellos.",
+    fondo: "claro",
+    ratio: 1073 / 263,
+  },
+  {
+    id: "lockup-mono-blanco",
+    nombre: "Lockup monocromo blanco",
+    archivo: "/brand/accedra-lockup-mono-blanco.svg",
+    uso: "Con bajada, sobre fondo de color saturado o foto donde el acento azul se pierde.",
+    fondo: "oscuro",
+    ratio: 1073 / 263,
+  },
   {
     id: "isotipo-navy",
     nombre: "Isotipo navy",

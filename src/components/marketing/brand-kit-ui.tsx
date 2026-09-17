@@ -189,12 +189,19 @@ export function LogoCard({ logo }: { logo: LogoAsset }) {
         className={cn("flex h-32 items-center justify-center px-8", !oscuro && "bg-surface-subtle")}
         style={oscuro ? { background: NAVY_FONDO } : undefined}
       >
+        {/* El alto sale del ratio y no de un par fijo: el lockup es más alto
+            que el logotipo solo, y con 1073×160 escritos a mano el navegador lo
+            deduciría deformado. Dibujado, el lockup ocupa más para que la
+            bajada se lea a este tamaño. */}
         <Image
           src={logo.archivo}
           alt={logo.nombre}
           width={logo.ratio === 1 ? 200 : 1073}
-          height={logo.ratio === 1 ? 200 : 160}
-          className={logo.ratio === 1 ? "h-14 w-auto" : "h-7 w-auto max-w-full"}
+          height={logo.ratio === 1 ? 200 : Math.round(1073 / logo.ratio)}
+          className={cn(
+            "w-auto max-w-full",
+            logo.ratio === 1 ? "h-14" : logo.ratio < 5 ? "h-12" : "h-7"
+          )}
           unoptimized
         />
       </div>
