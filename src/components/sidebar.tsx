@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 
 import { useChatbotOpcional } from "@/components/chatbot/provider"
+import { DisparadorBuscador } from "@/components/buscador-global"
 import { createSupabaseBrowser } from "@/lib/supabase-browser"
 import { borrarHistoriales } from "@/lib/chatbot/historial"
 import { cn } from "@/lib/utils"
@@ -172,9 +173,12 @@ interface SidebarProps {
   modulos: Modulo[]
   /** Después de abrir los agentes. En el teléfono cierra el menú, que taparía el chat. */
   onAbrirAgentes?: () => void
+  /** Abre el buscador. Sin esto el campo no se dibuja: un buscador que no busca
+   *  es peor que no tenerlo. */
+  onAbrirBuscador?: () => void
 }
 
-export function Sidebar({ mobile, modulos, onAbrirAgentes }: SidebarProps) {
+export function Sidebar({ mobile, modulos, onAbrirAgentes, onAbrirBuscador }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const chat = useChatbotOpcional()
@@ -216,7 +220,7 @@ export function Sidebar({ mobile, modulos, onAbrirAgentes }: SidebarProps) {
     <>
       {/* Vector en blanco sobre el navy: sin la placa blanca que hacía falta
           cuando el logo era un JPG con fondo opaco. */}
-      <div className="px-5 pb-7 pt-7">
+      <div className="px-5 pb-5 pt-7">
         <Image
           src="/brand/accedra-logo-blanco.svg"
           alt="Accedra IT Solutions"
@@ -227,6 +231,15 @@ export function Sidebar({ mobile, modulos, onAbrirAgentes }: SidebarProps) {
           unoptimized
         />
       </div>
+
+      {/* Arriba de todo, antes del menú: buscar es la alternativa a recorrerlo,
+          así que tiene que verse antes de empezar a recorrerlo. Queda fuera del
+          <nav> con scroll para que no se vaya de pantalla al bajar la lista. */}
+      {onAbrirBuscador && (
+        <div className="px-3 pb-4">
+          <DisparadorBuscador onAbrir={onAbrirBuscador} />
+        </div>
+      )}
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
         {/* La ticketera va primera y fuera de los grupos: no pertenece a ningún

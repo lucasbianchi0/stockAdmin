@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
 
 import { Sidebar } from "./sidebar"
 import { ChatbotProvider } from "./chatbot/provider"
+import { DisparadorBuscador, PaletaBusqueda, useAtajoBusqueda } from "./buscador-global"
 import type { Acceso } from "@/lib/permisos"
 
 export function AppShell({
@@ -20,11 +21,20 @@ export function AppShell({
 }) {
   const { modulos } = acceso
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [buscadorAbierto, setBuscadorAbierto] = useState(false)
   const pathname = usePathname()
 
+  // Al llegar a destino se cierran los dos: el menú del teléfono taparía la
+  // pantalla nueva, y el buscador ya hizo su trabajo.
   useEffect(() => {
     setSidebarOpen(false)
+    setBuscadorAbierto(false)
   }, [pathname])
+
+  // useCallback: el atajo la usa como dependencia de su listener y una función
+  // nueva en cada render lo desengancharía y volvería a enganchar siempre.
+  const abrirBuscador = useCallback(() => setBuscadorAbierto(true), [])
+  useAtajoBusqueda(abrirBuscador)
 
   // Las hojas de certificados se imprimen: la sidebar y el `h-screen` con
   // overflow cortarían todo menos la primera hoja.
@@ -36,7 +46,7 @@ export function AppShell({
 
   const shell = (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar modulos={modulos} />
+      <Sidebar modulos={modulos} onAbrirBuscador={abrirBuscador} />
 
       {/* Overlay mobile */}
       {sidebarOpen && (
@@ -46,7 +56,17 @@ export function AppShell({
             onClick={() => setSidebarOpen(false)}
           />
           <div className="absolute left-0 top-0 h-full shadow-e4 animate-in slide-in-from-left-full duration-250">
-            <Sidebar mobile modulos={modulos} onAbrirAgentes={() => setSidebarOpen(false)} />
+            <Sidebar
+              mobile
+              modulos={modulos}
+              onAbrirAgentes={() => setSidebarOpen(false)}
+              onAbrirBuscador={() => {
+                // El menú se va: el popup se abre encima y volver a encontrarlo
+                // abierto detrás, al cerrar, desorienta.
+                setSidebarOpen(false)
+                abrirBuscador()
+              }}
+            />
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
@@ -76,13 +96,19 @@ export function AppShell({
             className="h-[18px] w-auto"
             unoptimized
           />
-          <div className="w-8" />
+          <DisparadorBuscador onAbrir={abrirBuscador} compacto />
         </header>
 
         {/* El scroll vive acá, no en <body>: así la cabecera sticky de cada
             página se ancla al área de contenido y no al viewport completo. */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
       </div>
+
+      <PaletaBusqueda
+        abierto={buscadorAbierto}
+        onCerrar={() => setBuscadorAbierto(false)}
+        acceso={acceso}
+      />
     </div>
   )
 
