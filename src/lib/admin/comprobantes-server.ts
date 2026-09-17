@@ -29,7 +29,7 @@ export const SELECT_COMPROBANTE = `
   ivas:comprobante_ivas (alicuota, neto, iva, cuenta_contable_id),
   cliente:clientes (id, razon_social),
   proveedor:proveedores (id, razon_social),
-  cuenta:plan_cuentas (id, codigo, nombre),
+  cuenta:plan_cuentas!comprobantes_cuenta_contable_id_fkey (id, codigo, nombre),
   vendedor:vendedores (id, nombre)
 `
 
