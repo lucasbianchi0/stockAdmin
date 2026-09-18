@@ -74,6 +74,19 @@ export function aProyecto(fila: Fila): Proyecto {
  * acceso no puede entrar a la app, y ofrecerlo en el selector de asignados
  * garantiza un ticket que nunca va a ver nadie.
  */
+/**
+ * Cuentas que NO salen en la Ticketera aunque tengan acceso de sobra.
+ *
+ * Si encontrás un mail escrito a mano acá y te preguntás por qué: es a pedido, y
+ * es deliberado. Son cuentas con acceso a la app —esta es admin— que igual no
+ * tienen que recibir tickets ni ocupar un avatar en el tablero. Sin esta lista
+ * no hay forma de expresarlo, porque el equipo sale de `auth.users` filtrado por
+ * permisos y ser admin es justo lo que te mete adentro.
+ *
+ * Sacar la línea la devuelve al tablero; no hay nada más que deshacer.
+ */
+const FUERA_DEL_TABLERO = ["diazstellamaris2@gmail.com"]
+
 export async function listarEquipo(): Promise<Usuario[]> {
   const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 })
 
@@ -84,6 +97,7 @@ export async function listarEquipo(): Promise<Usuario[]> {
 
   return (data?.users ?? [])
     .filter((u) => {
+      if (FUERA_DEL_TABLERO.includes((u.email ?? "").trim().toLowerCase())) return false
       const acceso = accesoDeUsuario(u)
       return acceso.admin || acceso.modulos.length > 0
     })
