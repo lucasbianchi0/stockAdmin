@@ -378,6 +378,67 @@
   .checkbox {
     @apply h-[15px] w-[15px] cursor-pointer rounded-[4px] border-line-strong align-middle accent-[var(--brand-600)] transition-opacity disabled:cursor-default disabled:opacity-45;
   }
+
+  /* ── Prosa: el cuerpo de una nota ya renderizado ────────────────────────
+     El markdown de una nota sale como HTML SIN clases (ver notas-markdown.ts),
+     así que el estilo se aplica desde acá con selectores descendentes. El
+     sitio tiene su propia versión de estas reglas, oscura; ésta es la clara de
+     la vista previa del editor. Que sean dos hojas separadas es a propósito:
+     la vista previa tiene que mostrar la ESTRUCTURA del texto —qué es título,
+     qué es lista, dónde corta un párrafo—, no imitar el diseño del sitio, que
+     cambia por su cuenta. ── */
+  .prosa {
+    @apply text-[13.5px] leading-[1.75] text-ink-secondary;
+  }
+  .prosa > * + * {
+    @apply mt-4;
+  }
+  .prosa h2 {
+    @apply mt-7 text-[17px] font-semibold leading-snug tracking-[-0.01em] text-ink;
+  }
+  .prosa h3 {
+    @apply mt-6 text-[14.5px] font-semibold leading-snug text-ink;
+  }
+  .prosa strong {
+    @apply font-semibold text-ink;
+  }
+  .prosa a {
+    @apply text-brand-700 underline underline-offset-2;
+  }
+  .prosa ul,
+  .prosa ol {
+    @apply space-y-1.5 pl-5;
+  }
+  .prosa ul {
+    @apply list-disc;
+  }
+  .prosa ol {
+    @apply list-decimal;
+  }
+  .prosa blockquote {
+    @apply border-l-2 border-brand-300 pl-4 text-ink-muted italic;
+  }
+  .prosa code {
+    @apply rounded bg-surface-muted px-1 py-0.5 font-mono text-[12px] text-ink;
+  }
+  .prosa pre {
+    @apply overflow-x-auto rounded-lg bg-surface-muted p-3;
+  }
+  .prosa pre code {
+    @apply bg-transparent p-0;
+  }
+  .prosa hr {
+    @apply border-line;
+  }
+  .prosa table {
+    @apply w-full border-collapse text-[12.5px];
+  }
+  .prosa th {
+    @apply border-b border-line py-2 pr-4 text-left font-semibold text-ink;
+  }
+  .prosa td {
+    @apply border-b border-line py-2 pr-4 align-top;
+  }
 }
 
 /* ── El latido del botón del asistente ──────────────────────────────────────
