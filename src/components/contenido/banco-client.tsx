@@ -21,6 +21,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FeedPrevia, type SlotFeed } from "@/components/contenido/feed-previa"
 import { PiezaBancoDialog } from "@/components/contenido/pieza-banco-dialog"
 import {
+  GenerarPiezaDialog,
+  type ConfigPieza,
+} from "@/components/contenido/generar-pieza-dialog"
+import {
   BANCO_LABEL,
   BANCO_NOTA,
   CANALES_BANCO,
@@ -358,6 +362,52 @@ export function BancoClient() {
     [parche, producir]
   )
 
+  /**
+   * UNA pieza, sobre un pedido concreto.
+   *
+   * Es el mismo camino que el lote y no un atajo: la ruta devuelve sólo la idea
+   * —titular, tesis, ángulo— y el copy y la imagen los produce `producir` acá en
+   * el navegador, igual que para las ocho. Si se saltara ese paso, la pieza
+   * caería en el banco a medias y habría que apretar "completar" a mano.
+   *
+   * No arrastra las pendientes como el lote: acá se pidió UNA cosa puntual, y
+   * ponerse a terminar material viejo de arriba sería hacer algo que nadie pidió.
+   */
+  const generarPieza = useCallback(
+    async (cfg: ConfigPieza) => {
+      const c = cfg.canal
+      if (enCurso.current.has(c)) return
+      parche(c, { progreso: { hechos: 0, total: 1, piezaId: null, paso: "texto" } })
+
+      let nuevas: PiezaBanco[]
+      try {
+        const res = await fetchConEspera(
+          "/api/contenido/banco/generar",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(cfg),
+          },
+          ESPERA.lote
+        )
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error)
+        nuevas = (data.piezas ?? []) as PiezaBanco[]
+      } catch (e) {
+        parche(c, { progreso: null })
+        toast.error(e instanceof Error ? e.message : "No se pudo generar la publicación")
+        return
+      }
+
+      setEstado((prev) => ({
+        ...prev,
+        [c]: { ...prev[c], piezas: [...prev[c].piezas, ...nuevas] },
+      }))
+      await producir(c, nuevas)
+    },
+    [parche, producir]
+  )
+
   return (
     <Tabs value={canal} onValueChange={(v) => setCanal(v as Canal)}>
       <TabsList>
@@ -378,6 +428,7 @@ export function BancoClient() {
             canal={c}
             estado={estado[c]}
             onGenerarLote={(tema) => generarLote(c, tema)}
+            onGenerarPieza={generarPieza}
             onCompletar={(pendientes) => producir(c, pendientes)}
             onAplicar={(p) => aplicar(c, p)}
             onSacar={(id) => sacar(c, id)}
@@ -399,6 +450,7 @@ function BancoDeCanal({
   canal,
   estado,
   onGenerarLote,
+  onGenerarPieza,
   onCompletar,
   onAplicar,
   onSacar,
@@ -407,6 +459,8 @@ function BancoDeCanal({
   canal: Canal
   estado: EstadoCanal
   onGenerarLote: (tema: TemaBanco) => void
+  /** Una pieza sobre un pedido escrito, en vez de un lote que elige el tema solo. */
+  onGenerarPieza: (cfg: ConfigPieza) => void
   onCompletar: (pendientes: PiezaBanco[]) => void
   onAplicar: (p: PiezaBanco) => void
   onSacar: (id: string) => void
@@ -415,6 +469,7 @@ function BancoDeCanal({
 }) {
   const [abierta, setAbierta] = useState<string | null>(null)
   const [verFeed, setVerFeed] = useState(false)
+  const [pidiendo, setPidiendo] = useState(false)
 
   const { piezas, cargado, progreso } = estado
   const incompletas = pendientesDe(piezas)
@@ -448,6 +503,30 @@ function BancoDeCanal({
             <LayoutGrid />
             Ver feed
           </Button>
+
+          {/* El lote elige el tema por su cuenta; esto es para cuando ya se sabe
+              qué hay que publicar —cerramos un proyecto, sale una feria— y el
+              banco genérico no sirve. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPidiendo(true)}
+            disabled={trabajando}
+          >
+            <Sparkles />
+            Generar publicación
+          </Button>
+
+          <GenerarPiezaDialog
+            abierto={pidiendo}
+            generando={trabajando}
+            canalInicial={canal}
+            onCerrar={() => setPidiendo(false)}
+            onGenerar={(cfg) => {
+              setPidiendo(false)
+              onGenerarPieza(cfg)
+            }}
+          />
 
           {/* Secundario y a propósito: con el botón principal arrastrando lo
               pendiente, esto solo hace falta para terminar lo que hay sin
@@ -811,3 +890,4 @@ export function EnlaceAgenda() {
     </Button>
   )
 }
+
