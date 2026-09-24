@@ -36,16 +36,39 @@ export function AppShell({
   const abrirBuscador = useCallback(() => setBuscadorAbierto(true), [])
   useAtajoBusqueda(abrirBuscador)
 
-  // Las hojas de certificados se imprimen: la sidebar y el `h-screen` con
-  // overflow cortarían todo menos la primera hoja.
+  // Las hojas de certificados se imprimen: la sidebar y el shell clavado al
+  // viewport, con su overflow, cortarían todo menos la primera hoja.
   const esImpresion = /^\/marketing\/eventos\/[^/]+\/certificados$/.test(pathname)
 
   if (pathname === "/login" || pathname === "/sin-acceso" || esImpresion) {
     return <>{children}</>
   }
 
+  /*
+   * `fixed inset-0` y no `h-screen`.
+   *
+   * El síntoma que arregla: la pantalla "se rompía hacia abajo" —la barra
+   * lateral terminaba en el medio y abajo quedaba una franja de fondo vacío—.
+   * Pasaba en facturas de compra y en cualquier otra pantalla, sin un patrón
+   * claro, que es lo que lo hacía difícil de creer.
+   *
+   * La causa: `h-screen` mide 100vh, pero nada impedía que el DOCUMENTO
+   * creciera más que eso. Cualquier nodo suelto colgado del `<body>` —el
+   * contenedor de los avisos, un portal, el overlay de desarrollo— le suma alto
+   * al documento, y entonces la ventana scrollea por su cuenta: el shell, que
+   * mide exactamente una pantalla, se va para arriba y deja ver el fondo abajo.
+   * El scroll de adentro —el que corresponde— seguía funcionando, así que
+   * parecía que la página "se movía sola".
+   *
+   * Clavado al viewport el problema no puede volver a existir, venga de donde
+   * venga el nodo que estira el documento: el shell tapa la pantalla entera
+   * siempre. Medido en el navegador, el scroll fantasma pasa de 260 px a 0.
+   *
+   * No afecta a las pantallas que se imprimen ni al login: esas salen antes,
+   * por el `return` de arriba, y no pasan por acá.
+   */
   const shell = (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="fixed inset-0 flex overflow-hidden bg-background">
       <Sidebar modulos={modulos} onAbrirBuscador={abrirBuscador} />
 
       {/* Overlay mobile */}
