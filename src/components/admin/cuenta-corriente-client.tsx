@@ -7,6 +7,7 @@ import { Download, PieChart, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { EmptyState, LoadingState } from "@/components/ui/states"
 import {
   Table,
@@ -35,6 +36,10 @@ type FilaCuenta = {
   tc: number | null
   importeArs: number
   saldo: number
+  /** El comprobante todavía debe algo. Los recibos nunca. */
+  impaga: boolean
+  /** Lo que le falta a ESE comprobante, en pesos históricos. `null` en recibos. */
+  pendienteArs: number | null
 }
 
 /**
@@ -99,6 +104,21 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
   const filas = cuenta.data?.filas ?? []
   const saldoFinal = cuenta.data?.saldoFinal ?? 0
   const cargando = cuenta.isLoading
+
+  /**
+   * "Solo impagas": la cuenta corriente contesta dos preguntas distintas y
+   * hasta ahora solo sabía contestar la primera. Una es "qué pasó con esta
+   * ficha", que necesita todo en orden con el saldo corriendo. La otra es "qué
+   * me debe hoy", y ahí los recibos y las facturas ya canceladas son ruido: hay
+   * que ir tachando a mano para encontrar las cuatro que importan.
+   */
+  const [soloImpagas, setSoloImpagas] = useState(false)
+  const visibles = soloImpagas ? filas.filter((f) => f.impaga) : filas
+
+  // Filtrada, el saldo corrido no significa nada —le faltan las filas del
+  // medio—, así que la última columna pasa a ser lo que cada comprobante debe,
+  // y el total de abajo la suma de eso.
+  const totalPendiente = visibles.reduce((a, f) => a + (f.pendienteArs ?? 0), 0)
 
   // El reporte trae la ficha en la respuesta, así que llegar con la entidad en
   // la URL no necesita una consulta aparte para saber cómo se llama.
@@ -175,7 +195,7 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
             )}
           </div>
 
-          {filas.length > 0 && (
+          {visibles.length > 0 && (
             <Button
               variant="outline"
               size="sm"
@@ -190,10 +210,10 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
                     "Dólares",
                     "TC",
                     "Pesos",
-                    "Saldo",
+                    soloImpagas ? "Pendiente" : "Saldo",
                     "Observaciones",
                   ],
-                  filas.map((f) => [
+                  visibles.map((f) => [
                     f.fecha,
                     f.tipo,
                     f.comprobante ?? "",
@@ -201,7 +221,7 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
                     f.importeUsd ?? "",
                     f.tc ?? "",
                     f.importeArs,
-                    f.saldo,
+                    soloImpagas ? (f.pendienteArs ?? 0) : f.saldo,
                     f.observaciones ?? "",
                   ])
                 )
@@ -241,16 +261,34 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
                 <p className="num text-[11.5px] text-ink-muted">{formatearCuit(elegida.cuit)}</p>
               )}
             </div>
-            <div className="text-right">
-              <p className="eyebrow">Saldo</p>
-              <p
-                className={cn(
-                  "num text-[19px] font-bold tracking-[-0.02em]",
-                  saldoFinal > 0 ? "text-ink" : "text-success-text"
-                )}
-              >
-                {formatearImporte(saldoFinal, "ARS")}
-              </p>
+            <div className="flex items-center gap-6">
+              {/* El interruptor al lado del saldo y no arriba de la tabla: es
+                  lo que cambia qué número es ese, así que tiene que verse en el
+                  mismo golpe de vista. */}
+              <label className="flex cursor-pointer items-center gap-2.5">
+                <Switch
+                  checked={soloImpagas}
+                  onCheckedChange={setSoloImpagas}
+                  aria-label="Ver solo las impagas"
+                />
+                <span className="text-[12.5px] font-medium text-ink-secondary">
+                  Solo impagas
+                </span>
+              </label>
+
+              <div className="text-right">
+                <p className="eyebrow">{soloImpagas ? "Pendiente" : "Saldo"}</p>
+                <p
+                  className={cn(
+                    "num text-[19px] font-bold tracking-[-0.02em]",
+                    (soloImpagas ? totalPendiente : saldoFinal) > 0
+                      ? "text-ink"
+                      : "text-success-text"
+                  )}
+                >
+                  {formatearImporte(soloImpagas ? totalPendiente : saldoFinal, "ARS")}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -266,12 +304,14 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
                 <TableHead className="text-right">Dólares</TableHead>
                 <TableHead className="text-right">TC</TableHead>
                 <TableHead className="text-right">Pesos</TableHead>
-                <TableHead className="text-right">Saldo</TableHead>
+                <TableHead className="text-right">
+                  {soloImpagas ? "Pendiente" : "Saldo"}
+                </TableHead>
                 <TableHead>Observaciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filas.map((f, i) => {
+              {visibles.map((f, i) => {
                 const esPago = f.importeArs < 0
                 return (
                   <TableRow key={i}>
@@ -283,7 +323,22 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
                         {f.tipo}
                       </Badge>
                     </TableCell>
-                    <TableCell className="num text-ink-secondary">
+                    <TableCell className="num whitespace-nowrap text-ink-secondary">
+                      {/* El asterisco adelante del número, como en el remito de
+                          papel: se barre la columna de arriba abajo y las que
+                          faltan cobrar saltan solas, sin tener que leer importes.
+                          Ocupa lugar aunque no se muestre para que los números
+                          queden alineados entre sí. */}
+                      <span
+                        className={cn(
+                          "mr-1 inline-block w-1.5 font-bold",
+                          f.impaga ? "text-warning-text" : "text-transparent"
+                        )}
+                        title={f.impaga ? "Impaga" : undefined}
+                        aria-hidden={!f.impaga}
+                      >
+                        {f.impaga ? "*" : ""}
+                      </span>
                       {f.comprobante ?? <span className="text-ink-faint">—</span>}
                     </TableCell>
                     <TableCell className="num text-right text-ink-secondary">
@@ -309,7 +364,9 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
                       {formatearImporte(f.importeArs, "ARS")}
                     </TableCell>
                     <TableCell className="num text-right font-semibold text-ink">
-                      {formatearImporte(f.saldo, "ARS")}
+                      {soloImpagas
+                        ? formatearImporte(f.pendienteArs ?? 0, "ARS")
+                        : formatearImporte(f.saldo, "ARS")}
                     </TableCell>
                     {/* Última y sin ancho fijo: es texto libre y de largo
                         impredecible, y en el medio de la tabla empujaría los
@@ -326,6 +383,19 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
                   </TableRow>
                 )
               })}
+
+              {/* Con el filtro puesto y nada que mostrar, una tabla vacía
+                  parecería un error de carga. Acá es la mejor noticia posible. */}
+              {visibles.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={8}
+                    className="py-8 text-center text-[12.5px] text-ink-muted"
+                  >
+                    No queda ningún comprobante impago: está todo cancelado.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </div>

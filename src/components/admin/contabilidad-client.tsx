@@ -75,10 +75,25 @@ export function ContabilidadClient() {
   // sirve de nada.
   const pendientes = usePendientes().data?.cantidad ?? 0
 
+  /**
+   * "Sin asentar" solo existe cuando hay algo sin asentar.
+   *
+   * Es la misma regla que el cartel de cada módulo: una solapa permanente que
+   * casi siempre está vacía entrena a no mirarla, y el día que tiene algo pasa
+   * desapercibida. Que aparezca es, en sí mismo, el aviso.
+   *
+   * La excepción es estar parado encima: si el último pendiente se corrige
+   * desde ahí, la solapa se queda hasta que alguien se va a otra —si no, la
+   * pantalla desaparecería abajo del cursor justo cuando se terminó de arreglar
+   * todo, que es el momento en que uno quiere ver que no quedó nada.
+   */
+  const mostrarPendientes = pendientes > 0 || solapa === "pendientes"
+  const solapas = SOLAPAS.filter((s) => s.valor !== "pendientes" || mostrarPendientes)
+
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center gap-1 rounded-lg border border-line bg-surface p-1">
-        {SOLAPAS.map((s) => (
+        {solapas.map((s) => (
           <button
             key={s.valor}
             onClick={() => setSolapa(s.valor)}

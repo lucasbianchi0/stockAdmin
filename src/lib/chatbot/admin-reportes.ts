@@ -211,7 +211,7 @@ async function pendientes(tipo: "venta" | "compra"): Promise<string> {
   const TOPE = 2000
   const { data, error } = await supabase
     .from("comprobantes_vigentes")
-    .select("moneda, saldo, fecha_vencimiento")
+    .select("moneda, saldo, fecha_vencimiento, signo")
     .eq("tipo", tipo)
     .gt("saldo", 0)
     .limit(TOPE)
@@ -222,14 +222,30 @@ async function pendientes(tipo: "venta" | "compra"): Promise<string> {
   const total = cero()
   const vencido = cero()
   const proximo = cero()
+  let facturas = 0
+  let notas = 0
   let vencidas = 0
   let proximas = 0
 
   for (const f of data ?? []) {
     const moneda = monedaDe(f.moneda)
-    const saldo = Number(f.saldo)
+    /**
+     * Con signo, igual que `/admin/reportes` y que la ficha del cliente: una
+     * nota de crédito sin aplicar no es plata a cobrar, es crédito a favor del
+     * cliente. Sumándola, el "por cobrar" del chatbot decía un número más alto
+     * que la pantalla que dice copiar.
+     */
+    const signo = Number(f.signo) === -1 ? -1 : 1
+    const saldo = Number(f.saldo) * signo
     const vence = f.fecha_vencimiento as string | null
     total[moneda] += saldo
+    if (signo === -1) {
+      notas++
+      continue
+    }
+    facturas++
+    // Una nota de crédito no vence ni se reclama, así que no entra en estos dos
+    // contadores: baja el total y nada más.
     if (vence && vence < hoy) {
       vencido[moneda] += saldo
       vencidas++
@@ -243,12 +259,17 @@ async function pendientes(tipo: "venta" | "compra"): Promise<string> {
   const que = tipo === "venta" ? "Por cobrar" : "Por pagar"
   const lineas = [
     `${que} al ${fechaCorta(hoy)} (facturas confirmadas con saldo):`,
-    `- ${n} facturas, ${montos(total)}.`,
+    `- ${facturas} facturas, ${montos(total)}.`,
     `- Vencidas: ${vencidas}, ${montos(vencido)}.`,
     `- Vencen en los próximos 7 días: ${proximas}, ${montos(proximo)}.`,
     "- Los importes van por moneda y no se suman entre sí.",
     `- Detalle por ${tipo === "venta" ? "cliente" : "proveedor"}: /admin/reportes`,
   ]
+  if (notas > 0) {
+    lineas.push(
+      `- El total ya viene neto de ${notas} nota${notas === 1 ? "" : "s"} de crédito sin aplicar.`
+    )
+  }
   if (n >= TOPE) lineas.push("- Ojo: se leyeron las primeras 2000; el total real es mayor.")
   return lineas.join("\n")
 }
@@ -312,7 +333,7 @@ async function antiguedadSaldos(): Promise<string> {
   const { filas, cortado } = await leerPaginado((desde, hasta) =>
     supabase
       .from("comprobantes_vigentes")
-      .select("tipo, moneda, saldo, fecha_vencimiento")
+      .select("tipo, moneda, saldo, fecha_vencimiento, signo")
       .in("tipo", ["venta", "compra"])
       .gt("saldo", 0)
       .range(desde, hasta)
@@ -326,7 +347,11 @@ async function antiguedadSaldos(): Promise<string> {
     for (const f of filas) {
       if (f.tipo !== tipo) continue
       const moneda = monedaDe(f.moneda)
-      const saldo = Number(f.saldo) || 0
+      // Con signo en el tramo y en el total, los dos: si restara solo del total,
+      // los tramos no sumarían el total y los porcentajes pasarían del 100%. Una
+      // nota de crédito no tiene vencimiento, así que cae en "sin fecha".
+      const signo = Number(f.signo) === -1 ? -1 : 1
+      const saldo = (Number(f.saldo) || 0) * signo
       const tramo = acc.get(tramoDe((f.fecha_vencimiento as string | null) ?? null, hoy))!
       tramo.n++
       tramo.m[moneda] += saldo

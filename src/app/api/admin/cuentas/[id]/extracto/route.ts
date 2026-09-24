@@ -163,6 +163,21 @@ export const GET = ruta("extracto GET", async (req: Request, ctx: { params: Prom
     }
   })
 
+  /*
+   * Las filas salen al revés de como se calcularon: el último movimiento arriba.
+   *
+   * El saldo corrido se acumula del más viejo al más nuevo y no hay otra forma
+   * de calcularlo, pero leerlo así obliga a bajar hasta el fondo de la página
+   * para ver en qué quedó la cuenta —y lo que se viene a mirar a un extracto,
+   * nueve de cada diez veces, es lo último que pasó—. Es además el orden en que
+   * lo muestra cualquier home banking, así que conciliar contra el resumen del
+   * banco deja de ser leer dos listas en sentidos opuestos.
+   *
+   * El `saldo` de cada fila sigue siendo el acumulado hasta esa fila, que es lo
+   * correcto en los dos sentidos de lectura.
+   */
+  filas.reverse()
+
   const extracto: Extracto = {
     cuenta: {
       id: cuenta.id as string,

@@ -259,7 +259,11 @@ export function ComprobanteDetalle({
                           {formatearFecha(i.fecha)}
                         </span>
                         <p className="truncate text-[11.5px] text-ink-muted">
-                          {i.cuentas.length > 0 ? i.cuentas.join(" · ") : "Solo retenciones"}
+                          {i.cuentas.length > 0
+                            ? i.cuentas.join(" · ")
+                            : i.conRetenciones
+                              ? "Solo retenciones"
+                              : "Aplicación de nota de crédito"}
                           {i.referencias.length > 0 && ` · ${i.referencias.join(" · ")}`}
                         </p>
                       </>

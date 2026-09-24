@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Download, PieChart, Wallet } from "lucide-react"
+import { Download, PieChart } from "lucide-react"
 
 import { SemaforoVencimiento } from "@/components/admin/semaforo-vencimiento"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { EmptyState, LoadingState } from "@/components/ui/states"
 import {
   Table,
@@ -17,9 +18,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { descargarCsv } from "@/lib/admin/csv"
-import type { CuentaFinanciera } from "@/lib/admin/cobros"
 import { formatearImporte } from "@/lib/admin/moneda"
-import { claves, pedirJson } from "@/lib/admin/query"
+import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
@@ -49,11 +49,16 @@ type Pendiente = {
   fechaVencimiento: string | null
   moneda: "ARS" | "USD"
   tc: number | null
+  /** -1 en las notas de crédito. `total` y `saldo` ya vienen con él aplicado:
+   *  una NC pendiente es crédito a favor del cliente, no deuda suya. */
+  signo: 1 | -1
   total: number
   imputado: number
   saldo: number
   detalle: string | null
   vencida: boolean
+  /** Cuándo se calcula que se va a cobrar (o pagar). Se edita desde acá mismo. */
+  fechaEstimadaPago: string | null
 }
 
 type Totales = {
@@ -66,12 +71,20 @@ type Totales = {
   truncado: boolean
 }
 
-type Solapa = "cobrar" | "pagar" | "saldos"
+type Solapa = "cobrar" | "pagar"
 
+/**
+ * Había una tercera, «Saldos por cuenta», y se fue.
+ *
+ * Mostraba el saldo de cada caja y cada banco, que es exactamente lo que ya
+ * muestra Caja y Bancos en el tablero —ahí y con más datos: entradas y salidas
+ * del mes, lo que falta conciliar, y el link al extracto de cada una—. Tener el
+ * mismo número en dos pantallas no es redundancia inofensiva: el día que una de
+ * las dos se calcula distinto, nadie sabe cuál creer.
+ */
 const SOLAPAS: { valor: Solapa; etiqueta: string }[] = [
   { valor: "cobrar", etiqueta: "Pendientes de cobro" },
   { valor: "pagar", etiqueta: "Pendientes de pago" },
-  { valor: "saldos", etiqueta: "Saldos por cuenta" },
 ]
 
 export function ReportesClient() {
@@ -111,7 +124,6 @@ export function ReportesClient() {
 
       {solapa === "cobrar" && <Pendientes tipo="venta" />}
       {solapa === "pagar" && <Pendientes tipo="compra" />}
-      {solapa === "saldos" && <Saldos />}
     </>
   )
 }
@@ -145,6 +157,7 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
         "Total",
         "Cobrado",
         "Saldo",
+        esVenta ? "Cobro estimado" : "Pago estimado",
         "Detalle",
       ],
       filas.map((f) => [
@@ -158,6 +171,7 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
         f.total,
         f.imputado,
         f.saldo,
+        f.fechaEstimadaPago ?? "",
         f.detalle ?? "",
       ])
     )
@@ -170,10 +184,12 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
       {totales && (
         <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-line bg-surface-subtle px-5 py-4">
           <Total rotulo="Comprobantes" valor={String(totales.cantidad)} />
-          {totales.ars > 0 && (
+          {/* `!== 0` y no `> 0`: con las notas de crédito netadas, un total puede
+              dar cero o quedar a favor del cliente, y esconderlo sería mentir. */}
+          {totales.ars !== 0 && (
             <Total rotulo="En pesos" valor={formatearImporte(totales.ars, "ARS")} />
           )}
-          {totales.usd > 0 && (
+          {totales.usd !== 0 && (
             <Total rotulo="En dólares" valor={formatearImporte(totales.usd, "USD")} />
           )}
           {totales.vencidas > 0 && (
@@ -219,6 +235,9 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
               <TableHead>Vencimiento</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead className="text-right">Saldo</TableHead>
+              {/* Última porque es la única que se escribe: la vista se lee de
+                  izquierda a derecha y termina en la decisión que hay que tomar. */}
+              <TableHead>{esVenta ? "Cobro estimado" : "Pago estimado"}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -226,7 +245,7 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
               <TableRow key={f.id} className={cn(f.vencida && "bg-danger-soft/40")}>
                 <TableCell className="font-medium text-ink">{f.entidad}</TableCell>
                 <TableCell>
-                  <Badge tone="neutral" size="sm">
+                  <Badge tone={f.signo === -1 ? "warning" : "neutral"} size="sm">
                     {f.clase}
                   </Badge>
                   <span className="num ml-2 text-[12px] text-ink-secondary">{f.numero}</span>
@@ -241,6 +260,13 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
                 <TableCell className="num text-right font-semibold text-ink">
                   {formatearImporte(f.saldo, f.moneda)}
                 </TableCell>
+                <TableCell>
+                  <CeldaPagoEstimado
+                    id={f.id}
+                    recurso={esVenta ? "ventas" : "compras"}
+                    valor={f.fechaEstimadaPago}
+                  />
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -250,79 +276,64 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
   )
 }
 
-/* ── Saldos por cuenta ────────────────────────────────────────────────────── */
+/**
+ * La fecha estimada de pago, editable en la fila.
+ *
+ * Guarda al soltar el selector, sin botón: el gesto ya es explícito —se eligió
+ * un día en un calendario— y un "guardar" por fila convertiría planificar la
+ * cobranza de veinte facturas en cuarenta clics.
+ *
+ * El valor que se ve es el tipeado hasta que el servidor contesta; si falla,
+ * vuelve al que tenía y se marca en rojo. Nunca se queda mostrando una fecha
+ * que no se guardó, que es la única forma en que una celda así miente.
+ */
+function CeldaPagoEstimado({
+  id,
+  recurso,
+  valor,
+}: {
+  id: string
+  recurso: "ventas" | "compras"
+  valor: string | null
+}) {
+  const invalidar = useInvalidarAdmin()
+  const [local, setLocal] = useState(valor ?? "")
+  const [guardando, setGuardando] = useState(false)
+  const [fallo, setFallo] = useState(false)
 
-const URL_CUENTAS = "/api/admin/cuentas"
+  // Si el reporte se vuelve a pedir —otra pestaña, otra pantalla— manda el
+  // servidor.
+  useEffect(() => setLocal(valor ?? ""), [valor])
 
-function Saldos() {
-  // El mismo URL que usan movimientos y los formularios de cobro: comparten caché.
-  const query = useQuery({
-    queryKey: claves.url(URL_CUENTAS),
-    queryFn: ({ signal }) =>
-      pedirJson<{ cuentas?: CuentaFinanciera[] }>(URL_CUENTAS, { signal }),
-  })
-  const cuentas = query.data?.cuentas ?? []
-  const cargando = query.isPending
-
-  if (cargando) return <LoadingState label="Cargando saldos…" />
-
-  const porMoneda = (m: "ARS" | "USD") =>
-    cuentas.filter((c) => c.moneda === m).reduce((a, c) => a + (c.saldo ?? 0), 0)
+  const guardar = async (v: string) => {
+    setLocal(v)
+    setGuardando(true)
+    setFallo(false)
+    try {
+      await pedirJson(`/api/admin/${recurso}/${id}/pago-estimado`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fechaEstimadaPago: v || null }),
+      })
+      await invalidar()
+    } catch {
+      setFallo(true)
+      setLocal(valor ?? "")
+    } finally {
+      setGuardando(false)
+    }
+  }
 
   return (
-    <div className="panel overflow-hidden">
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-line bg-surface-subtle px-5 py-4">
-        <Total rotulo="Total en pesos" valor={formatearImporte(porMoneda("ARS"), "ARS")} />
-        <Total rotulo="Total en dólares" valor={formatearImporte(porMoneda("USD"), "USD")} />
-        <Button
-          variant="outline"
-          size="sm"
-          className="ml-auto"
-          onClick={() =>
-            descargarCsv(
-              "saldos-por-cuenta.csv",
-              ["Cuenta", "Tipo", "Moneda", "Saldo"],
-              cuentas.map((c) => [c.nombre, c.tipo, c.moneda, c.saldo ?? 0])
-            )
-          }
-        >
-          <Download className="h-3.5 w-3.5" />
-          Exportar CSV
-        </Button>
-      </div>
-
-      {cuentas.length === 0 ? (
-        <EmptyState icon={Wallet} title="No hay cuentas cargadas" />
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Cuenta</TableHead>
-              <TableHead>Tipo</TableHead>
-              <TableHead>Moneda</TableHead>
-              <TableHead className="text-right">Saldo</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {cuentas.map((c) => (
-              <TableRow key={c.id}>
-                <TableCell className="font-medium text-ink">{c.nombre}</TableCell>
-                <TableCell className="capitalize text-ink-secondary">{c.tipo}</TableCell>
-                <TableCell className="text-ink-secondary">{c.moneda}</TableCell>
-                <TableCell
-                  className={cn(
-                    "num text-right font-semibold",
-                    (c.saldo ?? 0) < 0 ? "text-danger-text" : "text-ink"
-                  )}
-                >
-                  {formatearImporte(c.saldo ?? 0, c.moneda)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-    </div>
+    <Input
+      type="date"
+      value={local}
+      onChange={(e) => guardar(e.target.value)}
+      disabled={guardando}
+      aria-label="Fecha estimada de pago"
+      title={fallo ? "No se pudo guardar. Probá de nuevo." : undefined}
+      className={cn("num h-8 w-[132px] text-[12px]", fallo && "border-danger-line")}
+    />
   )
 }
 
@@ -341,4 +352,3 @@ function fechaCorta(iso: string): string {
   const [a, m, d] = iso.split("-")
   return `${Number(d)}/${Number(m)}/${a.slice(2)}`
 }
-

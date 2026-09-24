@@ -70,7 +70,6 @@ type Borrador = {
   fecha: string
   fechaVencimiento: string
   numeroCompleto: string
-  cuentaContableId: string
   detalle: string
   moneda: Moneda
   tc: string
@@ -104,7 +103,6 @@ const VACIO = (): Borrador => ({
   fecha: hoyISO(),
   fechaVencimiento: "",
   numeroCompleto: "",
-  cuentaContableId: "",
   detalle: "",
   moneda: "ARS",
   tc: "",
@@ -122,6 +120,45 @@ const VACIO = (): Borrador => ({
 })
 
 function aBorrador(c: Comprobante): Borrador {
+  // El desglose guardado manda. Una factura vieja no lo tiene, y entonces se
+  // arma el renglón único con el par de la cabecera, que es lo que era.
+  const netos: RenglonNeto[] =
+    c.ivas.length > 0
+      ? c.ivas.map((r) => ({
+          neto: String(r.neto || ""),
+          alicuota: String(r.alicuota),
+          ivaManual: String(r.iva || ""),
+          ivaPisado: true,
+          cuentaContableId: r.cuentaContableId ?? "",
+        }))
+      : [
+          {
+            neto: String(c.netoGravado || ""),
+            alicuota: c.alicuotaIva !== null ? String(c.alicuotaIva) : "0",
+            ivaManual: String(c.iva || ""),
+            ivaPisado: true,
+            cuentaContableId: "",
+          },
+        ]
+
+  /**
+   * La cuenta de la cabecera baja al primer renglón.
+   *
+   * Desde que el formulario no muestra la cuenta de la factura —la de arriba era
+   * el mismo campo dos veces— la cabecera se deduce de los renglones. Una
+   * factura cargada antes de ese cambio tiene la cuenta arriba y los renglones
+   * vacíos: sin esto, abrirla y volver a guardarla la dejaría sin imputar y
+   * caería en los pendientes de Contabilidad sin que nadie tocara nada.
+   *
+   * Solo cuando no hay ninguna otra cuenta elegida: si el renglón ya trae la
+   * suya, manda la del renglón.
+   */
+  const sinCuentaPropia =
+    netos.every((r) => !r.cuentaContableId) && !c.cuentaNoGravadoId && !c.cuentaExentoId
+  if (sinCuentaPropia && c.cuentaContableId) {
+    netos[0] = { ...netos[0], cuentaContableId: c.cuentaContableId }
+  }
+
   return {
     // Un comprobante tiene cliente o proveedor, nunca los dos: el que no
     // corresponde viene en null. Leer sólo `clienteId` dejaba el buscador vacío
@@ -133,30 +170,10 @@ function aBorrador(c: Comprobante): Borrador {
     fecha: c.fecha,
     fechaVencimiento: c.fechaVencimiento ?? "",
     numeroCompleto: formatearNumero(c.puntoVenta, c.numero).replace("—", ""),
-    cuentaContableId: c.cuentaContableId ?? "",
     detalle: c.detalle ?? "",
     moneda: c.moneda,
     tc: c.moneda === "USD" ? String(c.tc) : "",
-    // El desglose guardado manda. Una factura vieja no lo tiene, y entonces se
-    // arma el renglón único con el par de la cabecera, que es lo que era.
-    netos:
-      c.ivas.length > 0
-        ? c.ivas.map((r) => ({
-            neto: String(r.neto || ""),
-            alicuota: String(r.alicuota),
-            ivaManual: String(r.iva || ""),
-            ivaPisado: true,
-            cuentaContableId: r.cuentaContableId ?? "",
-          }))
-        : [
-            {
-              neto: String(c.netoGravado || ""),
-              alicuota: c.alicuotaIva !== null ? String(c.alicuotaIva) : "0",
-              ivaManual: String(c.iva || ""),
-              ivaPisado: true,
-              cuentaContableId: "",
-            },
-          ],
+    netos,
     noGravado: String(c.noGravado || ""),
     cuentaNoGravadoId: c.cuentaNoGravadoId ?? "",
     exento: String(c.exento || ""),
@@ -254,15 +271,19 @@ export function ComprobanteDialog({
    *  escrito dos veces. Al 21 % con cuentas distintas —productos y servicios en
    *  la misma factura— son dos renglones legítimos. */
   const alicuotaRepetida = useMemo(() => {
+    // El renglón sin cuenta hereda la del primero, así que para comparar cuenta
+    // como si la tuviera puesta: si no, dos tramos al 21 % —uno con cuenta y el
+    // otro heredándola— parecerían distintos y son el mismo.
+    const heredada = f.netos[0]?.cuentaContableId ?? ""
     const vistas = new Set<string>()
     for (const r of renglones) {
       if (r.neto <= 0 && r.iva <= 0) continue
-      const clave = `${r.alicuota}|${r.cuentaContableId || f.cuentaContableId}`
+      const clave = `${r.alicuota}|${r.cuentaContableId || heredada}`
       if (vistas.has(clave)) return true
       vistas.add(clave)
     }
     return false
-  }, [renglones, f.cuentaContableId])
+  }, [renglones, f.netos])
 
   const importes = useMemo(
     () => ({
@@ -304,8 +325,12 @@ export function ComprobanteDialog({
 
   const faltaTc = f.moneda === "USD" && tc <= 0
 
-  // Un importe sin cuenta propia va a la de la cabecera; el placeholder lo dice.
-  const placeholderCuenta = f.cuentaContableId ? "La de la factura" : "Buscar por código o nombre…"
+  // Un importe sin cuenta propia va a la del primer renglón; el placeholder lo
+  // dice, y por eso se ofrece recién cuando ese primer renglón tiene una.
+  const cuentaPrincipal = f.netos[0]?.cuentaContableId ?? ""
+  const placeholderCuenta = cuentaPrincipal
+    ? "La del primer renglón"
+    : "Buscar por código o nombre…"
   const puedeGuardar =
     Boolean(f.entidadId) && total > 0 && !faltaTc && !alicuotaRepetida && !guardando
 
@@ -329,7 +354,10 @@ export function ComprobanteDialog({
             fechaVencimiento: f.fechaVencimiento || null,
             puntoVenta,
             numero,
-            cuentaContableId: f.cuentaContableId || null,
+            // Sin cuenta de cabecera: la API la completa con la primera de
+            // los renglones. Mandarla desde acá la haría ganar sobre lo que el
+            // usuario eligió abajo, que es lo único que ahora se ve en pantalla.
+            cuentaContableId: null,
             detalle: f.detalle,
             moneda: f.moneda,
             tc: tc > 0 ? tc : null,
@@ -438,13 +466,19 @@ export function ComprobanteDialog({
                     c.condicionPagoDias !== null
                       ? `${c.condicionPagoDias} días`
                       : prev.condicionPago,
-                  // La cuenta contable que la ficha tiene guardada. Es lo que
-                  // hace que las 224 cuentas del plan no se sientan: elegido
-                  // el proveedor, la imputación ya está puesta y solo se toca
-                  // cuando la factura es la excepción. No pisa lo que ya
-                  // estaba elegido — si alguien la corrigió a mano, gana.
-                  cuentaContableId:
-                    prev.cuentaContableId || (c.cuentaContableId ?? ""),
+                  // La cuenta contable que la ficha tiene guardada, puesta en
+                  // el primer renglón. Es lo que hace que las 224 cuentas del
+                  // plan no se sientan: elegido el proveedor, la imputación ya
+                  // está puesta y solo se toca cuando la factura es la
+                  // excepción. Va al renglón y no a la cabecera porque la
+                  // cabecera ya no se muestra ni se manda: se deduce de acá.
+                  // No pisa lo que ya estaba elegido — si alguien la corrigió a
+                  // mano, gana.
+                  netos: prev.netos.map((r, i) =>
+                    i === 0 && !r.cuentaContableId
+                      ? { ...r, cuentaContableId: c.cuentaContableId ?? "" }
+                      : r
+                  ),
                 }
               })
             }}
@@ -514,28 +548,12 @@ export function ComprobanteDialog({
               />
             </Campo>
 
-            <Campo
-              id="cuentaContableId"
-              rotulo="Cuenta contable"
-              opcional
-              ayuda={
-                esCompra
-                  ? "Contra qué cuenta va el gasto o la compra"
-                  : "Contra qué cuenta va la venta"
-              }
-              // Cada importe de abajo puede ir a otra; el que no elige usa esta.
-            >
-              <SelectorCuenta
-                id="cuentaContableId"
-                valor={f.cuentaContableId}
-                onElegir={(v) => set("cuentaContableId", v)}
-                disabled={guardando}
-                // Una compra imputa contra una pérdida y una venta contra una
-                // ganancia. No lo fuerza —hay compras que van a un activo—,
-                // solo pone primero lo que se elige nueve de cada diez veces.
-                tipoSugerido={esCompra ? "egreso" : "ingreso"}
-              />
-            </Campo>
+            {/* Acá había una segunda "Cuenta contable", la de la factura entera.
+                Era el mismo campo dos veces: abajo, al lado de cada importe, ya
+                está la que de verdad manda, y tener las dos obligaba a decidir
+                cuál usar antes de entender que una era el default de la otra.
+                La cabecera sigue existiendo en la base —el motor de asientos la
+                necesita— pero se deduce sola de los renglones. */}
           </div>
 
           <Campo id="detalle" rotulo="Detalle" opcional>
@@ -702,7 +720,8 @@ export function ComprobanteDialog({
                           valor={r.cuentaContableId}
                           onElegir={(v) => cambiar({ cuentaContableId: v })}
                           disabled={guardando}
-                          placeholder={placeholderCuenta}
+                          // El primero no puede heredarse a sí mismo.
+                          placeholder={i === 0 ? undefined : placeholderCuenta}
                           tipoSugerido={esCompra ? "egreso" : "ingreso"}
                         />
                       </Campo>

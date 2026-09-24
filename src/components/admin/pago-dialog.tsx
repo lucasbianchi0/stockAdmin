@@ -282,14 +282,21 @@ export function PagoDialog({
     [tcFactura, tcNum]
   )
 
-  /** Lo imputado, convertido a la moneda del recibo: una factura en dólares se
-   *  cancela en dólares aunque se cobre en pesos, y cada una al TC que le toca. */
+  /**
+   * Lo imputado, convertido a la moneda del recibo: una factura en dólares se
+   * cancela en dólares aunque se cobre en pesos, y cada una al TC que le toca.
+   *
+   * Las notas de crédito restan, que es lo que dice su signo. Sin eso, aplicar
+   * una NC contra la factura que anula —el caso más común de todos: el cliente
+   * no paga nada, los dos comprobantes se cancelan entre sí— daba el doble en
+   * vez de cero, y el recibo pedía que entrara plata que nadie iba a pagar.
+   */
   const totalImputado = useMemo(
     () =>
       pendientes.reduce((acc, p) => {
         const v = parsearImporte(imputado[p.id] ?? "") ?? 0
         if (v <= 0) return acc
-        return acc + convertir(v, p.moneda, moneda, tcDe(p.id))
+        return acc + p.signo * convertir(v, p.moneda, moneda, tcDe(p.id))
       }, 0),
     [pendientes, imputado, moneda, tcDe]
   )
@@ -347,6 +354,16 @@ export function PagoDialog({
     if (necesitaTc && !tc && cotizacion.venta) setTc(String(cotizacion.venta))
   }, [necesitaTc, tc, cotizacion.venta])
   const hayImputaciones = Object.values(imputado).some((v) => (parsearImporte(v) ?? 0) > 0)
+
+  /** Una aplicación pura: la nota de crédito tapa la factura y no entra ni sale
+   *  un peso. Cuadra en cero, y un recibo que dice "cancela $ 0,00" parece un
+   *  recibo vacío si nadie aclara que eso es exactamente lo que se quería. */
+  const soloAplicacion =
+    hayImputaciones &&
+    Math.abs(balance.imputado) <= 0.01 &&
+    totalMedios === 0 &&
+    totalRetenciones === 0
+
   const puedeGuardar =
     Boolean(cliente) && hayImputaciones && balance.cuadra && !faltaTc && !guardando
 
@@ -835,7 +852,11 @@ export function PagoDialog({
 
           <span className="ml-auto text-[12px] font-semibold">
             {balance.cuadra ? (
-              <span className="text-success-text">El recibo cuadra</span>
+              <span className="text-success-text">
+                {soloAplicacion
+                  ? "La nota de crédito cancela el comprobante"
+                  : "El recibo cuadra"}
+              </span>
             ) : (
               <span className="num text-warning-text">
                 Diferencia {formatearImporte(balance.diferencia, moneda)}
@@ -900,6 +921,9 @@ function FilaPendiente({
   // El campo de TC solo aparece donde hay conversión. En una factura en la misma
   // moneda del recibo no hay nada que convertir y sería una casilla muerta.
   const cruzada = p.moneda !== monedaRecibo
+  /** Una nota de crédito no se cobra: se aplica, y lo que se le imputa resta del
+   *  recibo en vez de sumar. Todo el renglón lo dice de una forma u otra. */
+  const esNota = p.signo === -1
 
   return (
     <div
@@ -925,8 +949,11 @@ function FilaPendiente({
       </div>
 
       <div className="text-right">
-        <p className="eyebrow">Saldo</p>
+        {/* En una nota de crédito el saldo no es deuda: es crédito sin usar. Es
+            el mismo número y significa lo contrario, así que se nombra distinto. */}
+        <p className="eyebrow">{esNota ? "Crédito" : "Saldo"}</p>
         <p className="num text-[12.5px] font-semibold text-ink">
+          {esNota ? "−" : ""}
           {formatearImporte(p.saldo, p.moneda)}
         </p>
       </div>
@@ -962,10 +989,20 @@ function FilaPendiente({
             className={cn("num h-8 w-32 text-right text-[12px]", excede && "border-danger-line")}
             aria-label={`Importe a imputar a ${p.clase} ${formatearNumero(p.puntoVenta, p.numero)}`}
           />
-          {/* El contravalor solo cuando las monedas difieren: si no, es ruido. */}
-          {cruzada && importe > 0 && (
-            <p className="num mt-0.5 text-right text-[10.5px] text-ink-muted">
-              = {formatearImporte(enRecibo, monedaRecibo)}
+          {/* Lo que el renglón le hace al recibo: en una nota de crédito el
+              importe resta —y decirlo acá es lo que explica que el total de
+              abajo baje en vez de subir—, en una factura en otra moneda es el
+              contravalor. En una factura en la moneda del recibo no se muestra
+              nada: sería repetir el importe que se acaba de tipear. */}
+          {importe > 0 && (esNota || cruzada) && (
+            <p
+              className={cn(
+                "num mt-0.5 text-right text-[10.5px]",
+                esNota ? "text-warning-text" : "text-ink-muted"
+              )}
+            >
+              {esNota ? "− " : "= "}
+              {formatearImporte(enRecibo, monedaRecibo)}
             </p>
           )}
           {excede && (

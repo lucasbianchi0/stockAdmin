@@ -95,6 +95,10 @@ export type ImputacionDetalle = {
   moneda: Moneda
   cuentas: string[]
   referencias: string[]
+  /** Si el recibo traía retenciones. Sin medios y sin retenciones no es un
+   *  cobro flojo de papeles: es una nota de crédito aplicada, donde no se movió
+   *  plata porque no tenía que moverse. */
+  conRetenciones: boolean
 }
 
 export type ComprobanteDetalle = {

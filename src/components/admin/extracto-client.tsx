@@ -412,20 +412,29 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
             <TableBody>
               {filas.length > 0 ? (
                 <>
-                  {/* El arranque como una fila más: es lo que hace que la
-                      columna de saldo se pueda seguir de punta a punta sin
-                      preguntarse de dónde salió el primer número. */}
-                  <TableRow className="bg-surface-subtle">
-                    <TableCell className="num whitespace-nowrap text-ink-muted">
-                      {p.desde ? formatearFecha(p.desde) : "Inicio"}
+                  {/* Los totales arriba y no al pie.
+                      Con el último movimiento primero, el cierre del período es
+                      el número con el que arranca la lectura: es lo que se viene
+                      a ver, y no tiene por qué estar al final de doscientas
+                      filas. Lo de abajo del todo pasa a ser el saldo anterior,
+                      que es donde empieza la historia. */}
+                  <TableRow className="border-b-2 border-line-strong bg-surface-subtle">
+                    <TableCell colSpan={2} className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">
+                      Totales del período
                     </TableCell>
-                    <TableCell className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">
-                      Saldo anterior
+                    <TableCell className="num text-right font-semibold text-danger-text">
+                      {formatearImporte(p.debitos, cuenta.moneda, { simbolo: false })}
                     </TableCell>
-                    <TableCell />
-                    <TableCell />
-                    <TableCell className="num text-right font-semibold text-ink-secondary">
-                      {formatearImporte(p.saldoInicial, cuenta.moneda, { simbolo: false })}
+                    <TableCell className="num text-right font-semibold text-success-text">
+                      {formatearImporte(p.creditos, cuenta.moneda, { simbolo: false })}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        "num text-right font-bold",
+                        p.saldoFinal < 0 ? "text-danger-text" : "text-ink"
+                      )}
+                    >
+                      {formatearImporte(p.saldoFinal, cuenta.moneda, { simbolo: false })}
                     </TableCell>
                     <TableCell colSpan={2} />
                   </TableRow>
@@ -533,23 +542,22 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
                     </TableRow>
                   ))}
 
+
+                  {/* El arranque, al pie: leyendo de arriba hacia abajo se va
+                      para atrás en el tiempo, y este es el punto donde el
+                      período empieza. Sigue siendo lo que explica de dónde sale
+                      la columna de saldo. */}
                   <TableRow className="border-t-2 border-line-strong bg-surface-subtle">
-                    <TableCell colSpan={2} className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">
-                      Totales del período
+                    <TableCell className="num whitespace-nowrap text-ink-muted">
+                      {p.desde ? formatearFecha(p.desde) : "Inicio"}
                     </TableCell>
-                    <TableCell className="num text-right font-semibold text-danger-text">
-                      {formatearImporte(p.debitos, cuenta.moneda, { simbolo: false })}
+                    <TableCell className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">
+                      Saldo anterior
                     </TableCell>
-                    <TableCell className="num text-right font-semibold text-success-text">
-                      {formatearImporte(p.creditos, cuenta.moneda, { simbolo: false })}
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        "num text-right font-bold",
-                        p.saldoFinal < 0 ? "text-danger-text" : "text-ink"
-                      )}
-                    >
-                      {formatearImporte(p.saldoFinal, cuenta.moneda, { simbolo: false })}
+                    <TableCell />
+                    <TableCell />
+                    <TableCell className="num text-right font-semibold text-ink-secondary">
+                      {formatearImporte(p.saldoInicial, cuenta.moneda, { simbolo: false })}
                     </TableCell>
                     <TableCell colSpan={2} />
                   </TableRow>

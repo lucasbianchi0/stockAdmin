@@ -197,7 +197,14 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
 
                         <TableCell className="text-ink-secondary">
                           {c.medios.length === 0 ? (
-                            <span className="text-ink-faint">Solo retenciones</span>
+                            // Sin medios y sin retenciones no hubo plata porque
+                            // no tenía que haberla: es una nota de crédito
+                            // aplicada contra el comprobante que anula.
+                            <span className="text-ink-faint">
+                              {c.totalRetenciones > 0
+                                ? "Solo retenciones"
+                                : "Aplicación de nota de crédito"}
+                            </span>
                           ) : (
                             <div className="min-w-0">
                               <p className="truncate text-[12px]">{c.medios[0].cuentaNombre}</p>

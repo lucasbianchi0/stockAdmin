@@ -1,3 +1,4 @@
+import { signoDeClase } from "@/lib/admin/comprobantes"
 import {
   sumaRetenciones,
   type Cobro,
@@ -119,7 +120,9 @@ export function aCobro(fila: Fila): Cobro {
     retenciones,
     totalRetenciones: sumaRetenciones(retenciones),
     totalMedios: medios.reduce((a, m) => a + m.importe, 0),
-    totalImputado: imputaciones.reduce((a, i) => a + i.importe, 0),
+    // Con signo: lo que el recibo cancela de verdad es la factura menos la nota
+    // de crédito que se le aplicó, no la suma de las dos.
+    totalImputado: imputaciones.reduce((a, i) => a + signoDeClase(i.clase) * i.importe, 0),
     observaciones: (fila.observaciones as string | null) ?? null,
     createdAt: fila.created_at as string,
     medios,

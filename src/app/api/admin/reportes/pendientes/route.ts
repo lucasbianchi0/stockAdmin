@@ -31,7 +31,8 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
   const { data, error } = await supabase
     .from("comprobantes_vigentes")
     .select(
-      `id, clase, punto_venta, numero, fecha, fecha_vencimiento, moneda, tc, total, imputado, saldo, detalle, signo,
+      `id, clase, punto_venta, numero, fecha, fecha_vencimiento, fecha_estimada_pago,
+       moneda, tc, total, imputado, saldo, detalle, signo,
        cliente:clientes (id, razon_social),
        proveedor:proveedores (id, razon_social)`
     )
@@ -51,9 +52,16 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
   const filas = (data ?? []).map((f) => {
     const cliente = f.cliente as unknown as { id: string; razon_social: string } | null
     const proveedor = f.proveedor as unknown as { id: string; razon_social: string } | null
-    const saldo = Number(f.saldo)
     const tc = f.tc === null ? null : Number(f.tc)
     const moneda = f.moneda as "ARS" | "USD"
+    /**
+     * Con signo, igual que en la ficha del cliente: una nota de crédito sin
+     * aplicar no es algo que el cliente deba, es crédito a su favor. Sumándola
+     * como una factura más, el "pendiente de cobro" decía que hay que cobrar
+     * plata que en realidad hay que devolver o descontar.
+     */
+    const signo = Number(f.signo) === -1 ? -1 : 1
+    const saldo = redondear(Number(f.saldo) * signo)
 
     return {
       id: f.id as string,
@@ -64,9 +72,13 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
       ).padStart(8, "0")}`,
       fecha: f.fecha as string,
       fechaVencimiento: (f.fecha_vencimiento as string | null) ?? null,
+      // Se edita desde el propio reporte: es la columna donde se planifica la
+      // cobranza mirando toda la lista junta.
+      fechaEstimadaPago: (f.fecha_estimada_pago as string | null) ?? null,
       moneda,
       tc,
-      total: Number(f.total),
+      signo,
+      total: redondear(Number(f.total) * signo),
       imputado: Number(f.imputado),
       saldo,
       // Valuado al TC del comprobante, no al de hoy: es el peso que se facturó.

@@ -370,6 +370,61 @@ export async function cambiarEstadoComprobante(
  * quedan seis borradores, se revisan con calma y se confirman los seis juntos.
  * Uno que falle no frena a los demás — se devuelve el detalle de cada uno.
  */
+/**
+ * La fecha estimada de pago, sola.
+ *
+ * Es el único campo de un comprobante que se edita desde afuera de su
+ * formulario, y a propósito: decidir cuándo se va a cobrar cada factura es algo
+ * que se hace mirando la lista entera de pendientes —cuál vence antes, cuál ya
+ * está vencida, cuánto suma cada semana—, no abriendo una factura por vez y
+ * perdiendo la lista de vista en cada una.
+ *
+ * No toca la deuda —ni el importe, ni la fecha, ni el número, ni la entidad—,
+ * así que se puede cambiar en un comprobante confirmado y hasta ya imputado,
+ * igual que el vencimiento o las observaciones. Por eso no pasa por
+ * `editarComprobante`, que valida el comprobante entero y bloquea lo que mueve
+ * saldos: acá no hay nada que bloquear.
+ */
+export async function fecharPagoEstimado(
+  tipo: TipoComprobante,
+  req: Request,
+  id: string
+) {
+  const body = await leerBody(req)
+  if ("error" in body) return body.error
+
+  const crudo = body.raw.fechaEstimadaPago
+  // Vaciar la fecha es una respuesta válida —"todavía no sé cuándo"— y tiene que
+  // poder deshacerse desde la misma celda donde se puso.
+  const vacia = crudo === null || crudo === "" || crudo === undefined
+  const fecha =
+    typeof crudo === "string" && /^\d{4}-\d{2}-\d{2}$/.test(crudo) ? crudo : null
+
+  if (!vacia && fecha === null) {
+    return NextResponse.json({ error: "La fecha estimada de pago es inválida" }, { status: 400 })
+  }
+
+  const { data, error } = await supabase
+    .from("comprobantes")
+    .update({ fecha_estimada_pago: vacia ? null : fecha })
+    .eq("id", id)
+    .eq("tipo", tipo)
+    .select("id, fecha_estimada_pago")
+    .maybeSingle()
+
+  if (error) {
+    console.error(`[${tipo} pago estimado]`, error)
+    return NextResponse.json({ error: "No se pudo guardar la fecha" }, { status: 500 })
+  }
+  if (!data) {
+    return NextResponse.json({ error: "Comprobante no encontrado" }, { status: 404 })
+  }
+
+  return NextResponse.json({
+    fechaEstimadaPago: (data.fecha_estimada_pago as string | null) ?? null,
+  })
+}
+
 export async function confirmarLote(tipo: TipoComprobante, req: Request) {
   const body = await leerBody(req)
   if ("error" in body) return body.error

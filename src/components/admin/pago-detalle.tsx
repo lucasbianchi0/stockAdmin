@@ -14,7 +14,7 @@ import {
 } from "@/components/admin/detalle-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { formatearNumero } from "@/lib/admin/comprobantes"
+import { formatearNumero, signoDeClase } from "@/lib/admin/comprobantes"
 import { convertir, etiquetaRetencion, type Cobro } from "@/lib/admin/cobros"
 import type { TipoPago } from "@/lib/admin/cobros-server"
 import { formatearFechaLarga } from "@/lib/admin/fecha"
@@ -89,12 +89,17 @@ export function PagoDetalle({
               {cobro.imputaciones.length === 0 ? (
                 <Vacio texto="Sin imputar a ningún comprobante." />
               ) : (
-                cobro.imputaciones.map((i) => (
+                cobro.imputaciones.map((i) => {
+                  // La nota de crédito no cancela: se aplica, y resta. Mostrarla
+                  // igual que una factura haría que los renglones no sumen lo
+                  // que dice el recibo arriba.
+                  const esNota = signoDeClase(i.clase) === -1
+                  return (
                   <Renglon
                     key={i.id}
                     izquierda={
                       <div className="flex items-center gap-2">
-                        <Badge tone="neutral" size="sm">
+                        <Badge tone={esNota ? "warning" : "neutral"} size="sm">
                           {i.clase}
                         </Badge>
                         <span className="num text-[12px] text-ink-secondary">
@@ -105,6 +110,7 @@ export function PagoDetalle({
                     derecha={
                       <div className="text-right">
                         <span className="num text-[12.5px] font-semibold text-ink">
+                          {esNota ? "−" : ""}
                           {formatearImporte(i.importe, i.moneda)}
                         </span>
                         {/* Con qué dólar se canceló ESTA factura. Sin esto el
@@ -123,7 +129,8 @@ export function PagoDetalle({
                       </div>
                     }
                   />
-                ))
+                  )
+                })
               )}
             </Lista>
           </Bloque>

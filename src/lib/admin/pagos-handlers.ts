@@ -216,7 +216,7 @@ async function validarPago(
 
   const { data: facturas, error: errFacturas } = await supabase
     .from("comprobantes_vigentes")
-    .select(`id, moneda, saldo, clase, punto_venta, numero, ${cfg.campoEntidad}, tipo`)
+    .select(`id, moneda, saldo, clase, punto_venta, numero, signo, ${cfg.campoEntidad}, tipo`)
     .in("id", ids)
 
   /**
@@ -345,7 +345,30 @@ async function validarPago(
     // monedas distintas, la conversión da cero y el control de cuadratura de
     // abajo lo frena con un error. Un 1 lo dejaría pasar con el importe
     // equivocado, que es exactamente el bug que se está arreglando.
-    imputadoEnMonedaRecibo += convertir(importe, f.moneda as "ARS" | "USD", moneda, tcRenglon ?? 0)
+    //
+    // Por el signo del comprobante, que es lo que hace que una nota de crédito
+    // reste: un recibo que aplica una NC contra la factura que anula cancela
+    // cero y no el doble. El signo sale de la base —`comprobante_signo`— y no
+    // de lo que mandó el formulario.
+    const signo = Number(f.signo) === -1 ? -1 : 1
+    imputadoEnMonedaRecibo +=
+      signo * convertir(importe, f.moneda as "ARS" | "USD", moneda, tcRenglon ?? 0)
+  }
+
+  /* Las notas de crédito no pueden superar a las facturas.
+     Eso no sería un recibo sino una devolución de plata al cliente, que se carga
+     al revés —como un pago— y no por acá. Se corta con un mensaje propio porque
+     el control de cuadratura de más abajo lo diría con un número negativo que no
+     le explica a nadie qué hizo mal. */
+  if (imputadoEnMonedaRecibo < -0.01) {
+    return { respuesta: NextResponse.json(
+      {
+        error:
+          "Las notas de crédito superan a los comprobantes que cancelan. " +
+          "Bajá el importe aplicado o agregá el comprobante que falta.",
+      },
+      { status: 400 }
+    ) }
   }
 
   /* Los medios de pago.

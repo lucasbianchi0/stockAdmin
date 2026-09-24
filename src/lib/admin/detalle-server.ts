@@ -283,7 +283,8 @@ async function imputacionesDe(comprobanteId: string): Promise<ImputacionDetalle[
       `id, importe,
        pago:pagos (
          id, fecha, moneda,
-         movimientos (referencia, cuenta:cuentas_financieras (nombre))
+         movimientos (referencia, cuenta:cuentas_financieras (nombre)),
+         pago_retenciones (id)
        )`
     )
     .eq("comprobante_id", comprobanteId)
@@ -298,6 +299,7 @@ async function imputacionesDe(comprobanteId: string): Promise<ImputacionDetalle[
     fecha: string
     moneda: string
     movimientos?: { referencia: string | null; cuenta?: { nombre: string } | null }[]
+    pago_retenciones?: { id: string }[]
   }
 
   const filas = (data ?? []).map((i) => {
@@ -314,6 +316,7 @@ async function imputacionesDe(comprobanteId: string): Promise<ImputacionDetalle[
       // nombraría dos veces al mismo banco y parecería que hubo dos pagos.
       cuentas: [...new Set(medios.map((m) => m.cuenta?.nombre).filter(Boolean))] as string[],
       referencias: [...new Set(medios.map((m) => m.referencia).filter(Boolean))] as string[],
+      conRetenciones: (pago?.pago_retenciones ?? []).length > 0,
     }
   })
 

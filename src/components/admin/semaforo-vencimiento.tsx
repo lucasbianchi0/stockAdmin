@@ -2,12 +2,17 @@
 
 import { Badge, Dot } from "@/components/ui/badge"
 import {
-  diasPara,
   estadoVencimiento,
   textoVencimiento,
   type EstadoVencimiento,
 } from "@/lib/admin/comprobantes"
-import { formatearFecha } from "@/lib/admin/fecha"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { formatearFecha, formatearFechaLarga } from "@/lib/admin/fecha"
 import { cn } from "@/lib/utils"
 
 /**
@@ -18,13 +23,25 @@ import { cn } from "@/lib/utils"
  * cada una funciona en un contexto distinto:
  *
  *  · **Color** — se ve de un vistazo desde lejos, escaneando la columna.
- *  · **Texto** ("Vencida hace 12 días") — dice cuánto, que es lo que hace falta
- *    para priorizar. Un punto rojo no distingue un día de tres meses.
+ *  · **La fecha** — es el dato, y el único que sirve para hablar con el cliente
+ *    o buscar la factura en otro sistema.
  *  · **Fila teñida** (`claseFila`) — hace que lo vencido salte sin tener que
  *    mirar la columna correcta.
  *
- * El color solo sería inaccesible para quien no distingue rojo de verde, y el
- * texto solo se pierde entre veinte filas iguales.
+ * El color solo sería inaccesible para quien no distingue rojo de verde, y la
+ * fecha sola se pierde entre veinte filas iguales.
+ *
+ * LA COLUMNA DICE LA FECHA, NO "HACE 12 DÍAS"
+ *
+ * Antes se leía "Vencida hace 12 días" y la fecha no estaba en ningún lado.
+ * Servía para priorizar y para nada más: al llamar al cliente hay que decirle
+ * "la del 12 de agosto", no "la de hace doce días", y para conciliar contra el
+ * sistema del otro también hace falta el día exacto. Restar a mano doce días de
+ * hoy, en la cabeza, veinte veces por pantalla, es trabajo que no tiene por qué
+ * existir.
+ *
+ * El "cuánto falta" no se perdió: se fue al tooltip, que es donde va lo que se
+ * consulta de a una fila y no se escanea de a veinte.
  */
 
 const TONO: Record<EstadoVencimiento, "danger" | "warning" | "neutral" | "brand"> = {
@@ -42,13 +59,12 @@ export function SemaforoVencimiento({
   saldado = false,
 }: {
   fecha: string | null
-  /** Solo el punto y los días, para tablas apretadas. */
+  /** Para tablas apretadas: la misma fecha, sin el peso tipográfico del resto. */
   compacto?: boolean
   /** Ya está cobrado o pagado. Apaga el semáforo entero. */
   saldado?: boolean
 }) {
   const estado = estadoVencimiento(fecha)
-  const dias = diasPara(fecha)
 
   if (estado === "sin_fecha") {
     return <span className="text-ink-faint">—</span>
@@ -65,43 +81,44 @@ export function SemaforoVencimiento({
   const tono = TONO[estado]
   const destacado = estado === "vencido" || estado === "hoy" || estado === "proximo"
 
-  if (compacto) {
-    return (
-      <span className="flex items-center gap-2">
-        <Dot tone={tono} />
-        <span
-          className={cn(
-            "num text-[12px]",
-            estado === "vencido" || estado === "hoy"
-              ? "font-semibold text-danger-text"
-              : estado === "proximo"
-                ? "font-medium text-warning-text"
-                : "text-ink-secondary"
-          )}
-        >
-          {dias !== null && dias < 0 ? `${Math.abs(dias)} d` : `${dias} d`}
-        </span>
-      </span>
-    )
-  }
+  const color =
+    estado === "vencido" || estado === "hoy"
+      ? "text-danger-text"
+      : estado === "proximo"
+        ? "text-warning-text"
+        : "text-ink-secondary"
 
   return (
-    <span className="flex items-center gap-2">
-      <Dot tone={tono} />
-      <span
-        className={cn(
-          "text-[12px]",
-          destacado ? "font-medium" : "",
-          estado === "vencido" || estado === "hoy"
-            ? "text-danger-text"
-            : estado === "proximo"
-              ? "text-warning-text"
-              : "text-ink-secondary"
-        )}
-      >
-        {textoVencimiento(fecha)}
-      </span>
-    </span>
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="flex cursor-help items-center gap-2">
+            <Dot tone={tono} />
+            <span
+              className={cn(
+                "num text-[12px]",
+                // El subrayado punteado es lo que avisa que hay algo más al
+                // pasar el mouse: sin eso el tooltip existe para quien ya sabe
+                // que está.
+                "border-b border-dashed border-ink-faint",
+                destacado && !compacto ? "font-medium" : "",
+                destacado && compacto ? "font-semibold" : "",
+                color
+              )}
+            >
+              {formatearFecha(fecha)}
+            </span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          {/* La fecha larga además del "cuánto falta": el tooltip es el lugar
+              donde hay espacio para decirla sin abreviar, y saca la duda de si
+              "8/9/26" era agosto o septiembre. */}
+          <span className="block font-medium text-white">{textoVencimiento(fecha)}</span>
+          <span className="block text-n-300">{formatearFechaLarga(fecha)}</span>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 

@@ -24,10 +24,22 @@ export type Clase = {
   esNota: boolean
 }
 
+/**
+ * El signo de una clase, sabiendo solo el código.
+ *
+ * Espeja `comprobante_signo` de la base, que es la que manda: nada más las notas
+ * de crédito restan. Va suelto y no solo adentro de `Clase` porque hay lugares
+ * que tienen el código a mano y no el circuito: la imputación de un recibo sabe
+ * que canceló una "NCA", no si era de venta o de compra.
+ */
+export function signoDeClase(codigo: string): 1 | -1 {
+  return codigo.toUpperCase().startsWith("NC") ? -1 : 1
+}
+
 const clase = (codigo: string, nombre: string): Clase => ({
   codigo,
   nombre,
-  signo: codigo.startsWith("NC") ? -1 : 1,
+  signo: signoDeClase(codigo),
   esNota: codigo.startsWith("NC") || codigo.startsWith("ND"),
 })
 

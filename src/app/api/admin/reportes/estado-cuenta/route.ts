@@ -46,6 +46,16 @@ type Fila = {
   /** El importe en pesos históricos, con signo. Es lo que acumula el saldo. */
   importeArs: number
   saldo: number
+  /**
+   * Si el comprobante todavía debe algo. Es lo que marca el asterisco de la
+   * pantalla y lo que filtra el interruptor de "solo impagas". Un recibo nunca
+   * es impago: es el que paga.
+   */
+  impaga: boolean
+  /** Lo que le falta cobrar a ESE comprobante, en pesos históricos y con signo.
+   *  `null` en los recibos. Es el número que importa cuando se mira la cuenta
+   *  filtrada: ahí el saldo corrido no significa nada. */
+  pendienteArs: number | null
 }
 
 export const GET = ruta("estado de cuenta", async (req: Request) => {
@@ -77,11 +87,16 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
 
   if (!entidad) return NextResponse.json({ error: "No encontrado" }, { status: 404 })
 
-  /* Comprobantes. */
+  /* Comprobantes.
+   *
+   * Sale de `comprobantes_vigentes` y no de la tabla por dos motivos. Trae el
+   * `saldo` —total menos lo imputado—, que es lo que dice si la factura está
+   * impaga. Y filtra por estado: un borrador no es deuda de nadie y estaba
+   * entrando al saldo corrido como si lo fuera. */
   let qComp = supabase
-    .from("comprobantes")
+    .from("comprobantes_vigentes")
     .select(
-      "id, clase, punto_venta, numero, fecha, moneda, tc, total, total_ars, total_usd, signo, detalle, observaciones"
+      "id, clase, punto_venta, numero, fecha, moneda, tc, total, total_ars, total_usd, saldo, signo, detalle, observaciones"
     )
     .eq("tipo", tipoComprobante)
     .eq(campo, entidadId)
@@ -99,7 +114,9 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
   /* Pagos, con sus imputaciones para saber cuánto aplicó a este circuito. */
   let qPagos = supabase
     .from("pagos")
-    .select("id, fecha, moneda, tc, observaciones, imputaciones (importe, comprobante:comprobantes (moneda, tc))")
+    .select(
+      "id, fecha, moneda, tc, observaciones, imputaciones (importe, comprobante:comprobantes (moneda, tc, signo))"
+    )
     .eq("tipo", tipoPago)
     .eq(campo, entidadId)
 
@@ -119,6 +136,11 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
 
   for (const c of comprobantes ?? []) {
     const signo = Number(c.signo) === -1 ? -1 : 1
+    // Medio centavo de tolerancia: una factura cancelada al peso puede quedar
+    // con un resto de redondeo que no es una deuda.
+    const saldo = Number(c.saldo) || 0
+    const impaga = saldo > 0.005
+    const tcComp = c.tc === null ? null : Number(c.tc)
     filas.push({
       fecha: c.fecha as string,
       tipo: c.clase as string,
@@ -131,8 +153,14 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
       // `total_usd` es null solo cuando de verdad no se conoce la cotización.
       importeUsd:
         c.total_usd === null ? null : redondear(Number(c.total_usd) * signo),
-      tc: c.tc === null ? null : Number(c.tc),
+      tc: tcComp,
       importeArs: redondear(Number(c.total_ars) * signo),
+      impaga,
+      // Valuado al TC del propio comprobante, igual que el importe: es el peso
+      // que se facturó, no el de hoy.
+      pendienteArs: redondear(
+        saldo * signo * (c.moneda === "ARS" ? 1 : (tcComp ?? 0))
+      ),
     })
   }
 
@@ -140,17 +168,32 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
     // Lo que el recibo canceló, valuado en pesos con el TC de cada comprobante
     // imputado. Se valúa por comprobante y no por recibo porque un mismo pago
     // puede cancelar una factura en dólares y otra en pesos.
+    // Por el signo de cada comprobante: la nota de crédito ya bajó la deuda en su
+    // propia fila del extracto, así que el recibo que la aplica tiene que restar
+    // la factura menos la nota. Sumando las dos, la NC descontaba dos veces y el
+    // saldo del cliente terminaba a favor sin que nadie hubiera pagado de más.
+    const signoDe = (c: { signo?: number | null } | null) =>
+      Number(c?.signo) === -1 ? -1 : 1
+
     const enPesos = (p.imputaciones ?? []).reduce((acc: number, i) => {
       const imp = Number(i.importe)
-      const comp = i.comprobante as unknown as { moneda: string; tc: number } | null
+      const comp = i.comprobante as unknown as {
+        moneda: string
+        tc: number
+        signo: number
+      } | null
       if (!comp) return acc + imp
-      return acc + (comp.moneda === "USD" ? imp * Number(comp.tc) : imp)
+      return acc + signoDe(comp) * (comp.moneda === "USD" ? imp * Number(comp.tc) : imp)
     }, 0)
 
     const enUsd = (p.imputaciones ?? []).reduce((acc: number, i) => {
-      const comp = i.comprobante as unknown as { moneda: string; tc: number } | null
+      const comp = i.comprobante as unknown as {
+        moneda: string
+        tc: number
+        signo: number
+      } | null
       if (!comp || comp.moneda !== "USD") return acc
-      return acc + Number(i.importe)
+      return acc + signoDe(comp) * Number(i.importe)
     }, 0)
 
     filas.push({
@@ -161,9 +204,14 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
       observaciones: (p.observaciones as string | null) ?? null,
       moneda: p.moneda as "ARS" | "USD",
       importe: -redondear(enPesos),
-      importeUsd: enUsd > 0 ? -redondear(enUsd) : null,
+      // `!== 0` y no `> 0`: un recibo puede netear a cero —una NC aplicada
+      // contra su factura— y eso no es lo mismo que no tener parte en dólares.
+      importeUsd: redondear(enUsd) !== 0 ? -redondear(enUsd) : null,
       tc: p.tc === null ? null : Number(p.tc),
       importeArs: -redondear(enPesos),
+      // Un recibo no se cobra ni se debe: es lo que cancela a los otros.
+      impaga: false,
+      pendienteArs: null,
     })
   }
 

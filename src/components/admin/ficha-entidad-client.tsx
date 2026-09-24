@@ -17,6 +17,7 @@ import {
 import { SemaforoVencimiento } from "@/components/admin/semaforo-vencimiento"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { Paginacion } from "@/components/ui/paginacion"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
 import {
@@ -68,6 +69,10 @@ type FilaCuenta = {
   tc: number | null
   importeArs: number
   saldo: number
+  /** El comprobante todavía debe algo. Los recibos nunca. */
+  impaga: boolean
+  /** Lo que le falta a ESE comprobante, en pesos históricos. `null` en recibos. */
+  pendienteArs: number | null
 }
 
 /** Cómo se llama cada cosa de cada lado del mostrador. */
@@ -542,7 +547,9 @@ function TablaPagos({
                   <TableCell className="text-[12px] text-ink-muted">
                     {p.medios.length > 0
                       ? [...new Set(p.medios.map((m) => m.cuentaNombre).filter(Boolean))].join(" · ")
-                      : "Solo retenciones"}
+                      : p.totalRetenciones > 0
+                        ? "Solo retenciones"
+                        : "Aplicación de nota de crédito"}
                   </TableCell>
                   <TableCell className="num text-right text-ink-secondary">
                     {p.totalRetenciones > 0
@@ -595,10 +602,25 @@ function EstadoCuenta({ tipo, entidadId }: { tipo: TipoEntidad; entidadId: strin
     ? mensajeError(consulta.error, "No se pudo cargar el estado de cuenta")
     : null
 
+  /** El mismo interruptor que la pantalla de cuenta corriente. Acá hace más
+   *  falta todavía: la solapa es chica y las impagas son lo que se viene a ver. */
+  const [soloImpagas, setSoloImpagas] = useState(false)
+  const visibles = soloImpagas ? filas.filter((f) => f.impaga) : filas
+
   const exportar = () => {
     const csv = [
-      ["FECHA", "TIPO", "COMPROBANTE", "DETALLE", "MONEDA", "IMPORTE", "TC", "IMPORTE ARS", "SALDO"],
-      ...filas.map((f) => [
+      [
+        "FECHA",
+        "TIPO",
+        "COMPROBANTE",
+        "DETALLE",
+        "MONEDA",
+        "IMPORTE",
+        "TC",
+        "IMPORTE ARS",
+        soloImpagas ? "PENDIENTE" : "SALDO",
+      ],
+      ...visibles.map((f) => [
         f.fecha,
         f.tipo,
         f.comprobante ?? "",
@@ -607,7 +629,7 @@ function EstadoCuenta({ tipo, entidadId }: { tipo: TipoEntidad; entidadId: strin
         f.importe,
         f.tc ?? "",
         f.importeArs,
-        f.saldo,
+        soloImpagas ? (f.pendienteArs ?? 0) : f.saldo,
       ]),
     ]
       .map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","))
@@ -625,14 +647,26 @@ function EstadoCuenta({ tipo, entidadId }: { tipo: TipoEntidad; entidadId: strin
 
   return (
     <div className="panel overflow-hidden">
-      <div className="flex items-center justify-between border-b border-line bg-surface-subtle px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface-subtle px-4 py-2.5">
         <p className="text-[12px] text-ink-muted">
-          Cada comprobante y cada recibo, con el saldo corrido en pesos históricos.
+          {soloImpagas
+            ? "Solo los comprobantes que todavía deben algo, con lo que falta de cada uno."
+            : "Cada comprobante y cada recibo, con el saldo corrido en pesos históricos."}
         </p>
-        <Button variant="outline" size="sm" onClick={exportar} disabled={filas.length === 0}>
-          <Download className="h-3.5 w-3.5" />
-          Exportar
-        </Button>
+        <div className="flex items-center gap-4">
+          <label className="flex cursor-pointer items-center gap-2">
+            <Switch
+              checked={soloImpagas}
+              onCheckedChange={setSoloImpagas}
+              aria-label="Ver solo las impagas"
+            />
+            <span className="text-[12px] font-medium text-ink-secondary">Solo impagas</span>
+          </label>
+          <Button variant="outline" size="sm" onClick={exportar} disabled={visibles.length === 0}>
+            <Download className="h-3.5 w-3.5" />
+            Exportar
+          </Button>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -644,12 +678,12 @@ function EstadoCuenta({ tipo, entidadId }: { tipo: TipoEntidad; entidadId: strin
               <TableHead>Comprobante</TableHead>
               <TableHead className="text-right">Importe</TableHead>
               <TableHead className="text-right">TC</TableHead>
-              <TableHead className="text-right">Saldo</TableHead>
+              <TableHead className="text-right">{soloImpagas ? "Pendiente" : "Saldo"}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filas.length > 0 ? (
-              filas.map((f, i) => (
+            {visibles.length > 0 ? (
+              visibles.map((f, i) => (
                 <TableRow key={i}>
                   <TableCell className="num whitespace-nowrap text-ink-secondary">
                     {formatearFecha(f.fecha)}
@@ -659,7 +693,20 @@ function EstadoCuenta({ tipo, entidadId }: { tipo: TipoEntidad; entidadId: strin
                       {f.tipo}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-[12.5px] text-ink-secondary">
+                  <TableCell className="whitespace-nowrap text-[12.5px] text-ink-secondary">
+                    {/* El asterisco de lo impago, igual que en la pantalla de
+                        cuenta corriente. Ocupa lugar siempre para que la columna
+                        no se mueva entre una fila y otra. */}
+                    <span
+                      className={cn(
+                        "mr-1 inline-block w-1.5 font-bold",
+                        f.impaga ? "text-warning-text" : "text-transparent"
+                      )}
+                      title={f.impaga ? "Impaga" : undefined}
+                      aria-hidden={!f.impaga}
+                    >
+                      {f.impaga ? "*" : ""}
+                    </span>
                     {f.comprobante ?? f.detalle ?? "—"}
                   </TableCell>
                   <TableCell
@@ -674,14 +721,19 @@ function EstadoCuenta({ tipo, entidadId }: { tipo: TipoEntidad; entidadId: strin
                     {f.tc !== null ? f.tc.toLocaleString("es-AR") : "—"}
                   </TableCell>
                   <TableCell className="num text-right font-semibold text-ink">
-                    {formatearImporte(f.saldo, "ARS")}
+                    {soloImpagas
+                      ? formatearImporte(f.pendienteArs ?? 0, "ARS")
+                      : formatearImporte(f.saldo, "ARS")}
                   </TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
                 <TableCell colSpan={6} className="p-0">
-                  <EmptyState icon={Receipt} title="Sin movimientos" />
+                  <EmptyState
+                    icon={Receipt}
+                    title={soloImpagas ? "No queda nada impago" : "Sin movimientos"}
+                  />
                 </TableCell>
               </TableRow>
             )}
