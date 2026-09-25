@@ -63,7 +63,18 @@ export async function listarPendientes(tipo: TipoPago, req: Request) {
     .eq("tipo", tipoComprobante)
     .eq(campo, entidadId)
 
-  const [{ data: conSaldo, error }, { data: delRecibo }] = await Promise.all([
+  /* El saldo a favor de la ficha: anticipos de recibos anteriores que todavía
+     no se aplicaron. Viaja con los pendientes porque se pide en el mismo
+     momento y por la misma razón —se eligió una ficha—, y porque sin él la
+     pantalla no puede ofrecer usarlo. Por moneda: un anticipo en dólares no
+     cancela una factura en pesos sin decidir a qué cambio. */
+  const saldoPromesa = supabase
+    .from("saldos_a_cuenta")
+    .select("moneda, saldo")
+    .eq("entidad_tipo", esCobro ? "cliente" : "proveedor")
+    .eq("entidad_id", entidadId)
+
+  const [{ data: conSaldo, error }, { data: delRecibo }, { data: saldos }] = await Promise.all([
     consulta
       .gt("saldo", 0)
       .order("fecha_vencimiento", { ascending: true, nullsFirst: false })
@@ -75,6 +86,7 @@ export async function listarPendientes(tipo: TipoPago, req: Request) {
           .select(SELECT)
           .in("id", [...yaImputado.keys()])
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    saldoPromesa,
   ])
 
   if (error) {
@@ -119,5 +131,27 @@ export async function listarPendientes(tipo: TipoPago, req: Request) {
     signo: Number(f.signo) === -1 ? -1 : 1,
   }))
 
-  return NextResponse.json({ pendientes })
+  const saldoAFavor = { ARS: 0, USD: 0 }
+  for (const f of saldos ?? []) {
+    const m = f.moneda === "USD" ? "USD" : "ARS"
+    saldoAFavor[m] = Number(f.saldo) || 0
+  }
+
+  /* Al editar, el saldo que se muestra es el que habría si este recibo no
+     existiera — igual que el de las facturas. Si no, abrir un recibo que usó
+     todo el saldo a favor mostraría cero disponible y parecería que ya no se
+     puede guardar. */
+  if (incluirPago) {
+    const { data: propio } = await supabase
+      .from("pagos")
+      .select("a_cuenta, moneda")
+      .eq("id", incluirPago)
+      .maybeSingle()
+    if (propio) {
+      const m = propio.moneda === "USD" ? "USD" : "ARS"
+      saldoAFavor[m] -= Number(propio.a_cuenta ?? 0)
+    }
+  }
+
+  return NextResponse.json({ pendientes, saldoAFavor })
 }

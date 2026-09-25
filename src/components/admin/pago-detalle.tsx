@@ -81,13 +81,32 @@ export function PagoDetalle({
                 valor={formatearImporte(cobro.totalMedios, cobro.moneda)}
                 tono={esCobro ? "success" : "neutral"}
               />
+              {/* El anticipo, cuando lo hay: es la parte del recibo que todavía
+                  no cancela nada y que queda esperando una factura. */}
+              {Math.abs(cobro.aCuenta) > 0.01 && (
+                <Cifra
+                  rotulo={cobro.aCuenta > 0 ? "Quedó a cuenta" : "Usó del saldo a favor"}
+                  valor={formatearImporte(Math.abs(cobro.aCuenta), cobro.moneda)}
+                  pie={
+                    cobro.aCuenta > 0
+                      ? "Se aplica cuando llegue el comprobante"
+                      : "De un anticipo anterior"
+                  }
+                />
+              )}
             </div>
           </Bloque>
 
           <Bloque titulo="Comprobantes cancelados">
             <Lista>
               {cobro.imputaciones.length === 0 ? (
-                <Vacio texto="Sin imputar a ningún comprobante." />
+                <Vacio
+                  texto={
+                    cobro.aCuenta > 0
+                      ? `Sin imputar: quedó entero a cuenta ${esCobro ? "del cliente" : "del proveedor"}.`
+                      : "Sin imputar a ningún comprobante."
+                  }
+                />
               ) : (
                 cobro.imputaciones.map((i) => {
                   // La nota de crédito no cancela: se aplica, y resta. Mostrarla

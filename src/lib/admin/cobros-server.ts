@@ -123,6 +123,7 @@ export function aCobro(fila: Fila): Cobro {
     // Con signo: lo que el recibo cancela de verdad es la factura menos la nota
     // de crédito que se le aplicó, no la suma de las dos.
     totalImputado: imputaciones.reduce((a, i) => a + signoDeClase(i.clase) * i.importe, 0),
+    aCuenta: num(fila.a_cuenta),
     observaciones: (fila.observaciones as string | null) ?? null,
     createdAt: fila.created_at as string,
     medios,

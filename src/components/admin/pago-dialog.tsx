@@ -158,7 +158,10 @@ export function PagoDialog({
   const pendientesQuery = useQuery({
     queryKey: claves.url(urlPendientes ?? ""),
     queryFn: ({ signal }) =>
-      pedirJson<{ pendientes?: Pendiente[] }>(urlPendientes!, { signal }),
+      pedirJson<{ pendientes?: Pendiente[]; saldoAFavor?: Record<Moneda, number> }>(
+        urlPendientes!,
+        { signal }
+      ),
     enabled: abierto && urlPendientes !== null,
     refetchOnWindowFocus: false,
   })
@@ -166,6 +169,10 @@ export function PagoDialog({
   const pendientes =
     (urlPendientes && pendientesQuery.data?.pendientes) || SIN_PENDIENTES
   const cargandoPendientes = urlPendientes !== null && pendientesQuery.isLoading
+
+  /** Lo que la ficha tiene a cuenta de recibos anteriores, en la moneda de este
+   *  recibo. Es lo único que habilita cancelar más de lo que entra o sale. */
+  const saldoAFavor = pendientesQuery.data?.saldoAFavor?.[moneda] ?? 0
 
   const cuentasQuery = useQuery({
     queryKey: claves.url("/api/admin/cuentas"),
@@ -311,7 +318,7 @@ export function PagoDialog({
     [retenciones]
   )
 
-  const balance = balancear(totalImputado, totalMedios, totalRetenciones)
+  const balance = balancear(totalImputado, totalMedios, totalRetenciones, saldoAFavor)
 
   /**
    * Cuándo hace falta el tipo de cambio.
@@ -364,8 +371,22 @@ export function PagoDialog({
     totalMedios === 0 &&
     totalRetenciones === 0
 
+  /** Un anticipo: plata sin factura que la respalde, que queda a favor de la
+   *  ficha. `aCuenta` negativo es lo contrario, un anticipo que se consume. */
+  const dejaACuenta = balance.aCuenta > 0.01
+  const usaSaldo = balance.aCuenta < -0.01
+
+  /*
+   * Un recibo tiene que hacer algo, pero no necesariamente imputar.
+   *
+   * Antes se exigía al menos una factura tildada, y eso dejaba afuera el pago a
+   * cuenta: se le paga al proveedor, se retira la mercadería y la factura llega
+   * después. Ahora alcanza con que mueva plata; lo que no imputa queda a cuenta
+   * de la ficha y se aplica cuando la factura llegue.
+   */
+  const haceAlgo = hayImputaciones || totalMedios > 0 || totalRetenciones > 0
   const puedeGuardar =
-    Boolean(cliente) && hayImputaciones && balance.cuadra && !faltaTc && !guardando
+    Boolean(cliente) && haceAlgo && balance.cuadra && !faltaTc && !guardando
 
   /* ── Acciones ────────────────────────────────────────────────────────────── */
 
@@ -553,9 +574,24 @@ export function PagoDialog({
 
         {/* Facturas a cancelar */}
         <section>
-          <p className="eyebrow mb-2.5">
-            {esCobro ? "Facturas a cancelar" : "Comprobantes a cancelar"}
-          </p>
+          <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-2">
+            <p className="eyebrow">
+              {esCobro ? "Facturas a cancelar" : "Comprobantes a cancelar"}
+            </p>
+            {/* El saldo a favor, dicho donde se decide qué cancelar. Sin esto
+                nadie se entera de que lo tiene: está en la cuenta corriente, a
+                dos pantallas de acá, y el que carga el recibo no la mira. */}
+            {saldoAFavor > 0.01 && (
+              <p className="text-[11.5px] text-ink-muted">
+                {esCobro ? "Este cliente tiene " : "Tenemos "}
+                <span className="num font-semibold text-brand-600">
+                  {formatearImporte(saldoAFavor, moneda)}
+                </span>
+                {esCobro ? " a cuenta" : " a favor con este proveedor"}: imputá de más y
+                se aplica solo.
+              </p>
+            )}
+          </div>
 
           {!cliente ? (
             <div className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-[12.5px] text-ink-muted">
@@ -569,6 +605,13 @@ export function PagoDialog({
           ) : pendientes.length === 0 ? (
             <div className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-[12.5px] text-ink-muted">
               {cliente.razonSocial} no tiene comprobantes pendientes.
+              {/* No es un callejón sin salida: el recibo se puede guardar igual
+                  y queda a cuenta. Es el caso de pagar antes de que llegue la
+                  factura, que es justamente cuando no hay nada que tildar. */}
+              <span className="mt-1 block">
+                Lo que cargues queda a cuenta y se aplica cuando llegue{" "}
+                {esCobro ? "la factura" : "el comprobante"}.
+              </span>
             </div>
           ) : (
             <div className="overflow-hidden rounded-xl border border-line">
@@ -845,21 +888,45 @@ export function PagoDialog({
           )}
         >
           <Cifra rotulo="Cancela" valor={balance.imputado} moneda={moneda} />
+          {/* El término que hace que la ecuación cierre sin mentir: lo que se
+              pagó y todavía no tiene factura. Solo aparece cuando hay algo, para
+              que el recibo de siempre se siga leyendo igual que siempre. */}
+          {dejaACuenta && (
+            <>
+              <span className="text-ink-faint">+</span>
+              <Cifra rotulo="A cuenta" valor={balance.aCuenta} moneda={moneda} />
+            </>
+          )}
           <span className="text-ink-faint">=</span>
           <Cifra rotulo={esCobro ? "Entró" : "Salió"} valor={balance.medios} moneda={moneda} />
           <span className="text-ink-faint">+</span>
           <Cifra rotulo="Retenciones" valor={balance.retenciones} moneda={moneda} />
+          {usaSaldo && (
+            <>
+              <span className="text-ink-faint">+</span>
+              <Cifra rotulo="Saldo a favor" valor={-balance.aCuenta} moneda={moneda} />
+            </>
+          )}
 
           <span className="ml-auto text-[12px] font-semibold">
             {balance.cuadra ? (
               <span className="text-success-text">
                 {soloAplicacion
                   ? "La nota de crédito cancela el comprobante"
-                  : "El recibo cuadra"}
+                  : dejaACuenta
+                    ? `Queda ${formatearImporte(balance.aCuenta, moneda)} a favor ${
+                        esCobro ? "del cliente" : "nuestro"
+                      }`
+                    : usaSaldo
+                      ? `Usa ${formatearImporte(-balance.aCuenta, moneda)} del saldo a favor`
+                      : "El recibo cuadra"}
               </span>
             ) : (
+              // Ya no dice "diferencia": dice lo que falta para poder guardar,
+              // que es un número accionable y no un descuadre a interpretar.
               <span className="num text-warning-text">
-                Diferencia {formatearImporte(balance.diferencia, moneda)}
+                {esCobro ? "Falta cobrar" : "Falta pagar"}{" "}
+                {formatearImporte(balance.diferencia, moneda)}
               </span>
             )}
           </span>

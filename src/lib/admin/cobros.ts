@@ -6,13 +6,19 @@ import { redondear } from "@/lib/admin/moneda"
  *
  * La ecuación que gobierna un recibo, y que la UI muestra en vivo:
  *
- *     lo que cancela  =  lo que entró a la caja  +  las retenciones
+ *     lo que cancela  +  lo que queda a cuenta  =  lo que entró  +  retenciones
  *
  * Las retenciones no son plata que se mueve: son parte de lo que salda la
  * factura y que en vez de entrar al banco se va como crédito fiscal. Olvidarlas
  * es el error clásico — se imputa por el total de la factura, entra menos plata
  * de la que dice el recibo, y la caja queda descuadrada sin que nadie sepa por
  * qué.
+ *
+ * El término "a cuenta" es lo que permite cargar plata que todavía no tiene
+ * factura: se le paga al proveedor, se retira la mercadería y la factura llega
+ * después. Hasta que existió, ese pago no se podía registrar y el saldo del
+ * banco quedaba desfasado del real. Es un término de la ecuación y no una
+ * excepción a ella: el recibo sigue teniendo que cerrar.
  */
 
 export const RETENCIONES = ["ganancias", "iva", "iibb", "suss"] as const
@@ -183,6 +189,13 @@ export type Cobro = {
   totalMedios: number
   /** Suma de las imputaciones, en la moneda del recibo. */
   totalImputado: number
+  /**
+   * Lo que el recibo no imputó contra ningún comprobante.
+   *
+   * Positivo es un anticipo —plata entregada que todavía no tiene factura—;
+   * negativo, un anticipo anterior que este recibo consumió para cancelar.
+   */
+  aCuenta: number
   observaciones: string | null
   createdAt: string
   medios: {
@@ -235,27 +248,44 @@ export type BalanceCobro = {
   /** Lo que entró a las cuentas. */
   medios: number
   retenciones: number
-  /** medios + retenciones − imputado. Cero es lo que buscamos. */
+  /**
+   * medios + retenciones − imputado.
+   *
+   * Positivo: plata sin factura que la respalde, o sea un anticipo que queda a
+   * favor de la ficha. Negativo: se está cancelando más de lo que se paga, y
+   * eso solo vale si hay saldo a favor de antes que lo cubra.
+   */
+  aCuenta: number
+  /** Lo que falta para que el recibo cierre. Cero cuando cierra. */
   diferencia: number
   cuadra: boolean
 }
 
 /**
- * El control del recibo. Se tolera un centavo de diferencia: con importes en dos
- * monedas y conversiones de por medio, exigir cero exacto haría que un recibo
- * legítimo no se pueda guardar por un redondeo.
+ * El control del recibo. Se tolera un centavo: con importes en dos monedas y
+ * conversiones de por medio, exigir cero exacto haría que un recibo legítimo no
+ * se pueda guardar por un redondeo.
+ *
+ * `saldoAFavor` es lo que la ficha tiene a cuenta de recibos anteriores. Es lo
+ * único que habilita imputar más de lo que se paga: sin él, imputar de más es
+ * el error clásico —olvidarse la retención— y se sigue frenando igual.
  */
 export function balancear(
   imputadoEnMonedaRecibo: number,
   medios: number,
-  retenciones: number
+  retenciones: number,
+  saldoAFavor = 0
 ): BalanceCobro {
-  const diferencia = redondear(medios + retenciones - imputadoEnMonedaRecibo)
+  const aCuenta = redondear(medios + retenciones - imputadoEnMonedaRecibo)
+  // Lo que falta es lo que se imputó de más y el saldo a favor no alcanza a
+  // cubrir. Un anticipo —`aCuenta` positivo— nunca falta: sobra, y está bien.
+  const faltante = redondear(Math.max(0, -(aCuenta + redondear(saldoAFavor))))
   return {
     imputado: redondear(imputadoEnMonedaRecibo),
     medios: redondear(medios),
     retenciones: redondear(retenciones),
-    diferencia,
-    cuadra: Math.abs(diferencia) <= 0.01,
+    aCuenta,
+    diferencia: faltante,
+    cuadra: faltante <= 0.01,
   }
 }

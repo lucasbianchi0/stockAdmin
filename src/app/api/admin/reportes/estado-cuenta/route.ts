@@ -115,7 +115,7 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
   let qPagos = supabase
     .from("pagos")
     .select(
-      "id, fecha, moneda, tc, observaciones, imputaciones (importe, comprobante:comprobantes (moneda, tc, signo))"
+      "id, fecha, moneda, tc, a_cuenta, observaciones, imputaciones (importe, comprobante:comprobantes (moneda, tc, signo))"
     )
     .eq("tipo", tipoPago)
     .eq(campo, entidadId)
@@ -196,6 +196,19 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
       return acc + signoDe(comp) * Number(i.importe)
     }, 0)
 
+    /*
+     * Lo que el recibo no imputó también mueve la cuenta corriente.
+     *
+     * Un anticipo —plata entregada antes de que exista la factura— no tiene
+     * ninguna imputación, así que sumando solo esas el recibo no aparecía y el
+     * saldo decía que le debemos todo al proveedor cuando ya le pagamos. Con el
+     * `a_cuenta` adentro, la fila vale lo que de verdad se movió y el saldo
+     * queda a favor hasta que la factura llegue.
+     */
+    const aCuenta = Number(p.a_cuenta) || 0
+    const aCuentaArs =
+      p.moneda === "ARS" ? aCuenta : redondear(aCuenta * (Number(p.tc) || 0))
+
     filas.push({
       fecha: p.fecha as string,
       tipo: esCliente ? "COBRO" : "PAGO",
@@ -203,12 +216,15 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
       detalle: null,
       observaciones: (p.observaciones as string | null) ?? null,
       moneda: p.moneda as "ARS" | "USD",
-      importe: -redondear(enPesos),
+      importe: -redondear(enPesos + aCuentaArs),
       // `!== 0` y no `> 0`: un recibo puede netear a cero —una NC aplicada
       // contra su factura— y eso no es lo mismo que no tener parte en dólares.
-      importeUsd: redondear(enUsd) !== 0 ? -redondear(enUsd) : null,
+      importeUsd: (() => {
+        const usd = enUsd + (p.moneda === "USD" ? aCuenta : 0)
+        return redondear(usd) !== 0 ? -redondear(usd) : null
+      })(),
       tc: p.tc === null ? null : Number(p.tc),
-      importeArs: -redondear(enPesos),
+      importeArs: -redondear(enPesos + aCuentaArs),
       // Un recibo no se cobra ni se debe: es lo que cancela a los otros.
       impaga: false,
       pendienteArs: null,

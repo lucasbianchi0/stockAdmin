@@ -6,7 +6,6 @@ import { POR_PAGINA_MAX } from "@/lib/admin/entidades-server"
 import { esMoneda, redondear } from "@/lib/admin/moneda"
 import {
   RETENCIONES,
-  balancear,
   convertir,
   esJurisdiccion,
   sumaRetenciones,
@@ -197,14 +196,19 @@ async function validarPago(
     claves.add(clave)
   }
 
+  /*
+   * Un recibo sin imputar es válido: es un anticipo.
+   *
+   * Antes se cortaba acá —"elegí al menos un comprobante"— y eso dejaba fuera
+   * el caso que más duele: se le paga al proveedor, se retira la mercadería y
+   * la factura llega días después. Hasta que llegaba, la plata no se podía
+   * cargar y el saldo del banco quedaba desfasado con el real.
+   *
+   * Lo que sí sigue sin tener sentido es un recibo que no hace nada: ni imputa,
+   * ni mueve plata, ni tiene retenciones. Eso se corta más abajo, cuando ya
+   * están los tres números para decirlo.
+   */
   const imputacionesRaw = Array.isArray(raw.imputaciones) ? raw.imputaciones : []
-  if (imputacionesRaw.length === 0) {
-    return { respuesta: NextResponse.json(
-      { error: `Elegí al menos un comprobante para imputar ${cfg.nombre}` },
-      { status: 400 }
-    ) }
-  }
-
   const mediosRaw = Array.isArray(raw.medios) ? raw.medios : []
 
   /* Las facturas: se releen de la base y no se confía en lo que manda el
@@ -449,27 +453,78 @@ async function validarPago(
     })
   }
 
-  /* El control: lo que cancela tiene que ser igual a lo que entró más las
-     retenciones. Es la validación que evita el error más común del rubro —
-     imputar por el total de la factura olvidando que parte se fue en retención,
-     y dejar la caja descuadrada sin saber por qué. */
   const totalRetenciones = sumaRetenciones(
     retenciones.map((r) => ({ importe: Number(r.importe) }))
   )
-  const balance = balancear(imputadoEnMonedaRecibo, totalMedios, totalRetenciones)
 
-  if (!balance.cuadra) {
+  /*
+   * El control, que sigue siendo el mismo pero con un término más:
+   *
+   *     lo que cancela  +  lo que queda a cuenta  =  lo que salió  +  retenciones
+   *
+   * `aCuenta` no llega del formulario: se deduce. Es lo que sobra de la plata
+   * después de imputar, y por eso la ecuación no puede fallar por redondeo ni
+   * la puede falsear nadie desde el cliente.
+   *
+   * Positivo es un anticipo: plata entregada que todavía no tiene factura.
+   * Negativo es lo contrario —se está cancelando más de lo que se paga—, y eso
+   * solo se permite si la ficha tiene saldo a favor de antes que lo respalde.
+   * Sin eso volveríamos al error que esta validación existe para evitar:
+   * imputar por el total olvidando la retención y descuadrar la caja.
+   */
+  const aCuenta = redondear(totalMedios + totalRetenciones - imputadoEnMonedaRecibo)
+
+  if (imputacionesRaw.length === 0 && totalMedios === 0 && totalRetenciones === 0) {
     return { respuesta: NextResponse.json(
       {
         error:
-          `El recibo no cuadra por ${balance.diferencia.toFixed(2)}. ` +
-          `Imputado ${balance.imputado.toFixed(2)}, ${tipo === "cobro" ? "cobrado" : "pagado"} ${balance.medios.toFixed(2)}, ` +
-          `retenciones ${balance.retenciones.toFixed(2)}.`,
+          `${cfg.nombre[0].toUpperCase()}${cfg.nombre.slice(1)} tiene que imputar ` +
+          `algún comprobante o mover plata`,
       },
       { status: 400 }
     ) }
   }
 
+  if (aCuenta < -0.01) {
+    /* El saldo a favor disponible, releído de la base y no del formulario. Al
+       editar hay que devolverle a la ficha lo que este mismo recibo ya estaba
+       consumiendo: si no, abrir un recibo que usó todo el saldo y guardarlo sin
+       cambiar nada diría que no alcanza. */
+    const { data: saldoFila } = await supabase
+      .from("saldos_a_cuenta")
+      .select("saldo")
+      .eq("entidad_tipo", tipo === "cobro" ? "cliente" : "proveedor")
+      .eq("entidad_id", entidadId)
+      .eq("moneda", moneda)
+      .maybeSingle()
+
+    let disponible = Number(saldoFila?.saldo ?? 0)
+
+    if (pagoId) {
+      const { data: previo } = await supabase
+        .from("pagos")
+        .select("a_cuenta, moneda")
+        .eq("id", pagoId)
+        .maybeSingle()
+      if (previo && previo.moneda === moneda) disponible -= Number(previo.a_cuenta ?? 0)
+    }
+
+    if (Math.abs(aCuenta) > disponible + 0.01) {
+      return { respuesta: NextResponse.json(
+        {
+          error:
+            disponible > 0
+              ? `Estás cancelando ${Math.abs(aCuenta).toFixed(2)} más de lo que ` +
+                `${tipo === "cobro" ? "entró" : "salió"}, y el saldo a favor disponible ` +
+                `es ${disponible.toFixed(2)}.`
+              : `Estás cancelando ${Math.abs(aCuenta).toFixed(2)} más de lo que ` +
+                `${tipo === "cobro" ? "entró a la caja" : "salió de la caja"}. ` +
+                `Revisá los importes o agregá la retención que falta.`,
+        },
+        { status: 400 }
+      ) }
+    }
+  }
 
   return {
     piezas: {
@@ -479,6 +534,7 @@ async function validarPago(
         fecha,
         moneda,
         tc,
+        a_cuenta: aCuenta,
         observaciones,
       },
       imputaciones: filasImputacion,
