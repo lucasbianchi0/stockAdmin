@@ -129,7 +129,15 @@ export async function piezasDelBanco(canal: Canal): Promise<PiezaBanco[]> {
     .eq("plan_id", planId)
     .eq("origen", "banco")
     .is("programada", null)
-    .order("orden", { ascending: true })
+    /*
+     * Las últimas primero.
+     *
+     * El `orden` crece con cada pieza generada, así que descendente es "lo más
+     * nuevo arriba". Es lo que se quiere mirar: quien acaba de generar un lote
+     * entra a revisar ESAS piezas, y tenerlas al final obligaba a scrollear todo
+     * el banco para encontrarlas.
+     */
+    .order("orden", { ascending: false })
 
   if (error) {
     console.error("[banco piezasDelBanco]", error)
