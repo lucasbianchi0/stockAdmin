@@ -282,7 +282,7 @@ async function imputacionesDe(comprobanteId: string): Promise<ImputacionDetalle[
     .select(
       `id, importe,
        pago:pagos (
-         id, fecha, moneda,
+         id, fecha, moneda, a_cuenta,
          movimientos (referencia, cuenta:cuentas_financieras (nombre)),
          pago_retenciones (id)
        )`
@@ -298,6 +298,7 @@ async function imputacionesDe(comprobanteId: string): Promise<ImputacionDetalle[
     id: string
     fecha: string
     moneda: string
+    a_cuenta?: number | string | null
     movimientos?: { referencia: string | null; cuenta?: { nombre: string } | null }[]
     pago_retenciones?: { id: string }[]
   }
@@ -317,6 +318,7 @@ async function imputacionesDe(comprobanteId: string): Promise<ImputacionDetalle[
       cuentas: [...new Set(medios.map((m) => m.cuenta?.nombre).filter(Boolean))] as string[],
       referencias: [...new Set(medios.map((m) => m.referencia).filter(Boolean))] as string[],
       conRetenciones: (pago?.pago_retenciones ?? []).length > 0,
+      aCuenta: Number(pago?.a_cuenta ?? 0) || 0,
     }
   })
 

@@ -369,6 +369,33 @@
     @apply transition-colors duration-150 hover:bg-brand-50/60;
   }
 
+  /* ── Acciones de una fila: aparecen al pasar por encima ─────────────────
+     Cuatro íconos repetidos en veinticinco renglones forman una columna de
+     ruido contra el borde derecho, y el ojo va ahí en vez de ir a los importes.
+     Revelarlas al hover devuelve la tabla a lo que la tabla tiene que mostrar,
+     que son los datos.
+
+     Dos salvedades para que esconderlas no sea perderlas: donde no hay hover
+     —teléfono, tablet— se quedan siempre visibles, y si alguna tiene el foco
+     aparecen todas, así llegar con el teclado no deja al usuario operando algo
+     que no ve. */
+  .acciones-fila {
+    @apply transition-opacity duration-150;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .acciones-fila {
+      @apply opacity-0;
+    }
+
+    tr:hover .acciones-fila,
+    tr:focus-within .acciones-fila,
+    .acciones-fila:focus-within,
+    .acciones-fila:hover {
+      @apply opacity-100;
+    }
+  }
+
   /* ── Divisor vertical de toolbar ── */
   .toolbar-divider {
     @apply h-4 w-px shrink-0 bg-line;

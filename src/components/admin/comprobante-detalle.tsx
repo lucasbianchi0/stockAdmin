@@ -261,9 +261,11 @@ export function ComprobanteDetalle({
                         <p className="truncate text-[11.5px] text-ink-muted">
                           {i.cuentas.length > 0
                             ? i.cuentas.join(" · ")
-                            : i.conRetenciones
-                              ? "Solo retenciones"
-                              : "Aplicación de nota de crédito"}
+                            : i.aCuenta < 0
+                              ? "Saldo a favor"
+                              : i.conRetenciones
+                                ? "Solo retenciones"
+                                : "Aplicación de nota de crédito"}
                           {i.referencias.length > 0 && ` · ${i.referencias.join(" · ")}`}
                         </p>
                       </>

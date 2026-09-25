@@ -547,9 +547,11 @@ function TablaPagos({
                   <TableCell className="text-[12px] text-ink-muted">
                     {p.medios.length > 0
                       ? [...new Set(p.medios.map((m) => m.cuentaNombre).filter(Boolean))].join(" · ")
-                      : p.totalRetenciones > 0
-                        ? "Solo retenciones"
-                        : "Aplicación de nota de crédito"}
+                      : p.aCuenta < 0
+                        ? "Saldo a favor"
+                        : p.totalRetenciones > 0
+                          ? "Solo retenciones"
+                          : "Aplicación de nota de crédito"}
                   </TableCell>
                   <TableCell className="num text-right text-ink-secondary">
                     {p.totalRetenciones > 0

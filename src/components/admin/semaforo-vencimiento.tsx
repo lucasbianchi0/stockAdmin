@@ -92,15 +92,17 @@ export function SemaforoVencimiento({
     <TooltipProvider delayDuration={150}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="flex cursor-help items-center gap-2">
+          <span className="group/venc flex cursor-help items-center gap-2">
             <Dot tone={tono} />
             <span
               className={cn(
                 "num text-[12px]",
-                // El subrayado punteado es lo que avisa que hay algo más al
-                // pasar el mouse: sin eso el tooltip existe para quien ya sabe
-                // que está.
-                "border-b border-dashed border-ink-faint",
+                // El punteado aparece recién al pasar por encima. Fijo en
+                // todas las filas armaba una textura de rayitas bajando por la
+                // columna que competía con las fechas; apareciendo al hover
+                // avisa lo mismo —hay algo más acá— justo cuando sirve.
+                "border-b border-dashed border-transparent transition-colors",
+                "group-hover/venc:border-ink-faint",
                 destacado && !compacto ? "font-medium" : "",
                 destacado && compacto ? "font-semibold" : "",
                 color

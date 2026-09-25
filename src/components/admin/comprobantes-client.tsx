@@ -753,7 +753,7 @@ function Fila({
       </TableCell>
 
       <TableCell onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-end gap-0.5">
+        <div className="acciones-fila flex items-center justify-end gap-0.5">
           {/* Confirmar es la acción principal de un borrador: va primero y con
               texto, no como un ícono más entre otros cuatro. */}
           {esBorrador ? (

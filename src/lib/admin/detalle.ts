@@ -99,6 +99,8 @@ export type ImputacionDetalle = {
    *  cobro flojo de papeles: es una nota de crédito aplicada, donde no se movió
    *  plata porque no tenía que moverse. */
   conRetenciones: boolean
+  /** Lo que ese recibo no imputó. Negativo: consumió un anticipo anterior. */
+  aCuenta: number
 }
 
 export type ComprobanteDetalle = {

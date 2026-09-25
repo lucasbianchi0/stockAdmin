@@ -498,7 +498,11 @@ function Fila({
             {c.categoriaNombre}
           </Badge>
         ) : (
-          <span className="text-[11.5px] text-ink-faint">Sin categoría</span>
+          // Un guion y no "Sin categoría": es la convención de toda la app para
+          // un valor que no está, y repetir la frase entera en cada renglón
+          // llenaba la columna de texto que no dice nada. El rótulo de arriba
+          // ya avisa qué columna es.
+          <span className="text-ink-faint">—</span>
         )}
       </TableCell>
 
@@ -576,7 +580,7 @@ function Fila({
       )}
 
       <TableCell onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-end gap-0.5">
+        <div className="acciones-fila flex items-center justify-end gap-0.5">
           {/* El ojo lleva a la ficha completa, igual que el nombre. Antes abría
               el panel lateral, que era un rodeo: se espiaba, y lo que se
               quería ver casi siempre estaba una pantalla más adentro. El panel

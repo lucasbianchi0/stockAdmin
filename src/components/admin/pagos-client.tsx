@@ -178,7 +178,15 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
                         <>
                         <TableCell>
                           {c.imputaciones.length === 0 ? (
-                            <span className="text-ink-faint">—</span>
+                            // Un recibo sin imputar no es un recibo incompleto:
+                            // es un anticipo, y decirlo vale más que un guion.
+                            c.aCuenta > 0 ? (
+                              <Badge tone="brand" size="sm">
+                                A cuenta
+                              </Badge>
+                            ) : (
+                              <span className="text-ink-faint">—</span>
+                            )
                           ) : (
                             <div className="flex flex-wrap items-center gap-1">
                               {c.imputaciones.slice(0, 2).map((i) => (
@@ -197,13 +205,17 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
 
                         <TableCell className="text-ink-secondary">
                           {c.medios.length === 0 ? (
-                            // Sin medios y sin retenciones no hubo plata porque
-                            // no tenía que haberla: es una nota de crédito
-                            // aplicada contra el comprobante que anula.
+                            // Sin plata de por medio hay tres motivos posibles y
+                            // cada uno tiene su nombre. Decir "nota de crédito"
+                            // en los tres —como decía antes— es mentir en dos:
+                            // un recibo que consume un anticipo no tiene nada
+                            // que ver con una nota de crédito.
                             <span className="text-ink-faint">
-                              {c.totalRetenciones > 0
-                                ? "Solo retenciones"
-                                : "Aplicación de nota de crédito"}
+                              {c.aCuenta < 0
+                                ? "Saldo a favor"
+                                : c.totalRetenciones > 0
+                                  ? "Solo retenciones"
+                                  : "Aplicación de nota de crédito"}
                             </span>
                           ) : (
                             <div className="min-w-0">
@@ -241,7 +253,7 @@ export function PagosClient({ tipo }: { tipo: TipoPago }) {
                         </TableCell>
 
                         <TableCell onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-0.5">
+                          <div className="acciones-fila flex items-center justify-end gap-0.5">
                             <Button
                               variant="ghost"
                               size="icon-sm"
