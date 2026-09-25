@@ -33,6 +33,7 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
     .select(
       `id, clase, punto_venta, numero, fecha, fecha_vencimiento, fecha_estimada_pago,
        moneda, tc, total, imputado, saldo, detalle, signo,
+       iva, percepcion_iva, percepcion_iibb_bsas, percepcion_iibb_caba, otros_impuestos,
        cliente:clientes (id, razon_social),
        proveedor:proveedores (id, razon_social)`
     )
@@ -63,6 +64,40 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
     const signo = Number(f.signo) === -1 ? -1 : 1
     const saldo = redondear(Number(f.saldo) * signo)
 
+    /*
+     * La fila, abierta como la planilla que este reporte viene a reemplazar:
+     * neto, impuestos, total, y el total valuado en pesos.
+     *
+     * `impuestos` se suma de sus partes y el neto sale por diferencia, no al
+     * revés. Así neto + impuestos da el total exacto siempre, incluso en una
+     * factura con no gravado o exento, donde tomar `neto_gravado` a secas
+     * dejaría una punta sin explicar.
+     */
+    const num = (v: unknown) => Number(v) || 0
+    const impuestos = redondear(
+      (num(f.iva) +
+        num(f.percepcion_iva) +
+        num(f.percepcion_iibb_bsas) +
+        num(f.percepcion_iibb_caba) +
+        num(f.otros_impuestos)) *
+        signo
+    )
+    const total = redondear(Number(f.total) * signo)
+    const neto = redondear(total - impuestos)
+
+    /*
+     * El dólar del día en que se emitió, y el valor en pesos.
+     *
+     * Una factura en pesos no tiene ninguno de los dos: se muestra vacía, igual
+     * que en la planilla, y su total pasa derecho a la columna de pesos. Una en
+     * dólares se valúa al TC que tenía el día de emisión —no al de hoy—, que es
+     * el peso que de verdad se facturó y el único con el que el número se puede
+     * reclamar o conciliar.
+     */
+    const esDolar = moneda === "USD"
+    const tcEmision = esDolar ? tc : null
+    const totalArs = esDolar ? redondear(total * (tc ?? 0)) : total
+
     return {
       id: f.id as string,
       entidad: (esVenta ? cliente?.razon_social : proveedor?.razon_social) ?? "—",
@@ -78,7 +113,14 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
       moneda,
       tc,
       signo,
-      total: redondear(Number(f.total) * signo),
+      neto,
+      impuestos,
+      /** Solo en las facturas en dólares; en las de pesos va `null` y la
+       *  columna queda vacía, como en la planilla. */
+      totalUsd: esDolar ? total : null,
+      tcEmision,
+      totalArs,
+      total,
       imputado: Number(f.imputado),
       saldo,
       // Valuado al TC del comprobante, no al de hoy: es el peso que se facturó.
@@ -105,16 +147,39 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
     }
   })
 
+  /*
+   * La cotización de hoy, para el total.
+   *
+   * Es el único lugar del reporte donde entra el dólar de hoy, y a propósito:
+   * cada factura se valúa al suyo —el del día que se emitió— y recién la suma
+   * de todas se lleva a dólares de hoy, que es la pregunta "cuánto es esto en
+   * dólares si lo cobrara ahora". Por eso viaja también cuándo se actualizó:
+   * un número que cambia solo tiene que decir de cuándo es.
+   */
+  const { data: cot } = await supabase
+    .from("cotizaciones")
+    .select("venta, fecha, created_at")
+    .order("fecha", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const dolarHoy = Number(cot?.venta) || 0
+
+  const totalArs = redondear(filas.reduce((a, f) => a + f.totalArs, 0))
+
   const totales = {
     cantidad: filas.length,
-    ars: redondear(filas.filter((f) => f.moneda === "ARS").reduce((a, f) => a + f.saldo, 0)),
-    usd: redondear(filas.filter((f) => f.moneda === "USD").reduce((a, f) => a + f.saldo, 0)),
+    /** Todo en pesos: cada factura a su propio TC. Es la suma que la planilla
+     *  hacía a mano en la columna TOTAL $. */
+    ars: totalArs,
+    /** Esa misma suma, al dólar de hoy. `null` si no hay cotización cargada:
+     *  mejor un guion que un número inventado. */
+    usdHoy: dolarHoy > 0 ? redondear(totalArs / dolarHoy) : null,
+    dolar: dolarHoy > 0 ? dolarHoy : null,
+    dolarActualizado: (cot?.created_at as string | null) ?? null,
     vencidas: filas.filter((f) => f.vencida).length,
     vencidoArs: redondear(
-      filas.filter((f) => f.vencida && f.moneda === "ARS").reduce((a, f) => a + f.saldo, 0)
-    ),
-    vencidoUsd: redondear(
-      filas.filter((f) => f.vencida && f.moneda === "USD").reduce((a, f) => a + f.saldo, 0)
+      filas.filter((f) => f.vencida).reduce((a, f) => a + f.totalArs, 0)
     ),
     /** Se avisa cuando el reporte se cortó: un total truncado presentado como
      *  completo es peor que no tenerlo. */

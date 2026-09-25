@@ -49,9 +49,18 @@ type Pendiente = {
   fechaVencimiento: string | null
   moneda: "ARS" | "USD"
   tc: number | null
-  /** -1 en las notas de crédito. `total` y `saldo` ya vienen con él aplicado:
+  /** -1 en las notas de crédito. Todos los importes ya vienen con él aplicado:
    *  una NC pendiente es crédito a favor del cliente, no deuda suya. */
   signo: 1 | -1
+  /** Neto e impuestos en la moneda del comprobante. Suman el total exacto. */
+  neto: number
+  impuestos: number
+  /** Solo en las facturas en dólares; en las de pesos `null`. */
+  totalUsd: number | null
+  /** El dólar del día de emisión. `null` en las facturas en pesos. */
+  tcEmision: number | null
+  /** El total valuado en pesos: el suyo si está en pesos, o al TC de emisión. */
+  totalArs: number
   total: number
   imputado: number
   saldo: number
@@ -63,11 +72,14 @@ type Pendiente = {
 
 type Totales = {
   cantidad: number
+  /** Todo en pesos, cada factura a su propio tipo de cambio. */
   ars: number
-  usd: number
+  /** Esa suma llevada a dólares de hoy. `null` sin cotización cargada. */
+  usdHoy: number | null
+  dolar: number | null
+  dolarActualizado: string | null
   vencidas: number
   vencidoArs: number
-  vencidoUsd: number
   truncado: boolean
 }
 
@@ -153,10 +165,11 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
         "Fecha",
         "Vencimiento",
         "Moneda",
+        "Neto",
+        "Impuestos",
+        "Total USD",
         "TC",
-        "Total",
-        "Cobrado",
-        "Saldo",
+        "Total $",
         esVenta ? "Cobro estimado" : "Pago estimado",
         "Detalle",
       ],
@@ -167,10 +180,11 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
         f.fecha,
         f.fechaVencimiento ?? "",
         f.moneda,
-        f.tc ?? "",
-        f.total,
-        f.imputado,
-        f.saldo,
+        f.neto,
+        f.impuestos,
+        f.totalUsd ?? "",
+        f.tcEmision ?? "",
+        f.totalArs,
         f.fechaEstimadaPago ?? "",
         f.detalle ?? "",
       ])
@@ -184,13 +198,27 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
       {totales && (
         <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-line bg-surface-subtle px-5 py-4">
           <Total rotulo="Comprobantes" valor={String(totales.cantidad)} />
-          {/* `!== 0` y no `> 0`: con las notas de crédito netadas, un total puede
-              dar cero o quedar a favor del cliente, y esconderlo sería mentir. */}
-          {totales.ars !== 0 && (
-            <Total rotulo="En pesos" valor={formatearImporte(totales.ars, "ARS")} />
-          )}
-          {totales.usd !== 0 && (
-            <Total rotulo="En dólares" valor={formatearImporte(totales.usd, "USD")} />
+          {/* Un solo total, en pesos: cada factura valuada al dólar de su fecha
+              de emisión. Antes eran dos números por moneda que no se podían
+              sumar, y la pregunta "cuánto me deben" no tenía una respuesta. */}
+          <Total
+            rotulo={esVenta ? "Total a cobrar" : "Total a pagar"}
+            valor={formatearImporte(totales.ars, "ARS")}
+          />
+          {/* Y recién acá entra el dólar de hoy: la suma entera llevada a
+              dólares, que es otra pregunta —cuánto es esto si lo cobrara hoy— y
+              por eso dice de cuándo es la cotización. */}
+          {totales.usdHoy !== null && (
+            <div>
+              <p className="eyebrow">Equivale a</p>
+              <p className="num mt-0.5 text-[16px] font-bold tracking-[-0.02em] text-ink">
+                {formatearImporte(totales.usdHoy, "USD")}
+              </p>
+              <p className="num mt-0.5 text-[10.5px] text-ink-muted">
+                dólar {formatearImporte(totales.dolar ?? 0, "ARS", { decimales: 2 })}
+                {totales.dolarActualizado && ` · ${cuandoSeActualizo(totales.dolarActualizado)}`}
+              </p>
+            </div>
           )}
           {totales.vencidas > 0 && (
             <div className="flex items-center gap-2">
@@ -198,9 +226,7 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
                 {totales.vencidas} vencida{totales.vencidas !== 1 ? "s" : ""}
               </Badge>
               <span className="num text-[12px] text-danger-text">
-                {totales.vencidoArs > 0 && formatearImporte(totales.vencidoArs, "ARS")}
-                {totales.vencidoArs > 0 && totales.vencidoUsd > 0 && " · "}
-                {totales.vencidoUsd > 0 && formatearImporte(totales.vencidoUsd, "USD")}
+                {formatearImporte(totales.vencidoArs, "ARS")}
               </span>
             </div>
           )}
@@ -233,8 +259,14 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
               <TableHead>Comprobante</TableHead>
               <TableHead>Fecha</TableHead>
               <TableHead>Vencimiento</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Saldo</TableHead>
+              {/* Abierta como la planilla que reemplaza, menos el neto: en
+                  pantalla no aporta —se deduce del total menos los impuestos— y
+                  era una columna más para barrer. Sigue saliendo en el CSV, que
+                  es donde la planilla lo tenía. */}
+              <TableHead className="text-right">Impuestos</TableHead>
+              <TableHead className="text-right">Total USD</TableHead>
+              <TableHead className="text-right">TC</TableHead>
+              <TableHead className="text-right">Total $</TableHead>
               {/* Última porque es la única que se escribe: la vista se lee de
                   izquierda a derecha y termina en la decisión que hay que tomar. */}
               <TableHead>{esVenta ? "Cobro estimado" : "Pago estimado"}</TableHead>
@@ -254,11 +286,25 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
                 <TableCell>
                   <SemaforoVencimiento fecha={f.fechaVencimiento} />
                 </TableCell>
-                <TableCell className="num text-right text-ink-secondary">
-                  {formatearImporte(f.total, f.moneda)}
+                <TableCell className="num whitespace-nowrap text-right text-ink-secondary">
+                  {formatearImporte(f.impuestos, f.moneda)}
                 </TableCell>
-                <TableCell className="num text-right font-semibold text-ink">
-                  {formatearImporte(f.saldo, f.moneda)}
+                <TableCell className="num whitespace-nowrap text-right text-ink-secondary">
+                  {f.totalUsd !== null ? (
+                    formatearImporte(f.totalUsd, "USD")
+                  ) : (
+                    <span className="text-ink-faint">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="num whitespace-nowrap text-right text-ink-muted">
+                  {f.tcEmision !== null ? (
+                    formatearImporte(f.tcEmision, "ARS", { simbolo: false })
+                  ) : (
+                    <span className="text-ink-faint">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="num whitespace-nowrap text-right font-semibold text-ink">
+                  {formatearImporte(f.totalArs, "ARS")}
                 </TableCell>
                 <TableCell>
                   <CeldaPagoEstimado
@@ -346,6 +392,31 @@ function Total({ rotulo, valor }: { rotulo: string; valor: string }) {
       <p className="num mt-0.5 text-[16px] font-bold tracking-[-0.02em] text-ink">{valor}</p>
     </div>
   )
+}
+
+/**
+ * "hoy 15:24", "ayer 09:12" o "22/9 18:03".
+ *
+ * El total en dólares se mueve solo con la cotización, así que tiene que decir
+ * de cuándo es. En horas y no en fecha a secas porque el dólar cambia dentro
+ * del mismo día, y lo que importa saber es si el número es de hace un rato o de
+ * la semana pasada.
+ */
+function cuandoSeActualizo(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ""
+  // 24 horas: "15:24" y no "03:24 p. m.", que es como se lee la hora acá y
+  // además no se parte en dos líneas al lado de la cotización.
+  const hora = d.toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+  const dia = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const dias = Math.round((dia(new Date()) - dia(d)) / 86_400_000)
+  if (dias === 0) return `hoy ${hora}`
+  if (dias === 1) return `ayer ${hora}`
+  return `${d.getDate()}/${d.getMonth() + 1} ${hora}`
 }
 
 function fechaCorta(iso: string): string {
