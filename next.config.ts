@@ -27,10 +27,23 @@ const nextConfig: NextConfig = {
     "/api/contenido/placa": [
       "./public/brand/accedra-logo-blanco.svg",
       "./public/brand/accedra-logo-navy.svg",
+      /*
+       * Las fuentes de Satori, que faltaban y rompían la generación entera.
+       *
+       * `fuentes.ts` dice que el rastreo automático incluye `public/`, y no es
+       * así: en producción el error era
+       * `ENOENT /var/task/public/fuentes/Inter-Regular.ttf`. La placa se componía
+       * hasta ahí y moría, así que la pieza quedaba con su copy y sin imagen —
+       * el síntoma con el que se descubrió todo esto.
+       */
+      "./public/fuentes/*.ttf",
     ],
     "/api/contenido/placa/muestra": [
       "./public/brand/accedra-logo-blanco.svg",
       "./public/brand/accedra-logo-navy.svg",
+      // Compone con Satori igual que la de arriba. Hoy es solo de desarrollo, así
+      // que no se le nota; el día que deje de serlo, fallaría por lo mismo.
+      "./public/fuentes/*.ttf",
     ],
     /*
      * El asistente lee los informes de campañas del disco para pasárselos al
