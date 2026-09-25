@@ -134,7 +134,7 @@ export function PromptCard({
  * a 4× y se exporta. Sin esto, cualquiera que necesite el logo para un PowerPoint
  * termina haciendo una captura de pantalla.
  */
-async function descargarPng(archivo: string, nombre: string, ratio: number) {
+async function descargarPng(archivo: string, nombre: string, ratio: number, placa = false) {
   const ancho = 1600
   const alto = Math.round(ancho / ratio)
 
@@ -160,7 +160,7 @@ async function descargarPng(archivo: string, nombre: string, ratio: number) {
     if (!blob) throw new Error("sin blob")
 
     bajarBlob(blob, `${nombre}.png`)
-    toast.success("PNG descargado", { description: `${ancho} × ${alto} px, fondo transparente` })
+    toast.success("PNG descargado", { description: `${ancho} × ${alto} px, ${placa ? "con su fondo" : "fondo transparente"}` })
   } catch {
     toast.error("No se pudo generar el PNG")
   } finally {
@@ -200,7 +200,7 @@ export function LogoCard({ logo }: { logo: LogoAsset }) {
           height={logo.ratio === 1 ? 200 : Math.round(1073 / logo.ratio)}
           className={cn(
             "w-auto max-w-full",
-            logo.ratio === 1 ? "h-14" : logo.ratio < 5 ? "h-12" : "h-7"
+            logo.placa ? "h-24" : logo.ratio === 1 ? "h-14" : logo.ratio < 3 ? "h-20" : logo.ratio < 5 ? "h-12" : "h-7"
           )}
           unoptimized
         />
@@ -221,7 +221,7 @@ export function LogoCard({ logo }: { logo: LogoAsset }) {
             type="button"
             variant="outline"
             size="xs"
-            onClick={() => descargarPng(logo.archivo, nombreArchivo, logo.ratio)}
+            onClick={() => descargarPng(logo.archivo, nombreArchivo, logo.ratio, logo.placa)}
           >
             <Download />
             PNG

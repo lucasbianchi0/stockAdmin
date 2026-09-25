@@ -503,7 +503,7 @@ function Logos() {
       id="logos"
       num="07"
       titulo="Logos"
-      bajada="Diez variantes en vector: el logotipo solo, el lockup con la bajada IT SOLUTIONS —el mismo del pie de firma— y el isotipo. Cada una se baja en SVG (para diseño y web) o en PNG de 1600 px con fondo transparente (para presentaciones y Office). El JPG del sitio viejo queda descartado."
+      bajada="Dieciséis variantes en vector: el logotipo solo, el lockup con la bajada IT SOLUTIONS —el mismo del pie de firma—, el apilado con el isotipo arriba y el isotipo. Cada una se baja en SVG (para diseño y web) o en PNG de 1600 px con fondo transparente —salvo las de placa, que traen su fondo— (para presentaciones y Office). El JPG del sitio viejo queda descartado."
     >
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {LOGOS.map((l) => (

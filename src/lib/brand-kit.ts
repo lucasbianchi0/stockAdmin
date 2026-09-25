@@ -265,6 +265,8 @@ export type LogoAsset = {
   uso: string
   fondo: "claro" | "oscuro"
   ratio: number
+  /** El fondo viene dentro del archivo: se muestra más grande y el PNG no es transparente. */
+  placa?: boolean
 }
 
 export const LOGOS: LogoAsset[] = [
@@ -342,6 +344,62 @@ export const LOGOS: LogoAsset[] = [
     uso: "Con bajada, sobre fondo de color saturado o foto donde el acento azul se pierde.",
     fondo: "oscuro",
     ratio: 1073 / 263,
+  },
+  /*
+   * El apilado: el isotipo arriba y el logotipo abajo, para los formatos
+   * cuadrados o verticales donde el horizontal queda chico. Las dos con placa
+   * traen el fondo adentro del archivo —son las de foto de perfil— y por eso su
+   * PNG no sale transparente. Se generan con `public/brand/generar-apilado-svg.py`.
+   */
+  {
+    id: "apilado-navy",
+    nombre: "Apilado",
+    archivo: "/brand/accedra-apilado-navy.svg",
+    uso: "Isotipo arriba, logotipo abajo. Para formatos cuadrados o verticales: portada, stand, merchandising.",
+    fondo: "claro",
+    ratio: 1073 / 485,
+  },
+  {
+    id: "apilado-blanco",
+    nombre: "Apilado en blanco",
+    archivo: "/brand/accedra-apilado-blanco.svg",
+    uso: "El apilado sobre navy, foto oscura o el azul de marca.",
+    fondo: "oscuro",
+    ratio: 1073 / 485,
+  },
+  {
+    id: "apilado-mono-navy",
+    nombre: "Apilado monocromo navy",
+    archivo: "/brand/accedra-apilado-mono-navy.svg",
+    uso: "Apilado a una sola tinta: impresión económica, grabado, sellos.",
+    fondo: "claro",
+    ratio: 1073 / 485,
+  },
+  {
+    id: "apilado-mono-blanco",
+    nombre: "Apilado monocromo blanco",
+    archivo: "/brand/accedra-apilado-mono-blanco.svg",
+    uso: "Apilado sobre fondo de color saturado o foto donde el acento azul se pierde.",
+    fondo: "oscuro",
+    ratio: 1073 / 485,
+  },
+  {
+    id: "apilado-placa-navy",
+    nombre: "Apilado con placa navy",
+    archivo: "/brand/accedra-apilado-placa-navy.svg",
+    uso: "Cuadrado con fondo navy incluido. Foto de perfil de LinkedIn, Instagram, WhatsApp y Google.",
+    fondo: "claro",
+    ratio: 1,
+    placa: true,
+  },
+  {
+    id: "apilado-placa-azul",
+    nombre: "Apilado con placa azul",
+    archivo: "/brand/accedra-apilado-placa-azul.svg",
+    uso: "Cuadrado sobre el azul de marca, todo en blanco. Alternativa de perfil o para piezas de campaña.",
+    fondo: "claro",
+    ratio: 1,
+    placa: true,
   },
   {
     id: "isotipo-navy",
