@@ -38,6 +38,18 @@ const nextConfig: NextConfig = {
      * `join()` a partir del slug y el rastreo no la ve.
      */
     "/api/chat": ["./public/informes/*.pdf"],
+    /*
+     * El PNG de la firma compone el lockup, la tira de partners y los tres
+     * iconos de enlace leyéndolos del disco, y las fuentes para Satori.
+     *
+     * Mismo motivo que todas las de arriba, con un agravante: acá los nombres de
+     * archivo salen de `PALETA` en tiempo de ejecución —`p.lockup`,
+     * `firma-icono-${n}-${p.iconos}.png`— así que el rastreo no tiene ni
+     * siquiera un literal que seguir. Sin esta línea el botón PNG anda en
+     * desarrollo y falla para todo el mundo en producción, que es exactamente
+     * como se descubrió.
+     */
+    "/api/marketing/firma-png": ["./public/logos/*.png", "./public/fuentes/*.ttf"],
   },
 };
 
