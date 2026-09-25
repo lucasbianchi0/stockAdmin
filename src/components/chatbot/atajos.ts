@@ -32,6 +32,11 @@ const POR_MODULO: Record<Modulo, Atajo[]> = {
     { emoji: "🏢", corto: "Datos de Accedra", texto: "Pasame los datos de la empresa: razón social, CUIT, domicilio y contacto." },
     { emoji: "🧭", corto: "Qué tengo", texto: "¿Qué pantallas tengo habilitadas y para qué sirve cada una?" },
   ],
+  comercial: [
+    { emoji: "📋", corto: "Presupuestos", texto: "¿Qué presupuestos hay cargados y en qué estado está cada uno?" },
+    { emoji: "💰", corto: "Rentabilidad", texto: "¿Cómo viene la rentabilidad de los presupuestos de este mes?" },
+    { emoji: "👤", corto: "Cliente", texto: "Buscame los datos de un cliente para armarle un presupuesto." },
+  ],
   administracion: [
     { emoji: "💰", corto: "Por cobrar", texto: "¿Cuánto hay por cobrar, cuánto está vencido y qué vence esta semana?" },
     { emoji: "💸", corto: "Por pagar", texto: "¿Cuánto hay por pagar, cuánto está vencido y qué vence esta semana?" },

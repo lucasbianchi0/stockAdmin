@@ -19,12 +19,15 @@ import type { User } from "@supabase/supabase-js"
  *    real son el middleware y el chequeo dentro de cada handler de API.
  */
 
-export const MODULOS = ["productos", "marketing", "administracion"] as const
+/* El orden es el de la sidebar: Comercial va entre Marketing y Administración,
+   que es el recorrido de una venta —se promociona, se presupuesta, se factura. */
+export const MODULOS = ["productos", "marketing", "comercial", "administracion"] as const
 export type Modulo = (typeof MODULOS)[number]
 
 export const NOMBRE_MODULO: Record<Modulo, string> = {
   productos: "Productos",
   marketing: "Marketing",
+  comercial: "Comercial",
   administracion: "Administración",
 }
 
@@ -32,6 +35,7 @@ export const NOMBRE_MODULO: Record<Modulo, string> = {
 export const HOME_DE_MODULO: Record<Modulo, string> = {
   productos: "/",
   marketing: "/marketing/informes",
+  comercial: "/comercial/presupuestos",
   administracion: "/admin/clientes",
 }
 
@@ -68,6 +72,26 @@ const RUTAS: { prefijo: string; modulos: Modulo[] }[] = [
   { prefijo: "/api/orders", modulos: ["productos"] },
   { prefijo: "/api/distecna", modulos: ["productos"] },
 
+  // Comercial
+  { prefijo: "/comercial", modulos: ["comercial"] },
+  { prefijo: "/api/comercial", modulos: ["comercial"] },
+
+  /*
+   * Clientes es UNA base para los dos módulos.
+   *
+   * Comercial presupuesta y Administración factura sobre la misma ficha, así
+   * que el maestro de clientes —y lo que su formulario necesita, categorías y
+   * vendedores— se habilita para los dos. Van antes que `/api/admin`, que como
+   * prefijo se las comería, porque gana la primera coincidencia.
+   *
+   * La alternativa era un `/api/comercial/clientes` que devolviera lo mismo, y
+   * eso es exactamente lo que el pedido dice que NO quiere: dos caminos a la
+   * misma ficha son dos caminos que algún día se contestan distinto.
+   */
+  { prefijo: "/api/admin/clientes", modulos: ["comercial", "administracion"] },
+  { prefijo: "/api/admin/categorias", modulos: ["comercial", "administracion"] },
+  { prefijo: "/api/admin/vendedores", modulos: ["comercial", "administracion"] },
+
   // Administración
   { prefijo: "/admin", modulos: ["administracion"] },
   { prefijo: "/api/admin", modulos: ["administracion"] },
@@ -78,7 +102,10 @@ const RUTAS: { prefijo: string; modulos: Modulo[] }[] = [
   // módulo. Quien no tiene ninguno no entra a la app y tampoco acá.
   { prefijo: "/tickets", modulos: [...MODULOS] },
   { prefijo: "/api/tickets", modulos: [...MODULOS] },
-  { prefijo: "/api/dolar", modulos: ["productos", "administracion"] },
+  // El dólar lo necesitan el que arma precios, el que presupuesta y el que
+  // carga una factura. Un endpoint por módulo garantizaría que algún día tres
+  // pantallas muestren tres cotizaciones distintas.
+  { prefijo: "/api/dolar", modulos: ["productos", "comercial", "administracion"] },
   // El asistente es de todos los que tienen algún módulo. Lo que ve cada uno lo
   // recorta la propia ruta según el acceso de la sesión.
   { prefijo: "/api/chat", modulos: [...MODULOS] },

@@ -82,7 +82,21 @@ const ESTADOS: { valor: Estado; etiqueta: string }[] = [
  * saldo sin el comprobante al lado. Por eso, con `tipo="proveedor"`, se caen
  * las columnas de saldo, vencido y plazo, y con ellas el filtro por deuda.
  */
-export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
+export function EntidadesClient({
+  tipo,
+  conFicha = true,
+}: {
+  tipo: TipoEntidad
+  /**
+   * Si el nombre lleva a la ficha completa, que vive en Administración.
+   *
+   * Comercial usa esta misma pantalla para el maestro de clientes, pero su
+   * gente no tiene el módulo de Administración: el enlace los mandaría contra
+   * el middleware. Ahí el nombre no enlaza y el click abre el panel lateral,
+   * que trae los datos de la ficha sin salir del módulo.
+   */
+  conFicha?: boolean
+}) {
   const esProveedor = tipo === "proveedor"
   const recurso = esProveedor ? "proveedores" : "clientes"
   const rotulo = esProveedor ? "proveedor" : "cliente"
@@ -316,6 +330,7 @@ export function EntidadesClient({ tipo }: { tipo: TipoEntidad }) {
                         href={`/admin/${esProveedor ? "proveedores" : "clientes"}/${c.id}`}
                         mostrarSaldos={!esProveedor}
                         onVer={() => setVerId(c.id)}
+                        conFicha={conFicha}
                         onEditar={() => setDialogo({ abierto: true, cliente: c })}
                         onCambiarEstado={(activo) => cambiarEstado(c, activo)}
                         onEliminar={() => setAEliminar(c)}
@@ -432,6 +447,7 @@ function Fila({
   href,
   mostrarSaldos,
   onVer,
+  conFicha,
   onEditar,
   onCambiarEstado,
   onEliminar,
@@ -446,6 +462,7 @@ function Fila({
    *  el maestro de proveedores no existe ninguna. */
   mostrarSaldos: boolean
   onVer: () => void
+  conFicha: boolean
   onEditar: () => void
   onCambiarEstado: (activo: boolean) => void
   onEliminar: () => void
@@ -469,13 +486,17 @@ function Fila({
               todo lo del cliente, no solo lo que entra en estas columnas. El
               panel lateral sigue disponible con el ojo, para espiar sin salir
               del listado. */}
-          <Link
-            href={href}
-            onClick={(e) => e.stopPropagation()}
-            className="font-medium text-ink hover:text-brand-600 hover:underline"
-          >
-            {c.razonSocial}
-          </Link>
+          {conFicha ? (
+            <Link
+              href={href}
+              onClick={(e) => e.stopPropagation()}
+              className="font-medium text-ink hover:text-brand-600 hover:underline"
+            >
+              {c.razonSocial}
+            </Link>
+          ) : (
+            <span className="font-medium text-ink">{c.razonSocial}</span>
+          )}
           {c.origen === "exterior" && (
             <Badge tone="neutral" size="sm">
               Exterior
@@ -585,11 +606,17 @@ function Fila({
               el panel lateral, que era un rodeo: se espiaba, y lo que se
               quería ver casi siempre estaba una pantalla más adentro. El panel
               sigue existiendo para el click en la fila. */}
-          <Button variant="ghost" size="icon-sm" asChild aria-label="Ver ficha">
-            <Link href={href}>
+          {conFicha ? (
+            <Button variant="ghost" size="icon-sm" asChild aria-label="Ver ficha">
+              <Link href={href}>
+                <Eye className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="ghost" size="icon-sm" onClick={onVer} aria-label="Ver ficha">
               <Eye className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
+            </Button>
+          )}
           <Button variant="ghost" size="icon-sm" onClick={onEditar} aria-label="Editar">
             <Pencil className="h-3.5 w-3.5" />
           </Button>

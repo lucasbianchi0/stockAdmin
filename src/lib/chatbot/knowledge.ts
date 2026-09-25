@@ -166,9 +166,22 @@ Ordenado como el organigrama del contador:
 
 Los comprobantes en dólares llevan el tipo de cambio de su fecha; los totales se informan separados por moneda, nunca sumados.`
 
+const COMERCIAL = `# Comercial
+
+Donde se arma lo que se le ofrece a un cliente, antes de que exista una factura.
+
+1. \`/comercial/presupuestos\` Presupuestos — cada uno con su planilla de costos
+   por renglón (proveedor, costo, margen, rentabilidad) y la propuesta que ve el
+   cliente, que sale de los mismos datos sin los costos.
+2. \`/comercial/clientes\` Clientes — la misma base que Administración. Un cliente
+   creado o corregido en cualquiera de los dos módulos vale para los dos.
+
+Lo que el cliente recibe nunca muestra costos, proveedor, margen ni rentabilidad.`
+
 const POR_MODULO: Record<Modulo, string> = {
   productos: PRODUCTOS,
   marketing: MARKETING,
+  comercial: COMERCIAL,
   administracion: ADMINISTRACION,
 }
 

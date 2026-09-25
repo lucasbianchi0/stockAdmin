@@ -80,6 +80,8 @@ const CUBRE: Record<Modulo, string> = {
     "Productos: el inventario de Distecna (stock, precios, impuestos), la selección de Nuestros Productos y los pedidos a Distecna.",
   marketing:
     "Marketing: el brand kit completo, plantillas de mensajes, brochures, el popup del sitio, landings y SEO, informes de campañas, y la generación y el calendario de contenido.",
+  comercial:
+    "Comercial: presupuestos con su planilla de costos, la propuesta que recibe el cliente, y la misma base de clientes que usa Administración.",
   administracion:
     "Administración: datos maestros, proveedores, clientes, facturas de compra y venta, pagos, cobros, caja y bancos, contabilidad y reportes.",
 }
@@ -88,6 +90,7 @@ const CUBRE: Record<Modulo, string> = {
 const NUMEROS: Record<Modulo, string> = {
   productos: "cómo vienen los pedidos a Distecna",
   marketing: "qué contenido hay programado y cuánto queda en el banco",
+  comercial: "qué presupuestos hay y cómo vienen",
   administracion: "cuánto hay por cobrar y por pagar, y la facturación del mes",
 }
 

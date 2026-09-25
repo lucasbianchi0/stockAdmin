@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   Bot,
   ChevronRight,
+  FileText,
   KanbanSquare,
   LogOut,
   Megaphone,
@@ -83,6 +84,23 @@ const GRUPOS: Grupo[] = [
          enteras y se llega entrando a mano a /contenido/calendario y /contenido. */
       { name: "Generación de contenido", href: "/contenido/generacion", available: true },
       { name: "Calendario de contenido", href: "/contenido/agenda", available: true },
+    ],
+  },
+  /*
+   * Comercial va entre Marketing y Administración porque ese es el recorrido de
+   * una venta: se promociona, se presupuesta, se factura. Quien presupuesta
+   * entra acá todos los días y a Administración no entra nunca.
+   */
+  {
+    id: "comercial",
+    titulo: "Comercial",
+    icon: FileText,
+    items: [
+      { name: "Presupuestos", href: "/comercial/presupuestos", available: true },
+      /* La misma base de clientes que Administración, con otra puerta. No es
+         una copia ni una sincronización: es la misma tabla. */
+      { name: "Clientes", href: "/comercial/clientes", available: true },
+      { name: "Reportes", href: "/comercial/reportes", available: true },
     ],
   },
   {
