@@ -90,7 +90,18 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
       saldoUsd:
         moneda === "USD" ? saldo : tc && tc > 0 ? redondear(saldo / tc) : null,
       detalle: (f.detalle as string | null) ?? null,
-      vencida: Boolean(f.fecha_vencimiento && (f.fecha_vencimiento as string) < hoy),
+      /**
+       * Una nota de crédito no vence.
+       *
+       * Tiene fecha de vencimiento en la base porque la comparte con las
+       * facturas, pero no hay nada que reclamar: es crédito a favor del
+       * cliente. Contándola, el reporte decía "6 vencidas" cuando hay 5 para ir
+       * a cobrar, y restaba su importe del total vencido —que es justo el
+       * número que se usa para decidir a quién llamar hoy—. El total general
+       * sigue neteándola: ahí sí baja lo que nos deben.
+       */
+      vencida:
+        signo === 1 && Boolean(f.fecha_vencimiento && (f.fecha_vencimiento as string) < hoy),
     }
   })
 

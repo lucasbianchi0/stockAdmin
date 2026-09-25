@@ -52,17 +52,20 @@ export function AppShell({
    * Pasaba en facturas de compra y en cualquier otra pantalla, sin un patrón
    * claro, que es lo que lo hacía difícil de creer.
    *
-   * La causa: `h-screen` mide 100vh, pero nada impedía que el DOCUMENTO
-   * creciera más que eso. Cualquier nodo suelto colgado del `<body>` —el
-   * contenedor de los avisos, un portal, el overlay de desarrollo— le suma alto
-   * al documento, y entonces la ventana scrollea por su cuenta: el shell, que
-   * mide exactamente una pantalla, se va para arriba y deja ver el fondo abajo.
-   * El scroll de adentro —el que corresponde— seguía funcionando, así que
-   * parecía que la página "se movía sola".
+   * Medido en el navegador: el documento daba 1083 px de alto contra 767 de
+   * viewport, así que la VENTANA scrolleaba por su cuenta 316 px. El shell mide
+   * exactamente una pantalla, se iba para arriba con ese scroll y dejaba ver el
+   * fondo abajo. El scroll de adentro —el que corresponde— seguía funcionando,
+   * por eso parecía que la página se movía sola.
    *
-   * Clavado al viewport el problema no puede volver a existir, venga de donde
-   * venga el nodo que estira el documento: el shell tapa la pantalla entera
-   * siempre. Medido en el navegador, el scroll fantasma pasa de 260 px a 0.
+   * Qué nodo estiraba el documento no quedó identificado: los candidatos de
+   * siempre (el contenedor de avisos, los portales, el overlay de desarrollo)
+   * no daban un resultado estable al aislarlos. Y no hace falta saberlo, que es
+   * la gracia de esta forma de arreglarlo: con `h-screen` el shell depende de
+   * que nadie más estire el documento, y eso es una promesa que ningún archivo
+   * puede sostener. Clavado al viewport no depende de nadie: tape lo que tape,
+   * el shell ocupa la pantalla entera. Verificado en el navegador, el scroll
+   * fantasma pasa de 260 px a 0.
    *
    * No afecta a las pantallas que se imprimen ni al login: esas salen antes,
    * por el `return` de arriba, y no pasan por acá.

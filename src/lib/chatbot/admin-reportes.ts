@@ -343,15 +343,34 @@ async function antiguedadSaldos(): Promise<string> {
   const bloques = (["venta", "compra"] as const).map((tipo) => {
     const acc = new Map(TRAMOS.map((t) => [t.id, { n: 0, m: cero() }]))
     const total = cero()
+    const notas = cero()
     let n = 0
+    let nNotas = 0
     for (const f of filas) {
       if (f.tipo !== tipo) continue
       const moneda = monedaDe(f.moneda)
-      // Con signo en el tramo y en el total, los dos: si restara solo del total,
-      // los tramos no sumarían el total y los porcentajes pasarían del 100%. Una
-      // nota de crédito no tiene vencimiento, así que cae en "sin fecha".
-      const signo = Number(f.signo) === -1 ? -1 : 1
-      const saldo = (Number(f.saldo) || 0) * signo
+      const saldo = Number(f.saldo) || 0
+
+      /**
+       * Las notas de crédito no entran en ningún tramo: van aparte.
+       *
+       * Meterlas adentro —aunque sea restando— hacía que este reporte dijera
+       * "6 facturas vencidas de 1 a 30 días" mientras la pantalla de reportes y
+       * el asistente decían 5, porque allá la nota no vence. Tres lugares
+       * contestando distinto la misma pregunta es peor que cualquiera de las
+       * tres respuestas.
+       *
+       * Una nota no tiene antigüedad que medir: no se reclama, se aplica. Por
+       * eso baja el total —es plata que no vamos a cobrar— pero no ensucia los
+       * tramos, que son la lista de a quién llamar.
+       */
+      if (Number(f.signo) === -1) {
+        nNotas++
+        notas[moneda] += saldo
+        total[moneda] -= saldo
+        continue
+      }
+
       const tramo = acc.get(tramoDe((f.fecha_vencimiento as string | null) ?? null, hoy))!
       tramo.n++
       tramo.m[moneda] += saldo
@@ -362,7 +381,11 @@ async function antiguedadSaldos(): Promise<string> {
     const proporcion = (m: PorMoneda) =>
       (["ARS", "USD"] as const)
         .filter((k) => total[k] > 0 && m[k] !== 0)
-        .map((k) => `${Math.round((m[k] / total[k]) * 100)}% de lo pendiente en ${k === "ARS" ? "pesos" : "dólares"}`)
+        .map(
+          (k) =>
+            `${Math.round((m[k] / (total[k] + notas[k] || 1)) * 100)}% de lo facturado en ` +
+            `${k === "ARS" ? "pesos" : "dólares"}`
+        )
         .join(", ")
 
     return [
@@ -372,6 +395,13 @@ async function antiguedadSaldos(): Promise<string> {
         if (v.n === 0) return `- ${t.nombre}: nada.`
         return `- ${t.nombre}: ${v.n} facturas, ${montos(v.m)} (${proporcion(v.m)}).`
       }),
+      ...(nNotas > 0
+        ? [
+            `- Aparte, ${nNotas} nota${nNotas === 1 ? "" : "s"} de crédito sin aplicar por ` +
+              `${montos(notas)}, que ya está${nNotas === 1 ? "" : "n"} descontada${nNotas === 1 ? "" : "s"} ` +
+              `del total y no entra${nNotas === 1 ? "" : "n"} en ningún tramo: no vencen, se aplican.`,
+          ]
+        : []),
     ].join("\n")
   })
 
