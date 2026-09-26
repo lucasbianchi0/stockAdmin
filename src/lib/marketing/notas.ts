@@ -26,10 +26,40 @@ export const TIPO_LABEL: Record<Tipo, string> = {
 }
 
 export const TIPO_PISTA: Record<Tipo, string> = {
-  guia: "La nota larga y completa de un tema. Es la que queremos que citen las IAs y a la que enlazan las demás.",
-  nota: "Una respuesta puntual, de 800 a 1.200 palabras. Es el formato del día a día.",
+  guia: "El tema de punta a punta, en las cuatro secciones. Es la que citan las IAs y a la que enlazan las demás.",
+  nota: "Una respuesta puntual a una sola pregunta. Es el formato del día a día.",
   caso: "Un antecedente concreto, con cifras. Es lo que más pesa cuando preguntan quién hace esto en Argentina.",
 }
+
+/**
+ * Cuánto tiene que durar una nota.
+ *
+ * POR QUÉ SE ACHICÓ
+ *
+ * Hasta acá el editor pedía "de 800 a 1.200 palabras" y avisaba que abajo de
+ * 600 una nota "compite mal". Eso era cierto cuando la pelea era por rankear
+ * en Google con extensión; hoy la mitad del tráfico informativo lo resuelve un
+ * modelo generativo citando DOS bloques: la respuesta directa y una FAQ.
+ * Ninguno de los dos vive en el cuerpo.
+ *
+ * Y del lado del lector: quien entra buscando "¿la firma biométrica tiene
+ * validez?" no vino a estudiar, vino a decidir si nos llama. Las 227 palabras
+ * que explicaban cómo funciona un test por dentro no lo acercaban ni un paso.
+ *
+ * QUÉ SE HACE CON LO QUE SOBRA
+ *
+ * No se tira: se muda. Los matices, las objeciones y las aclaraciones van a
+ * las FAQs, que en el sitio están plegadas —no ocupan pantalla— y rinden más
+ * en búsqueda generativa que el mismo texto suelto en un párrafo.
+ *
+ * `objetivo` es la vara; `maximo` es donde el aviso se vuelve grave. Por abajo
+ * de `minimo` ya no hay nota, hay un párrafo.
+ */
+export const PALABRAS = {
+  minimo: 250,
+  objetivo: 350,
+  maximo: 450,
+} as const
 
 /**
  * A qué solución pertenece la nota. Los slugs son los de /soluciones/<slug>:
@@ -411,9 +441,20 @@ export function avisosDe(b: BorradorNota, otras: NotaExistente[] = []): Aviso[] 
   if (!b.categoria) {
     avisos.push({ texto: "Sin solución asignada: la nota no enlaza a ninguna página de servicio.", grave: false })
   }
-  if (palabras > 0 && palabras < 600) {
+  if (palabras > PALABRAS.maximo) {
     avisos.push({
-      texto: `Son ${palabras} palabras. Abajo de 600 compite mal: conviene desarrollar o unirla a otra nota.`,
+      texto: `Son ${palabras} palabras y el máximo es ${PALABRAS.maximo}. Lo que sobra casi siempre es la explicación de cómo funciona algo por dentro, una lista de más de tres ítems, o una aclaración defensiva: eso último va a las preguntas frecuentes, que están plegadas y rinden más ahí.`,
+      grave: true,
+    })
+  } else if (palabras > PALABRAS.objetivo) {
+    avisos.push({
+      texto: `Son ${palabras} palabras. El objetivo es ${PALABRAS.objetivo}: entra, pero fijate si hay alguna sección que explique de más.`,
+      grave: false,
+    })
+  }
+  if (palabras > 0 && palabras < PALABRAS.minimo) {
+    avisos.push({
+      texto: `Son ${palabras} palabras. Abajo de ${PALABRAS.minimo} no alcanza a plantear el problema y ofrecer la salida.`,
       grave: false,
     })
   }

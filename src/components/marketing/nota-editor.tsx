@@ -52,6 +52,7 @@ import {
   faltantesDe,
   fechaLarga,
   minutosDe,
+  PALABRAS,
   palabrasDe,
   slugDe,
   type BorradorNota,
@@ -260,10 +261,22 @@ export function NotaEditor({ id }: { id: string | null }) {
         <Seccion
           num="02"
           titulo="El texto"
-          bajada="En markdown. Los subtítulos con ## arman el índice de la nota y son lo que permite que se cite un fragmento suelto."
+          bajada={`En markdown, y corto: ${PALABRAS.objetivo} palabras es la vara y ${PALABRAS.maximo} el techo. Cuatro subtítulos con ##: qué está pasando, cuál es el problema, cómo se resuelve a grandes rasgos y cómo lo hacemos nosotros. El detalle fino va a las preguntas frecuentes.`}
           accion={
-            <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-ink-faint">
-              {palabras} palabras · {minutosDe(f.cuerpo)} min
+            // El contador es la única señal de largo que el redactor ve
+            // mientras escribe, así que dice en qué zona está y no sólo el
+            // número: verde hasta el objetivo, ámbar hasta el máximo, rojo
+            // arriba. El aviso de `avisosDe` explica qué recortar.
+            <span
+              className={`shrink-0 font-mono text-[10.5px] tabular-nums ${
+                palabras > PALABRAS.maximo
+                  ? "text-danger"
+                  : palabras > PALABRAS.objetivo
+                    ? "text-warning"
+                    : "text-ink-faint"
+              }`}
+            >
+              {palabras} / {PALABRAS.objetivo} palabras · {minutosDe(f.cuerpo)} min
             </span>
           }
         >
