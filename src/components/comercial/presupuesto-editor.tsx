@@ -62,11 +62,10 @@ type Renglon = {
   /** La venta se recalcula sola hasta que alguien la escribe. A partir de ahí
    *  manda el número escrito, aunque después cambie el costo. */
   ventaPisada: boolean
-  impPct: string
   stock: boolean
 }
 
-const RENGLON_VACIO = (impPct: number): Renglon => ({
+const RENGLON_VACIO = (): Renglon => ({
   key: Math.random().toString(36).slice(2),
   proveedor: "",
   parte: "",
@@ -76,7 +75,6 @@ const RENGLON_VACIO = (impPct: number): Renglon => ({
   costoUnitario: "",
   venta: "",
   ventaPisada: false,
-  impPct: String(impPct),
   stock: true,
 })
 
@@ -153,7 +151,6 @@ export function PresupuestoEditor({ id }: { id: string }) {
         venta: String(i.venta),
         // Lo guardado ya es una decisión tomada: no se recalcula solo.
         ventaPisada: true,
-        impPct: aPct(i.impPct),
         stock: i.stock,
       }))
     )
@@ -170,6 +167,18 @@ export function PresupuestoEditor({ id }: { id: string }) {
     [margenMateriales, margenManoObra]
   )
 
+  /*
+   * El impuesto de cada renglón sale del break de la cabecera, siempre.
+   *
+   * Antes cada renglón se quedaba con el break que había cuando se lo creó, así
+   * que cambiar el "Break %" de arriba no movía ni un número de los renglones
+   * ya cargados: la cabecera decía 15 % y la cuenta seguía usando 10. Un número
+   * equivocado en silencio, que es la peor clase de error que puede tener una
+   * planilla. En la Excel el break es uno solo para todo el presupuesto y acá
+   * también.
+   */
+  const impuestoPct = pct(breakPct)
+
   const calculados = useMemo(
     () =>
       renglones.map((r) => {
@@ -177,11 +186,11 @@ export function PresupuestoEditor({ id }: { id: string }) {
           cantidad: parsearImporte(r.cantidad) ?? 0,
           costoUnitario: parsearImporte(r.costoUnitario) ?? 0,
           venta: parsearImporte(r.venta) ?? 0,
-          impPct: pct(r.impPct),
+          impPct: impuestoPct,
         }
         return { ...base, ...calcularItem(base) }
       }),
-    [renglones]
+    [renglones, impuestoPct]
   )
 
   const totales = useMemo(() => calcularTotales(calculados), [calculados])
@@ -204,8 +213,7 @@ export function PresupuestoEditor({ id }: { id: string }) {
       })
     )
 
-  const agregar = () =>
-    setRenglones((prev) => [...prev, RENGLON_VACIO(parsearImporte(breakPct) ?? 10)])
+  const agregar = () => setRenglones((prev) => [...prev, RENGLON_VACIO()])
 
   const quitar = (i: number) => setRenglones((prev) => prev.filter((_, j) => j !== i))
 

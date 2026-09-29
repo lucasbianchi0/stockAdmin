@@ -17,7 +17,11 @@ export default async function PresupuestoPage({
         back={{ href: "/comercial/presupuestos", label: "Presupuestos" }}
       />
       <PageBody>
-        <PresupuestoEditor id={id} />
+        {/* `key` para que el editor se remonte al pasar de un presupuesto a
+            otro. Sin esto, el flag que evita que un refetch pise lo tipeado
+            sobrevive al cambio de id y el formulario muestra los datos del
+            anterior. Se llega yendo y viniendo con el botón del navegador. */}
+        <PresupuestoEditor key={id} id={id} />
       </PageBody>
     </main>
   )
