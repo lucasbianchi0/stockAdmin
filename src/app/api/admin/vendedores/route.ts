@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { exigirModulo } from "@/lib/guard-api"
+import { exigirAlgunModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
 
@@ -13,7 +13,8 @@ import { ruta } from "@/lib/admin/ruta"
  * usa en un solo lugar no justifica una pantalla propia.
  */
 export const GET = ruta("vendedores GET", async () => {
-  const sinPermiso = await exigirModulo("administracion")
+  // También Comercial: un presupuesto lleva vendedor, y es el mismo maestro.
+  const sinPermiso = await exigirAlgunModulo(["comercial", "administracion"])
   if (sinPermiso) return sinPermiso
 
   const { data, error } = await supabase

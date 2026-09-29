@@ -7,6 +7,7 @@ import { Loader2, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { SelectorEntidad } from "@/components/admin/selector-entidad"
+import { Legajo } from "@/components/comercial/legajo"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -95,6 +96,17 @@ export function PresupuestoEditor({ id }: { id: string }) {
 
   const p = consulta.data?.presupuesto
 
+  /** El maestro de vendedores, el mismo que usa la ficha del cliente. */
+  const vendedores =
+    useQuery({
+      queryKey: claves.url("/api/admin/vendedores"),
+      queryFn: ({ signal }) =>
+        pedirJson<{ vendedores?: { id: string; nombre: string }[] }>(
+          "/api/admin/vendedores",
+          { signal }
+        ),
+    }).data?.vendedores ?? []
+
   /* ── Estado del formulario ─────────────────────────────────────────────── */
 
   const [cliente, setCliente] = useState<{ id: string; razonSocial: string } | null>(null)
@@ -104,6 +116,7 @@ export function PresupuestoEditor({ id }: { id: string }) {
   const [moneda, setMoneda] = useState<Moneda>("USD")
   const [tc, setTc] = useState("")
   const [estado, setEstado] = useState<EstadoPresupuesto>("borrador")
+  const [vendedorId, setVendedorId] = useState("")
   const [breakPct, setBreakPct] = useState("10")
   const [margenMateriales, setMargenMateriales] = useState("1.7")
   const [margenManoObra, setMargenManoObra] = useState("1.7")
@@ -123,6 +136,7 @@ export function PresupuestoEditor({ id }: { id: string }) {
     setMoneda(p.moneda)
     setTc(p.tc ? String(p.tc) : "")
     setEstado(p.estado)
+    setVendedorId(p.vendedorId ?? "")
     setBreakPct(aPct(p.breakPct))
     setMargenMateriales(String(p.margenMateriales))
     setMargenManoObra(String(p.margenManoObra))
@@ -212,6 +226,7 @@ export function PresupuestoEditor({ id }: { id: string }) {
           moneda,
           tc: parsearImporte(tc) ?? null,
           estado,
+          vendedorId: vendedorId || null,
           breakPct: pct(breakPct),
           margenMateriales: margenes.margenMateriales,
           margenManoObra: margenes.margenManoObra,
@@ -276,7 +291,7 @@ export function PresupuestoEditor({ id }: { id: string }) {
             />
           </Campo>
 
-          <div className="grid gap-4 sm:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <Campo id="fecha" rotulo="Fecha">
               <Input
                 id="fecha"
@@ -318,6 +333,23 @@ export function PresupuestoEditor({ id }: { id: string }) {
                 ))}
               </div>
             </Campo>
+            <Campo id="vendedor" rotulo="Vendedor" opcional>
+              <select
+                id="vendedor"
+                value={vendedorId}
+                onChange={(e) => setVendedorId(e.target.value)}
+                disabled={guardando}
+                className="h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-[12.5px] text-ink disabled:opacity-60"
+              >
+                <option value="">Sin vendedor</option>
+                {vendedores.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.nombre}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+
             <Campo id="estado" rotulo="Estado">
               <select
                 id="estado"
@@ -515,6 +547,11 @@ export function PresupuestoEditor({ id }: { id: string }) {
         </div>
       </section>
 
+      {/* El legajo va después de la planilla: primero se arma el presupuesto,
+          después se le van colgando los papeles a medida que la operación
+          avanza —la OC cuando llega, el remito cuando se entrega—. */}
+      <Legajo presupuestoId={id} />
+
       <section className="panel p-5">
         <Campo id="observaciones" rotulo="Observaciones" opcional>
           <Textarea
@@ -539,8 +576,9 @@ export function PresupuestoEditor({ id }: { id: string }) {
               de contexto y compite por el ancho con los dos botones, que son lo
               que la barra existe para ofrecer. */}
           <span className="num truncate text-[12.5px] text-ink-muted">
+            {/* "renglones" pierde la tilde en plural: "0 renglónes" no existe. */}
             <span className="hidden sm:inline">
-              {renglones.length} renglón{renglones.length === 1 ? "" : "es"} ·{" "}
+              {renglones.length} {renglones.length === 1 ? "renglón" : "renglones"} ·{" "}
             </span>
             <span className="font-semibold text-ink">
               {formatearImporte(totales.venta, moneda)}

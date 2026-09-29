@@ -109,6 +109,47 @@ export type Presupuesto = {
  *  sin bajar los renglones de doscientos presupuestos para mostrar una tabla. */
 export type PresupuestoFila = Omit<Presupuesto, "items">
 
+/* ── El legajo ────────────────────────────────────────────────────────────── */
+
+/**
+ * Qué es cada papel del legajo.
+ *
+ * Un presupuesto con doce PDF llamados "documento.pdf" no sirve para lo que se
+ * le pide meses después —encontrar la factura donde está el número de serie de
+ * lo que se entregó—. Clasificarlos al subir cuesta un click y es lo que hace
+ * que la lista se pueda leer de un vistazo.
+ */
+export const CLASES_ADJUNTO = [
+  "factura_proveedor",
+  "orden_compra",
+  "remito",
+  "factura_venta",
+  "foto",
+  "otro",
+] as const
+export type ClaseAdjunto = (typeof CLASES_ADJUNTO)[number]
+
+export const CLASE_ADJUNTO_LABEL: Record<ClaseAdjunto, string> = {
+  factura_proveedor: "Factura de proveedor",
+  orden_compra: "Orden de compra",
+  remito: "Remito",
+  factura_venta: "Factura de venta",
+  foto: "Foto",
+  otro: "Otro",
+}
+
+export type AdjuntoPresupuesto = {
+  id: string
+  nombre: string
+  tipoMime: string | null
+  tamano: number | null
+  clase: ClaseAdjunto
+  createdAt: string
+  /** Firmada y con vencimiento. No se guarda: vence, y guardar algo que deja de
+   *  servir es peor que no guardarlo. Se pide cada vez que se lista. */
+  url: string | null
+}
+
 /* ── Aritmética ───────────────────────────────────────────────────────────── */
 
 export type CalculoItem = {
