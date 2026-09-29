@@ -174,6 +174,25 @@ export type Pendiente = {
   signo: 1 | -1
 }
 
+/**
+ * Una orden de pago a cuenta con saldo, como la ve el panel de imputación.
+ *
+ * Aparece al lado de las facturas y no como un total aparte: lo pidió
+ * Administración con su motivo —«para poder imputar cada factura en el pago
+ * correspondiente; si queda una diferencia en algún pago, de esta forma se
+ * identifica mejor»—. Un saldo a favor único contesta cuánto crédito queda; una
+ * orden por orden contesta si cada entrega quedó facturada.
+ */
+export type OrdenACuenta = {
+  id: string
+  fecha: string
+  moneda: Moneda
+  /** Lo que se entregó a cuenta en su momento. */
+  importe: number
+  /** Lo que le queda sin aplicar. Es contra lo que se valida. */
+  saldo: number
+}
+
 export type Cobro = {
   id: string
   fecha: string
@@ -205,6 +224,13 @@ export type Cobro = {
     importe: number
     moneda: Moneda
     referencia: string | null
+  }[]
+  /** De qué órdenes a cuenta salió lo que este recibo no pagó en efectivo. */
+  aplicaciones: {
+    id: string
+    pagoOrigenId: string
+    fecha: string
+    importe: number
   }[]
   imputaciones: {
     id: string

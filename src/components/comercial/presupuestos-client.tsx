@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
-import { FileText, Pencil, Plus, Search, Trash2, X } from "lucide-react"
+import { Copy, FileText, Loader2, Pencil, Plus, Search, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { SelectorEntidad } from "@/components/admin/selector-entidad"
@@ -51,6 +51,26 @@ export function PresupuestosClient() {
    *  es media hora de trabajo y el botón vive al lado de la fila. */
   const [borrando, setBorrando] = useState<PresupuestoFila | null>(null)
   const [trabajando, setTrabajando] = useState(false)
+  const [duplicando, setDuplicando] = useState<string | null>(null)
+
+  /** Copiar uno con su planilla: la misma operación se repite seguido —los
+   *  mismos materiales, otra sucursal— y rearmarla renglón por renglón para
+   *  cambiar dos números es el trabajo que el sistema vino a sacar. */
+  const duplicar = async (p: PresupuestoFila) => {
+    setDuplicando(p.id)
+    try {
+      const { presupuesto } = await pedirJson<{ presupuesto: { id: string; numero: number } }>(
+        `/api/comercial/presupuestos/${p.id}/duplicar`,
+        { method: "POST" }
+      )
+      await invalidar()
+      toast.success(`Copiado en el presupuesto ${presupuesto.numero}`)
+      router.push(`/comercial/presupuestos/${presupuesto.id}`)
+    } catch (e) {
+      toast.error(mensajeError(e, "No se pudo duplicar"))
+      setDuplicando(null)
+    }
+  }
   const invalidar = useInvalidarAdmin()
 
   const params = new URLSearchParams()
@@ -145,7 +165,7 @@ export function PresupuestosClient() {
                 <TableHead>Estado</TableHead>
                 <TableHead className="text-right">Venta</TableHead>
                 <TableHead className="text-right">Renta</TableHead>
-                <TableHead className="w-[76px]" />
+                <TableHead className="w-[108px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -212,6 +232,20 @@ export function PresupuestosClient() {
                         title="Editar"
                       >
                         <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => duplicar(p)}
+                        disabled={duplicando === p.id}
+                        aria-label={`Duplicar el presupuesto ${p.numero}`}
+                        title="Duplicar"
+                      >
+                        {duplicando === p.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
                       </Button>
                       <Button
                         variant="ghost"

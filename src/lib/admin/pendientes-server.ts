@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 
 import { supabase } from "@/lib/supabase"
-import type { Pendiente } from "@/lib/admin/cobros"
+import { redondear } from "@/lib/admin/moneda"
+import type { OrdenACuenta, Pendiente } from "@/lib/admin/cobros"
 import type { TipoPago } from "@/lib/admin/cobros-server"
 
 /**
@@ -63,16 +64,22 @@ export async function listarPendientes(tipo: TipoPago, req: Request) {
     .eq("tipo", tipoComprobante)
     .eq(campo, entidadId)
 
-  /* El saldo a favor de la ficha: anticipos de recibos anteriores que todavía
-     no se aplicaron. Viaja con los pendientes porque se pide en el mismo
-     momento y por la misma razón —se eligió una ficha—, y porque sin él la
-     pantalla no puede ofrecer usarlo. Por moneda: un anticipo en dólares no
-     cancela una factura en pesos sin decidir a qué cambio. */
+  /*
+   * Las órdenes de pago a cuenta con saldo, una por una.
+   *
+   * Van con los pendientes porque se piden en el mismo momento y por la misma
+   * razón —se eligió una ficha— y porque la pantalla las muestra al lado de las
+   * facturas: es lo que pidió Administración, poder imputar cada factura contra
+   * SU pago y no contra una bolsa común. Por moneda, igual que las facturas: un
+   * anticipo en dólares no cancela una factura en pesos sin decidir a qué
+   * cambio.
+   */
   const saldoPromesa = supabase
-    .from("saldos_a_cuenta")
-    .select("moneda, saldo")
+    .from("ordenes_a_cuenta")
+    .select("pago_id, fecha, moneda, importe, aplicado, saldo")
     .eq("entidad_tipo", esCobro ? "cliente" : "proveedor")
     .eq("entidad_id", entidadId)
+    .order("fecha", { ascending: true })
 
   const [{ data: conSaldo, error }, { data: delRecibo }, { data: saldos }] = await Promise.all([
     consulta
@@ -131,27 +138,52 @@ export async function listarPendientes(tipo: TipoPago, req: Request) {
     signo: Number(f.signo) === -1 ? -1 : 1,
   }))
 
-  const saldoAFavor = { ARS: 0, USD: 0 }
-  for (const f of saldos ?? []) {
-    const m = f.moneda === "USD" ? "USD" : "ARS"
-    saldoAFavor[m] = Number(f.saldo) || 0
-  }
-
-  /* Al editar, el saldo que se muestra es el que habría si este recibo no
-     existiera — igual que el de las facturas. Si no, abrir un recibo que usó
-     todo el saldo a favor mostraría cero disponible y parecería que ya no se
-     puede guardar. */
+  /*
+   * Al editar, cada orden muestra el saldo que tendría si este recibo no
+   * existiera —igual que las facturas—. Sin esto, abrir un recibo que consumió
+   * una orden entera y guardarlo sin cambiar nada diría que esa orden ya no
+   * tiene con qué.
+   */
+  const yaTomado = new Map<string, number>()
   if (incluirPago) {
-    const { data: propio } = await supabase
-      .from("pagos")
-      .select("a_cuenta, moneda")
-      .eq("id", incluirPago)
-      .maybeSingle()
-    if (propio) {
-      const m = propio.moneda === "USD" ? "USD" : "ARS"
-      saldoAFavor[m] -= Number(propio.a_cuenta ?? 0)
+    const { data: previas } = await supabase
+      .from("pago_aplicaciones")
+      .select("pago_origen_id, importe")
+      .eq("pago_destino_id", incluirPago)
+    for (const a of previas ?? []) {
+      const oid = a.pago_origen_id as string
+      yaTomado.set(oid, (yaTomado.get(oid) ?? 0) + Number(a.importe))
     }
   }
 
-  return NextResponse.json({ pendientes, saldoAFavor })
+  const ordenes: OrdenACuenta[] = (saldos ?? []).map((o) => ({
+    id: o.pago_id as string,
+    fecha: o.fecha as string,
+    moneda: (o.moneda === "USD" ? "USD" : "ARS") as Pendiente["moneda"],
+    importe: Number(o.importe) || 0,
+    saldo: redondear((Number(o.saldo) || 0) + (yaTomado.get(o.pago_id as string) ?? 0)),
+  }))
+
+  /* Las que este recibo agotó por completo no vuelven en la vista —su saldo es
+     cero— pero tienen que estar en la lista para poder desaplicarlas. */
+  for (const [id, tomado] of yaTomado) {
+    if (ordenes.some((o) => o.id === id)) continue
+    const { data: op } = await supabase
+      .from("pagos")
+      .select("id, fecha, moneda, a_cuenta")
+      .eq("id", id)
+      .maybeSingle()
+    if (!op) continue
+    ordenes.push({
+      id: op.id as string,
+      fecha: op.fecha as string,
+      moneda: (op.moneda === "USD" ? "USD" : "ARS") as Pendiente["moneda"],
+      importe: Number(op.a_cuenta) || 0,
+      saldo: redondear(tomado),
+    })
+  }
+
+  ordenes.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0))
+
+  return NextResponse.json({ pendientes, ordenes })
 }

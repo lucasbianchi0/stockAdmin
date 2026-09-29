@@ -358,6 +358,98 @@ export async function guardarPresupuesto(req: Request, id: string) {
   return leerPresupuesto(id)
 }
 
+/* ── Duplicar ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Copiar un presupuesto con toda su planilla.
+ *
+ * Con Distecna y Solution Box la misma operación se repite seguido: los mismos
+ * materiales, la misma mano de obra, otro cliente u otra sucursal. Rearmar la
+ * planilla renglón por renglón para cambiar dos números es el tipo de trabajo
+ * que el sistema vino a sacar.
+ *
+ * La copia nace en BORRADOR y con fecha de hoy aunque el original esté aceptado
+ * o facturado: es un presupuesto nuevo, no una foto del viejo. Y no se copia el
+ * legajo —los remitos y las facturas son de aquella operación, no de esta—, que
+ * es la diferencia entre duplicar un presupuesto y clonar un expediente.
+ */
+export async function duplicarPresupuesto(id: string) {
+  const { data: original, error } = await supabase
+    .from("presupuestos")
+    .select(SELECT)
+    .eq("id", id)
+    .maybeSingle()
+
+  if (error) {
+    console.error("[presupuesto duplicar leer]", error)
+    return NextResponse.json({ error: "No se pudo duplicar" }, { status: 500 })
+  }
+  if (!original) return NextResponse.json({ error: "Presupuesto no encontrado" }, { status: 404 })
+
+  const p = aPresupuesto(original as Record<string, unknown>)
+
+  const supabaseUsuario = await createSupabaseServer()
+  const {
+    data: { user },
+  } = await supabaseUsuario.auth.getUser()
+
+  const { data: copia, error: errAlta } = await supabase
+    .from("presupuestos")
+    .insert({
+      cliente_id: p.clienteId,
+      referencia: `${p.referencia} (copia)`.slice(0, 300),
+      moneda: p.moneda,
+      tc: p.tc,
+      vendedor_id: p.vendedorId,
+      estado: "borrador",
+      break_pct: p.breakPct,
+      margen_materiales: p.margenMateriales,
+      margen_mano_obra: p.margenManoObra,
+      alcance: p.alcance,
+      condiciones: p.condiciones,
+      confidencialidad: p.confidencialidad,
+      observaciones: p.observaciones,
+      no_contempla: p.noContempla,
+      nota_importante: p.notaImportante,
+      created_by: user?.id ?? null,
+    })
+    .select("id")
+    .single()
+
+  if (errAlta || !copia) {
+    console.error("[presupuesto duplicar alta]", errAlta)
+    return NextResponse.json({ error: "No se pudo duplicar" }, { status: 500 })
+  }
+
+  if (p.items.length > 0) {
+    const { error: errItems } = await supabase.from("presupuesto_items").insert(
+      p.items.map((i, orden) => ({
+        presupuesto_id: copia.id,
+        orden,
+        proveedor: i.proveedor,
+        parte: i.parte,
+        cantidad: i.cantidad,
+        descripcion: i.descripcion,
+        tipo: i.tipo,
+        costo_unitario: i.costoUnitario,
+        venta_unitaria: i.venta,
+        imp_pct: i.impPct,
+        iva: i.iva,
+        stock: i.stock,
+      }))
+    )
+
+    if (errItems) {
+      // Sin renglones la copia no sirve de nada: se deshace entera.
+      await supabase.from("presupuestos").delete().eq("id", copia.id)
+      console.error("[presupuesto duplicar items]", errItems)
+      return NextResponse.json({ error: "No se pudo duplicar la planilla" }, { status: 500 })
+    }
+  }
+
+  return leerPresupuesto(copia.id as string)
+}
+
 /* ── Baja ─────────────────────────────────────────────────────────────────── */
 
 export async function borrarPresupuesto(id: string) {

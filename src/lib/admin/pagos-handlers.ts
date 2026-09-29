@@ -90,6 +90,8 @@ type PiezasPago = {
   imputaciones: Record<string, unknown>[]
   retenciones: Record<string, unknown>[]
   movimientos: Record<string, unknown>[]
+  /** De qué anticipos anteriores sale lo que este recibo no paga en efectivo. */
+  aplicaciones: { pago_origen_id: string; importe: number }[]
 }
 
 async function validarPago(
@@ -485,45 +487,124 @@ async function validarPago(
     ) }
   }
 
-  if (aCuenta < -0.01) {
-    /* El saldo a favor disponible, releído de la base y no del formulario. Al
-       editar hay que devolverle a la ficha lo que este mismo recibo ya estaba
-       consumiendo: si no, abrir un recibo que usó todo el saldo y guardarlo sin
-       cambiar nada diría que no alcanza. */
-    const { data: saldoFila } = await supabase
-      .from("saldos_a_cuenta")
-      .select("saldo")
-      .eq("entidad_tipo", tipo === "cobro" ? "cliente" : "proveedor")
-      .eq("entidad_id", entidadId)
-      .eq("moneda", moneda)
-      .maybeSingle()
+  /*
+   * Lo que este recibo toma de anticipos anteriores, orden por orden.
+   *
+   * Antes el saldo a favor era una bolsa: se imputaba de más y el sistema
+   * descontaba de un total. Ahora cada aplicación dice de QUÉ orden de pago
+   * sale, que es lo que permite contestar "¿esta entrega quedó facturada
+   * entera?" y no solo "cuánto crédito queda". Con Distecna y Solution Box el
+   * anticipo es la forma normal de operar, y cada pago se corresponde con un
+   * retiro concreto.
+   */
+  const aplicacionesRaw = Array.isArray(raw.aplicaciones) ? raw.aplicaciones : []
+  const filasAplicacion: { pago_origen_id: string; importe: number }[] = []
+  let totalAplicado = 0
 
-    let disponible = Number(saldoFila?.saldo ?? 0)
+  if (aplicacionesRaw.length > 0) {
+    const ids = aplicacionesRaw
+      .map((a) => (a as Record<string, unknown>).pagoOrigenId)
+      .filter((v): v is string => typeof v === "string")
 
+    /* El saldo de cada orden, releído de la base. Al editar hay que devolverle a
+       cada una lo que ESTE recibo ya le estaba tomando: si no, abrir un recibo
+       que consumió una orden entera y guardarlo sin cambiar nada diría que esa
+       orden no tiene saldo. */
+    const { data: ordenes } = await supabase
+      .from("ordenes_a_cuenta")
+      .select("pago_id, saldo, moneda, entidad_id, tipo")
+      .in("pago_id", ids.length > 0 ? ids : ["00000000-0000-0000-0000-000000000000"])
+
+    const yaTomado = new Map<string, number>()
     if (pagoId) {
-      const { data: previo } = await supabase
-        .from("pagos")
-        .select("a_cuenta, moneda")
-        .eq("id", pagoId)
-        .maybeSingle()
-      if (previo && previo.moneda === moneda) disponible -= Number(previo.a_cuenta ?? 0)
+      const { data: previas } = await supabase
+        .from("pago_aplicaciones")
+        .select("pago_origen_id, importe")
+        .eq("pago_destino_id", pagoId)
+      for (const a of previas ?? []) {
+        const oid = a.pago_origen_id as string
+        yaTomado.set(oid, (yaTomado.get(oid) ?? 0) + Number(a.importe))
+      }
     }
 
-    if (Math.abs(aCuenta) > disponible + 0.01) {
-      return { respuesta: NextResponse.json(
-        {
-          error:
-            disponible > 0
-              ? `Estás cancelando ${Math.abs(aCuenta).toFixed(2)} más de lo que ` +
-                `${tipo === "cobro" ? "entró" : "salió"}, y el saldo a favor disponible ` +
-                `es ${disponible.toFixed(2)}.`
-              : `Estás cancelando ${Math.abs(aCuenta).toFixed(2)} más de lo que ` +
-                `${tipo === "cobro" ? "entró a la caja" : "salió de la caja"}. ` +
-                `Revisá los importes o agregá la retención que falta.`,
-        },
-        { status: 400 }
-      ) }
+    const porId = new Map((ordenes ?? []).map((o) => [o.pago_id as string, o]))
+
+    for (const item of aplicacionesRaw) {
+      const a = item as Record<string, unknown>
+      const origen = typeof a.pagoOrigenId === "string" ? a.pagoOrigenId : ""
+      const importe = redondear(Number(a.importe))
+
+      if (!Number.isFinite(importe) || importe <= 0) continue
+
+      const orden = porId.get(origen)
+      const disponible = (orden ? Number(orden.saldo) : 0) + (yaTomado.get(origen) ?? 0)
+
+      if (!orden && !yaTomado.has(origen)) {
+        return { respuesta: NextResponse.json(
+          { error: "Uno de los pagos a cuenta ya no tiene saldo disponible" },
+          { status: 409 }
+        ) }
+      }
+      if (orden && (orden.moneda !== moneda || orden.entidad_id !== entidadId)) {
+        return { respuesta: NextResponse.json(
+          { error: "Un pago a cuenta es de otra ficha o de otra moneda" },
+          { status: 400 }
+        ) }
+      }
+      if (importe > disponible + 0.01) {
+        return { respuesta: NextResponse.json(
+          {
+            error:
+              `No se puede aplicar ${importe.toFixed(2)} de ese pago a cuenta: ` +
+              `le quedan ${disponible.toFixed(2)}.`,
+          },
+          { status: 409 }
+        ) }
+      }
+
+      filasAplicacion.push({ pago_origen_id: origen, importe })
+      totalAplicado += importe
     }
+    totalAplicado = redondear(totalAplicado)
+  }
+
+  /*
+   * La ecuación, con el término de las aplicaciones:
+   *
+   *   lo que cancela = lo que salió + retenciones + lo que se tomó de anticipos
+   *
+   * Cuando sobra, la punta queda a cuenta y genera una orden nueva. Cuando
+   * falta, tiene que estar cubierta por aplicaciones concretas y no por una
+   * bolsa: pedir de más sin decir de dónde sale vuelve a ser el error clásico
+   * de imputar olvidando la retención.
+   */
+  const aCuentaFinal = redondear(aCuenta + totalAplicado)
+
+  if (aCuentaFinal < -0.01) {
+    return { respuesta: NextResponse.json(
+      {
+        error:
+          totalAplicado > 0
+            ? `Faltan ${Math.abs(aCuentaFinal).toFixed(2)} para cerrar: aplicá más de ` +
+              `algún pago a cuenta o revisá los importes.`
+            : `Estás cancelando ${Math.abs(aCuentaFinal).toFixed(2)} más de lo que ` +
+              `${tipo === "cobro" ? "entró a la caja" : "salió de la caja"}. ` +
+              `Aplicá un pago a cuenta o revisá los importes.`,
+      },
+      { status: 400 }
+    ) }
+  }
+
+  if (aCuentaFinal > 0.01 && totalAplicado > 0) {
+    return { respuesta: NextResponse.json(
+      {
+        error:
+          `Estás aplicando ${totalAplicado.toFixed(2)} de pagos a cuenta y sobran ` +
+          `${aCuentaFinal.toFixed(2)}. Bajá lo aplicado: un recibo no puede consumir ` +
+          `un anticipo y generar otro al mismo tiempo.`,
+      },
+      { status: 400 }
+    ) }
   }
 
   return {
@@ -534,12 +615,13 @@ async function validarPago(
         fecha,
         moneda,
         tc,
-        a_cuenta: aCuenta,
+        a_cuenta: redondear(aCuenta),
         observaciones,
       },
       imputaciones: filasImputacion,
       retenciones,
       movimientos: filasMovimiento,
+      aplicaciones: filasAplicacion,
     },
   }
 }
@@ -570,7 +652,13 @@ export async function crearPago(tipo: TipoPago, req: Request) {
 
   const validado = await validarPago(tipo, raw, null)
   if ("respuesta" in validado) return validado.respuesta
-  const { cabecera, imputaciones: filasImputacion, retenciones, movimientos: filasMovimiento } = validado.piezas
+  const {
+    cabecera,
+    imputaciones: filasImputacion,
+    retenciones,
+    movimientos: filasMovimiento,
+    aplicaciones: filasAplicacion,
+  } = validado.piezas
 
   /* ── Escritura ────────────────────────────────────────────────────────── */
 
@@ -604,6 +692,21 @@ export async function crearPago(tipo: TipoPago, req: Request) {
     await deshacer()
     console.error(`[${tipo} imputaciones]`, errImp)
     return NextResponse.json({ error: "No se pudieron imputar los comprobantes" }, { status: 500 })
+  }
+
+  if (filasAplicacion.length > 0) {
+    const { error: errApl } = await supabase
+      .from("pago_aplicaciones")
+      .insert(filasAplicacion.map((a) => ({ ...a, pago_destino_id: pago.id })))
+
+    if (errApl) {
+      await deshacer()
+      console.error(`[${tipo} aplicaciones]`, errApl)
+      return NextResponse.json(
+        { error: "No se pudieron aplicar los pagos a cuenta" },
+        { status: 500 }
+      )
+    }
   }
 
   if (retenciones.length > 0) {
@@ -701,20 +804,23 @@ export async function editarPago(tipo: TipoPago, req: Request, id: string) {
   const validado = await validarPago(tipo, body as Record<string, unknown>, id)
   if ("respuesta" in validado) return validado.respuesta
 
-  const { cabecera, imputaciones, retenciones, movimientos } = validado.piezas
+  const { cabecera, imputaciones, retenciones, movimientos, aplicaciones } = validado.piezas
 
   // 2 · La copia de seguridad de los hijos actuales.
-  const [{ data: impPrevias }, { data: retPrevias }, { data: movPrevios }] = await Promise.all([
-    supabase.from("imputaciones").select("*").eq("pago_id", id),
-    supabase.from("pago_retenciones").select("*").eq("pago_id", id),
-    supabase.from("movimientos").select("*").eq("pago_id", id),
-  ])
+  const [{ data: impPrevias }, { data: retPrevias }, { data: movPrevios }, { data: aplPrevias }] =
+    await Promise.all([
+      supabase.from("imputaciones").select("*").eq("pago_id", id),
+      supabase.from("pago_retenciones").select("*").eq("pago_id", id),
+      supabase.from("movimientos").select("*").eq("pago_id", id),
+      supabase.from("pago_aplicaciones").select("*").eq("pago_destino_id", id),
+    ])
 
   const reponer = async () => {
     await Promise.all([
       supabase.from("imputaciones").delete().eq("pago_id", id),
       supabase.from("pago_retenciones").delete().eq("pago_id", id),
       supabase.from("movimientos").delete().eq("pago_id", id),
+      supabase.from("pago_aplicaciones").delete().eq("pago_destino_id", id),
     ])
     // Sin las columnas generadas, que Postgres rechaza en un INSERT.
     const limpiar = (filas: Record<string, unknown>[] | null) =>
@@ -730,6 +836,7 @@ export async function editarPago(tipo: TipoPago, req: Request, id: string) {
       impPrevias?.length ? supabase.from("imputaciones").insert(impPrevias) : null,
       retPrevias?.length ? supabase.from("pago_retenciones").insert(retPrevias) : null,
       movPrevios?.length ? supabase.from("movimientos").insert(limpiar(movPrevios)) : null,
+      aplPrevias?.length ? supabase.from("pago_aplicaciones").insert(aplPrevias) : null,
     ])
   }
 
@@ -738,6 +845,7 @@ export async function editarPago(tipo: TipoPago, req: Request, id: string) {
     supabase.from("imputaciones").delete().eq("pago_id", id),
     supabase.from("pago_retenciones").delete().eq("pago_id", id),
     supabase.from("movimientos").delete().eq("pago_id", id),
+    supabase.from("pago_aplicaciones").delete().eq("pago_destino_id", id),
   ])
 
   const errBorrado = borrados.find((r) => r.error)?.error
@@ -774,6 +882,11 @@ export async function editarPago(tipo: TipoPago, req: Request, id: string) {
       ? supabase
           .from("movimientos")
           .insert(movimientos.map((f) => ({ ...f, pago_id: id, created_by: user?.id ?? null })))
+      : { error: null },
+    aplicaciones.length
+      ? supabase
+          .from("pago_aplicaciones")
+          .insert(aplicaciones.map((a) => ({ ...a, pago_destino_id: id })))
       : { error: null },
   ])
 

@@ -22,6 +22,7 @@ import {
   sumaRetenciones,
   type Cobro,
   type CuentaFinanciera,
+  type OrdenACuenta,
   type Pendiente,
   type Jurisdiccion,
   type Retencion,
@@ -33,8 +34,10 @@ import {
   formatearImporte,
   formatearTc,
   parsearImporte,
+  redondear,
   type Moneda,
 } from "@/lib/admin/moneda"
+import { formatearFecha } from "@/lib/admin/fecha"
 import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { hoyArgentina } from "@/lib/admin/fecha"
 import { useCotizacion } from "@/lib/admin/use-cotizacion"
@@ -158,10 +161,9 @@ export function PagoDialog({
   const pendientesQuery = useQuery({
     queryKey: claves.url(urlPendientes ?? ""),
     queryFn: ({ signal }) =>
-      pedirJson<{ pendientes?: Pendiente[]; saldoAFavor?: Record<Moneda, number> }>(
-        urlPendientes!,
-        { signal }
-      ),
+      pedirJson<{ pendientes?: Pendiente[]; ordenes?: OrdenACuenta[] }>(urlPendientes!, {
+        signal,
+      }),
     enabled: abierto && urlPendientes !== null,
     refetchOnWindowFocus: false,
   })
@@ -170,9 +172,30 @@ export function PagoDialog({
     (urlPendientes && pendientesQuery.data?.pendientes) || SIN_PENDIENTES
   const cargandoPendientes = urlPendientes !== null && pendientesQuery.isLoading
 
-  /** Lo que la ficha tiene a cuenta de recibos anteriores, en la moneda de este
-   *  recibo. Es lo único que habilita cancelar más de lo que entra o sale. */
-  const saldoAFavor = pendientesQuery.data?.saldoAFavor?.[moneda] ?? 0
+  /**
+   * Las órdenes de pago a cuenta con saldo, en la moneda de este recibo.
+   *
+   * Van en la misma lista que las facturas, no como un total aparte: se imputa
+   * contra UNA orden, igual que contra una factura. Eso es lo que permite
+   * después saber si cada entrega quedó facturada, que con un saldo único —una
+   * bolsa— no se podía contestar.
+   */
+  const ordenes = useMemo(
+    () => (pendientesQuery.data?.ordenes ?? []).filter((o) => o.moneda === moneda),
+    [pendientesQuery.data, moneda]
+  )
+
+  /** Cuánto se toma de cada orden, por id. */
+  const [aplicado, setAplicado] = useState<Record<string, string>>({})
+
+  const totalAplicado = useMemo(
+    () =>
+      ordenes.reduce((a, o) => {
+        const v = parsearImporte(aplicado[o.id] ?? "") ?? 0
+        return a + (v > 0 ? v : 0)
+      }, 0),
+    [ordenes, aplicado]
+  )
 
   const cuentasQuery = useQuery({
     queryKey: claves.url("/api/admin/cuentas"),
@@ -239,6 +262,11 @@ export function PagoDialog({
       }))
     )
     setObservaciones(cobro.observaciones ?? "")
+    setAplicado(
+      Object.fromEntries(
+        (cobro.aplicaciones ?? []).map((a) => [a.pagoOrigenId, String(a.importe)])
+      )
+    )
     cargarPendientes(cobro.clienteId, cobro.id)
   }, [abierto, cobro, cargarPendientes])
 
@@ -318,7 +346,9 @@ export function PagoDialog({
     [retenciones]
   )
 
-  const balance = balancear(totalImputado, totalMedios, totalRetenciones, saldoAFavor)
+  /* Lo aplicado entra a la ecuación como lo que entró o salió: es plata que ya
+     se movió en su momento y que ahora cancela facturas. */
+  const balance = balancear(totalImputado, totalMedios + totalAplicado, totalRetenciones)
 
   /**
    * Cuándo hace falta el tipo de cambio.
@@ -372,9 +402,9 @@ export function PagoDialog({
     totalRetenciones === 0
 
   /** Un anticipo: plata sin factura que la respalde, que queda a favor de la
-   *  ficha. `aCuenta` negativo es lo contrario, un anticipo que se consume. */
+   *  ficha. Consumir uno anterior ya no pasa por acá: se hace aplicando una
+   *  orden concreta, que suma del lado de lo que entró o salió. */
   const dejaACuenta = balance.aCuenta > 0.01
-  const usaSaldo = balance.aCuenta < -0.01
 
   /*
    * Un recibo tiene que hacer algo, pero no necesariamente imputar.
@@ -438,6 +468,14 @@ export function PagoDialog({
               tcAplicado: parsearImporte(tcFactura[p.id] ?? "") ?? null,
             }))
             .filter((i) => i.importe > 0),
+          /* De qué órdenes a cuenta sale lo que no se paga en efectivo. Va con
+             el id de cada una y no como un total: es todo el punto del cambio. */
+          aplicaciones: ordenes
+            .map((o) => ({
+              pagoOrigenId: o.id,
+              importe: parsearImporte(aplicado[o.id] ?? "") ?? 0,
+            }))
+            .filter((a) => a.importe > 0),
           medios: medios
             .filter((m) => m.cuentaId && (parsearImporte(m.importe) ?? 0) > 0)
             .map((m) => ({
@@ -578,17 +616,10 @@ export function PagoDialog({
             <p className="eyebrow">
               {esCobro ? "Facturas a cancelar" : "Comprobantes a cancelar"}
             </p>
-            {/* El saldo a favor, dicho donde se decide qué cancelar. Sin esto
-                nadie se entera de que lo tiene: está en la cuenta corriente, a
-                dos pantallas de acá, y el que carga el recibo no la mira. */}
-            {saldoAFavor > 0.01 && (
+            {ordenes.length > 0 && (
               <p className="text-[11.5px] text-ink-muted">
-                {esCobro ? "Este cliente tiene " : "Tenemos "}
-                <span className="num font-semibold text-brand-600">
-                  {formatearImporte(saldoAFavor, moneda)}
-                </span>
-                {esCobro ? " a cuenta" : " a favor con este proveedor"}: imputá de más y
-                se aplica solo.
+                {ordenes.length === 1 ? "Hay 1 pago a cuenta" : `Hay ${ordenes.length} pagos a cuenta`}{" "}
+                con saldo: aplicalos como una factura más.
               </p>
             )}
           </div>
@@ -615,6 +646,22 @@ export function PagoDialog({
             </div>
           ) : (
             <div className="overflow-hidden rounded-xl border border-line">
+              {/* Las órdenes a cuenta primero: es plata ya entregada, y lo
+                  natural es gastarla antes de poner más. */}
+              {ordenes.map((o, i) => (
+                <FilaOrden
+                  key={o.id}
+                  orden={o}
+                  valor={aplicado[o.id] ?? ""}
+                  primera={i === 0}
+                  disabled={guardando}
+                  onValor={(v) => setAplicado((prev) => ({ ...prev, [o.id]: v }))}
+                  onTodo={() =>
+                    setAplicado((prev) => ({ ...prev, [o.id]: String(o.saldo) }))
+                  }
+                />
+              ))}
+
               {pendientes.map((p, i) => (
                 <FilaPendiente
                   key={p.id}
@@ -624,7 +671,7 @@ export function PagoDialog({
                   tc={tcDe(p.id)}
                   tcPropio={tcFactura[p.id] ?? ""}
                   tcCabecera={tcNum}
-                  primera={i === 0}
+                  primera={i === 0 && ordenes.length === 0}
                   disabled={guardando}
                   onValor={(v) => setImputado((prev) => ({ ...prev, [p.id]: v }))}
                   onTc={(v) => setTcFactura((prev) => ({ ...prev, [p.id]: v }))}
@@ -898,15 +945,19 @@ export function PagoDialog({
             </>
           )}
           <span className="text-ink-faint">=</span>
-          <Cifra rotulo={esCobro ? "Entró" : "Salió"} valor={balance.medios} moneda={moneda} />
-          <span className="text-ink-faint">+</span>
-          <Cifra rotulo="Retenciones" valor={balance.retenciones} moneda={moneda} />
-          {usaSaldo && (
+          <Cifra
+            rotulo={esCobro ? "Entró" : "Salió"}
+            valor={redondear(balance.medios - totalAplicado)}
+            moneda={moneda}
+          />
+          {totalAplicado > 0.01 && (
             <>
               <span className="text-ink-faint">+</span>
-              <Cifra rotulo="Saldo a favor" valor={-balance.aCuenta} moneda={moneda} />
+              <Cifra rotulo="A cuenta usado" valor={totalAplicado} moneda={moneda} />
             </>
           )}
+          <span className="text-ink-faint">+</span>
+          <Cifra rotulo="Retenciones" valor={balance.retenciones} moneda={moneda} />
 
           <span className="ml-auto text-[12px] font-semibold">
             {balance.cuadra ? (
@@ -917,8 +968,8 @@ export function PagoDialog({
                     ? `Queda ${formatearImporte(balance.aCuenta, moneda)} a favor ${
                         esCobro ? "del cliente" : "nuestro"
                       }`
-                    : usaSaldo
-                      ? `Usa ${formatearImporte(-balance.aCuenta, moneda)} del saldo a favor`
+                    : totalAplicado > 0.01
+                      ? `Aplica ${formatearImporte(totalAplicado, moneda)} de pagos a cuenta`
                       : "El recibo cuadra"}
               </span>
             ) : (
@@ -954,6 +1005,91 @@ export function PagoDialog({
 }
 
 /* ── Piezas ───────────────────────────────────────────────────────────────── */
+
+/**
+ * Un pago a cuenta con saldo, como un renglón más de la lista.
+ *
+ * Se parece a una factura a propósito: se mira el saldo, se escribe cuánto se
+ * toma, o se aprieta "Todo". Lo que cambia es la dirección —acá no se cancela
+ * una deuda, se gasta un crédito— y por eso el tono es de marca y no neutro.
+ */
+function FilaOrden({
+  orden,
+  valor,
+  primera,
+  disabled,
+  onValor,
+  onTodo,
+}: {
+  orden: OrdenACuenta
+  valor: string
+  primera: boolean
+  disabled?: boolean
+  onValor: (v: string) => void
+  onTodo: () => void
+}) {
+  const importe = parsearImporte(valor) ?? 0
+  const excede = importe > orden.saldo + 0.01
+
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-x-4 gap-y-2 px-3.5 py-2.5",
+        !primera && "border-t border-line-soft",
+        importe > 0 && "bg-brand-50/50"
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="brand" size="sm">
+            A cuenta
+          </Badge>
+          <span className="num text-[12px] text-ink-secondary">
+            {formatearFecha(orden.fecha)}
+          </span>
+        </div>
+        <p className="mt-0.5 truncate text-[11.5px] text-ink-muted">
+          Pago de {formatearImporte(orden.importe, orden.moneda)} sin factura
+        </p>
+      </div>
+
+      <div className="text-right">
+        <p className="eyebrow">Disponible</p>
+        <p className="num text-[12.5px] font-semibold text-brand-600">
+          {formatearImporte(orden.saldo, orden.moneda)}
+        </p>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <div>
+          <Input
+            value={valor}
+            onChange={(e) => onValor(e.target.value)}
+            placeholder="0,00"
+            inputMode="decimal"
+            disabled={disabled}
+            className={cn("num h-8 w-32 text-right text-[12px]", excede && "border-danger-line")}
+            aria-label={`Importe a aplicar del pago a cuenta del ${formatearFecha(orden.fecha)}`}
+          />
+          {excede && (
+            <p className="mt-0.5 text-right text-[10.5px] text-danger-text">
+              Supera el saldo
+            </p>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onTodo}
+          disabled={disabled}
+          title="Aplicar todo el saldo"
+        >
+          Todo
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 function FilaPendiente({
   p,

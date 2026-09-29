@@ -197,8 +197,9 @@ export function PresupuestoEditor({ id }: { id: string }) {
 
   /* ── Acciones sobre la planilla ────────────────────────────────────────── */
 
-  const cambiar = (i: number, parche: Partial<Renglon>) =>
-    setRenglones((prev) =>
+  const cambiar = (i: number, parche: Partial<Renglon>) => {
+    setSucio(true)
+    return setRenglones((prev) =>
       prev.map((r, j) => {
         if (j !== i) return r
         const siguiente = { ...r, ...parche }
@@ -212,10 +213,33 @@ export function PresupuestoEditor({ id }: { id: string }) {
         return siguiente
       })
     )
+  }
 
-  const agregar = () => setRenglones((prev) => [...prev, RENGLON_VACIO()])
+  const agregar = () => {
+    setSucio(true)
+    setRenglones((prev) => [...prev, RENGLON_VACIO()])
+  }
 
-  const quitar = (i: number) => setRenglones((prev) => prev.filter((_, j) => j !== i))
+  const quitar = (i: number) => {
+    setSucio(true)
+    setRenglones((prev) => prev.filter((_, j) => j !== i))
+  }
+
+  /*
+   * Aviso al salir con cambios sin guardar.
+   *
+   * Acá se pueden pasar veinte minutos armando una planilla y el guardado es
+   * explícito. Cerrar la pestaña sin querer no puede costar esa media hora.
+   * Autoguardado no: en un documento con precios, guardar solo lo que todavía
+   * se está pensando es peor que perderlo.
+   */
+  const [sucio, setSucio] = useState(false)
+  useEffect(() => {
+    if (!sucio) return
+    const avisar = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener("beforeunload", avisar)
+    return () => window.removeEventListener("beforeunload", avisar)
+  }, [sucio])
 
   /* ── Guardar ───────────────────────────────────────────────────────────── */
 
@@ -251,6 +275,7 @@ export function PresupuestoEditor({ id }: { id: string }) {
         }),
       })
       await invalidar()
+      setSucio(false)
       toast.success("Presupuesto guardado")
     } catch (e) {
       toast.error(mensajeError(e, "No se pudo guardar"))
@@ -387,12 +412,22 @@ export function PresupuestoEditor({ id }: { id: string }) {
           <div className="flex flex-wrap items-center gap-3">
             <Parametro rotulo="TC" valor={tc} onChange={setTc} ancho="w-24" />
             <Parametro rotulo="Break %" valor={breakPct} onChange={setBreakPct} />
+            {/* El margen es un multiplicador, no un porcentaje: "1,7" quiere
+                decir que se vende a 1,7 veces el costo. Se escribe como en la
+                Excel —traducirlo obligaría a comparar mentalmente cada vez— y
+                el título lo aclara, que es donde alguien nuevo lo va a buscar. */}
             <Parametro
               rotulo="Materiales"
               valor={margenMateriales}
               onChange={setMargenMateriales}
+              ayuda="Multiplicador sobre el costo: 1,7 = se vende a 1,7 veces el costo (70 % de recargo)"
             />
-            <Parametro rotulo="Mano de obra" valor={margenManoObra} onChange={setMargenManoObra} />
+            <Parametro
+              rotulo="Mano de obra"
+              valor={margenManoObra}
+              onChange={setMargenManoObra}
+              ayuda="Multiplicador sobre el costo: 1,7 = se vende a 1,7 veces el costo (70 % de recargo)"
+            />
           </div>
         </div>
 
@@ -651,15 +686,22 @@ function Parametro({
   valor,
   onChange,
   ancho = "w-16",
+  ayuda,
 }: {
   rotulo: string
   valor: string
   onChange: (v: string) => void
   ancho?: string
+  ayuda?: string
 }) {
   return (
-    <label className="flex items-center gap-1.5">
-      <span className="text-[10.5px] font-medium uppercase tracking-[0.06em] text-ink-subtle">
+    <label className="flex items-center gap-1.5" title={ayuda}>
+      <span
+        className={cn(
+          "text-[10.5px] font-medium uppercase tracking-[0.06em] text-ink-subtle",
+          ayuda && "cursor-help border-b border-dashed border-line-strong"
+        )}
+      >
         {rotulo}
       </span>
       <input

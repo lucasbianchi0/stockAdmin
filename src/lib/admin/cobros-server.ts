@@ -32,6 +32,10 @@ export const SELECT_COBRO = `
   pago_retenciones (
     id, tipo, jurisdiccion, importe, base, alicuota, numero_certificado,
     contable:plan_cuentas (id, codigo, nombre)
+  ),
+  aplicaciones:pago_aplicaciones!pago_aplicaciones_pago_destino_id_fkey (
+    id, importe, pago_origen_id,
+    origen:pagos!pago_aplicaciones_pago_origen_id_fkey (id, fecha)
   )
 `
 
@@ -110,6 +114,18 @@ export function aCobro(fila: Fila): Cobro {
       i.tc_aplicado === null || i.tc_aplicado === undefined ? null : Number(i.tc_aplicado),
   }))
 
+  const aplicaciones = ((fila.aplicaciones ?? []) as {
+    id: string
+    importe: number | string
+    pago_origen_id: string
+    origen?: { id: string; fecha: string } | null
+  }[]).map((a) => ({
+    id: a.id,
+    pagoOrigenId: a.pago_origen_id,
+    fecha: a.origen?.fecha ?? "",
+    importe: num(a.importe),
+  }))
+
   return {
     id: fila.id as string,
     fecha: fila.fecha as string,
@@ -124,6 +140,7 @@ export function aCobro(fila: Fila): Cobro {
     // de crédito que se le aplicó, no la suma de las dos.
     totalImputado: imputaciones.reduce((a, i) => a + signoDeClase(i.clase) * i.importe, 0),
     aCuenta: num(fila.a_cuenta),
+    aplicaciones,
     observaciones: (fila.observaciones as string | null) ?? null,
     createdAt: fila.created_at as string,
     medios,
