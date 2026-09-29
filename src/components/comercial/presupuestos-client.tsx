@@ -247,15 +247,20 @@ export function PresupuestosClient() {
                           <Copy className="h-3.5 w-3.5" />
                         )}
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => setBorrando(p)}
-                        aria-label={`Borrar el presupuesto ${p.numero}`}
-                        title="Borrar"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {/* Solo un borrador se borra: su número vuelve a la
+                          serie, y eso únicamente es seguro mientras no haya
+                          salido hacia el cliente. */}
+                      {p.estado === "borrador" && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setBorrando(p)}
+                          aria-label={`Borrar el presupuesto ${p.numero}`}
+                          title="Borrar"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

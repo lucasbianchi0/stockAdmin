@@ -5,6 +5,7 @@ import { createSupabaseServer } from "@/lib/supabase-server"
 import { redondear, type Moneda } from "@/lib/admin/moneda"
 import {
   ESTADOS,
+  ESTADO_LABEL,
   TIPOS_ITEM,
   calcularTotales,
   type EstadoPresupuesto,
@@ -182,6 +183,9 @@ export async function crearPresupuesto(req: Request) {
     data: { user },
   } = await supabaseUsuario.auth.getUser()
 
+  /* El número sale del default de la columna, que ahora llama a
+     `siguiente_numero_presupuesto()`: el libre más bajo, bajo un lock que
+     evita que dos altas simultáneas calculen el mismo. */
   const { data, error } = await supabase
     .from("presupuestos")
     .insert({
@@ -452,7 +456,43 @@ export async function duplicarPresupuesto(id: string) {
 
 /* ── Baja ─────────────────────────────────────────────────────────────────── */
 
+/**
+ * Borrar un presupuesto: solo si es un borrador.
+ *
+ * Es la otra mitad de la regla que mantiene la numeración correlativa. Un
+ * presupuesto nuevo toma el número libre más bajo, así que borrar uno devuelve
+ * su número a la serie — y eso solo es seguro si ese número nunca salió hacia
+ * afuera. Mientras es borrador no salió de acá; una vez enviado, ese número ya
+ * está en el mail de alguien y reutilizarlo pondría dos propuestas distintas
+ * bajo el mismo "PRES 5" en la historia de un cliente.
+ *
+ * Lo que un presupuesto enviado necesita no es borrarse: es dejar de contar.
+ * Para eso están los estados, y el filtro del listado.
+ */
 export async function borrarPresupuesto(id: string) {
+  const { data: actual, error: errLectura } = await supabase
+    .from("presupuestos")
+    .select("estado, numero")
+    .eq("id", id)
+    .maybeSingle()
+
+  if (errLectura) {
+    console.error("[presupuesto borrar leer]", errLectura)
+    return NextResponse.json({ error: "No se pudo borrar el presupuesto" }, { status: 500 })
+  }
+  if (!actual) return NextResponse.json({ error: "Presupuesto no encontrado" }, { status: 404 })
+
+  if (actual.estado !== "borrador") {
+    return NextResponse.json(
+      {
+        error:
+          `El presupuesto ${actual.numero} ya salió: está ${ESTADO_LABEL[actual.estado as EstadoPresupuesto]}. ` +
+          `Solo se borra un borrador — su número ya no se puede reutilizar.`,
+      },
+      { status: 409 }
+    )
+  }
+
   const { error } = await supabase.from("presupuestos").delete().eq("id", id)
   if (error) {
     console.error("[presupuesto borrar]", error)
