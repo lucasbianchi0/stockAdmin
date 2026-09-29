@@ -303,6 +303,33 @@ export const LOGOS: LogoAsset[] = [
     ratio: 1073 / 160,
   },
   /*
+   * Las de placa traen el fondo adentro del archivo, así que su PNG no sale
+   * transparente. Existen para apoyar la marca sobre una foto o un fondo
+   * saturado sin tener que resolver el recuadro a mano cada vez.
+   *
+   * El aire se midió contra la caja de tinta real de cada SVG —no contra el
+   * viewBox, que trae aire propio y distinto en cada uno— para que las tres
+   * familias respiren igual. Se generan con `public/brand/generar-placas-svg.py`.
+   */
+  {
+    id: "logo-placa-navy",
+    nombre: "Logotipo con placa navy",
+    archivo: "/brand/accedra-logo-placa-navy.svg",
+    uso: "El logotipo sobre su propio recuadro navy. Para apoyarlo en una foto o en un fondo de color sin perder contraste.",
+    fondo: "claro",
+    ratio: 1213 / 287,
+    placa: true,
+  },
+  {
+    id: "logo-placa-azul",
+    nombre: "Logotipo con placa azul",
+    archivo: "/brand/accedra-logo-placa-azul.svg",
+    uso: "El mismo recuadro sobre el azul de marca, todo en blanco. Para piezas de campaña.",
+    fondo: "claro",
+    ratio: 1213 / 287,
+    placa: true,
+  },
+  /*
    * El lockup: el logotipo con "IT SOLUTIONS" debajo, el mismo que va al pie de
    * los mails. Es la firma de la empresa cuando la pieza tiene que decir a qué
    * se dedica —una portada, una propuesta, un stand—, y el logotipo solo cuando
@@ -344,6 +371,24 @@ export const LOGOS: LogoAsset[] = [
     uso: "Con bajada, sobre fondo de color saturado o foto donde el acento azul se pierde.",
     fondo: "oscuro",
     ratio: 1073 / 263,
+  },
+  {
+    id: "lockup-placa-navy",
+    nombre: "Lockup con placa navy",
+    archivo: "/brand/accedra-lockup-placa-navy.svg",
+    uso: "Logotipo + IT SOLUTIONS sobre recuadro navy. Portada de propuesta, cierre de presentación, pieza sobre foto.",
+    fondo: "claro",
+    ratio: 1317 / 482,
+    placa: true,
+  },
+  {
+    id: "lockup-placa-azul",
+    nombre: "Lockup con placa azul",
+    archivo: "/brand/accedra-lockup-placa-azul.svg",
+    uso: "El mismo con bajada sobre el azul de marca, todo en blanco.",
+    fondo: "claro",
+    ratio: 1317 / 482,
+    placa: true,
   },
   /*
    * El apilado: el isotipo arriba y el logotipo abajo, para los formatos
@@ -416,6 +461,24 @@ export const LOGOS: LogoAsset[] = [
     uso: "Avatar sobre navy, sello sobre foto oscura, watermark de video.",
     fondo: "oscuro",
     ratio: 1,
+  },
+  {
+    id: "isotipo-placa-navy",
+    nombre: "Isotipo con placa navy",
+    archivo: "/brand/accedra-isotipo-placa-navy.svg",
+    uso: "Cuadrado con fondo navy incluido. Favicon, avatar chico, sello sobre foto clara.",
+    fondo: "claro",
+    ratio: 1,
+    placa: true,
+  },
+  {
+    id: "isotipo-placa-azul",
+    nombre: "Isotipo con placa azul",
+    archivo: "/brand/accedra-isotipo-placa-azul.svg",
+    uso: "El isotipo sobre el azul de marca, en blanco. Alternativa de avatar o botón de app.",
+    fondo: "claro",
+    ratio: 1,
+    placa: true,
   },
 ]
 

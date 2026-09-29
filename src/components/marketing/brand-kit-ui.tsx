@@ -232,6 +232,107 @@ export function LogoCard({ logo }: { logo: LogoAsset }) {
   )
 }
 
+/**
+ * La galería de logos, con filtros.
+ *
+ * Veintidós variantes en una grilla son demasiadas para elegir mirando: quien
+ * entra ya sabe qué necesita —"el cuadrado para el avatar", "el que va sobre
+ * foto"— y estaba obligado a recorrerlas todas igual.
+ *
+ * Los filtros son los tres ejes por los que realmente se elige, y se pueden
+ * combinar: la FORMA (horizontal, con bajada, apilado, solo el símbolo), si trae
+ * PLACA —o sea fondo propio, que es la pregunta cuando va sobre una foto— y si
+ * es MONOCROMO, que es la pregunta cuando se imprime a una tinta.
+ *
+ * La familia se deduce del `id` y no es un campo aparte a propósito: los ids ya
+ * son sistemáticos (`logo-`, `lockup-`, `apilado-`, `isotipo-`) y un campo
+ * duplicado es lo que un día queda desincronizado con el nombre del archivo.
+ */
+const FAMILIAS = [
+  { id: "logo-", label: "Logotipo" },
+  { id: "lockup-", label: "Lockup" },
+  { id: "apilado-", label: "Apilado" },
+  { id: "isotipo-", label: "Isotipo" },
+] as const
+
+type Filtro = { id: string; label: string; test: (l: LogoAsset) => boolean }
+
+const FILTROS: Filtro[] = [
+  ...FAMILIAS.map((f) => ({
+    id: f.id,
+    label: f.label,
+    test: (l: LogoAsset) => l.id.startsWith(f.id),
+  })),
+  { id: "placa", label: "Con placa", test: (l) => l.placa === true },
+  { id: "mono", label: "Monocromo", test: (l) => l.id.includes("-mono-") },
+]
+
+export function LogosGaleria({ logos }: { logos: LogoAsset[] }) {
+  const [activos, setActivos] = React.useState<string[]>([])
+
+  // Sin filtros, todos. Con varios, tienen que cumplirlos TODOS: "Lockup" +
+  // "Con placa" es una pregunta concreta, y con un `or` devolvería las diez.
+  const visibles = logos.filter((l) =>
+    activos.every((id) => FILTROS.find((f) => f.id === id)?.test(l) ?? true)
+  )
+
+  const alternar = (id: string) =>
+    setActivos((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setActivos([])}
+          className={cn(
+            "rounded-full border px-3 py-1 text-[11.5px] font-medium transition-colors",
+            activos.length === 0
+              ? "border-brand-500 bg-brand-50 text-brand-700"
+              : "border-line text-ink-muted hover:bg-surface-muted hover:text-ink"
+          )}
+        >
+          Todos
+        </button>
+        {FILTROS.map((f) => {
+          const n = logos.filter((l) => f.test(l)).length
+          const activo = activos.includes(f.id)
+          return (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => alternar(f.id)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-[11.5px] font-medium transition-colors",
+                activo
+                  ? "border-brand-500 bg-brand-50 text-brand-700"
+                  : "border-line text-ink-muted hover:bg-surface-muted hover:text-ink"
+              )}
+            >
+              {f.label}
+              <span className="ml-1.5 text-ink-faint">{n}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {visibles.length === 0 ? (
+        /* Pasa con combinaciones que no existen —"Isotipo" + "Monocromo"—, y sin
+           este cartel la grilla vacía se lee como que algo se rompió. */
+        <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-[12.5px] text-ink-muted">
+          Ninguna variante cumple esa combinación. Sacá alguno de los filtros.
+        </p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {visibles.map((l) => (
+            <LogoCard key={l.id} logo={l} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ── Color ────────────────────────────────────────────────────────────────── */
 
 export function ColorChip({
