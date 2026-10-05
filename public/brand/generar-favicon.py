@@ -14,7 +14,7 @@ como los PNG: una sola geometría, sin diferencias entre el vectorial y el raste
 Genera todo lo que consume Next (app router):
   src/app/icon.svg        · Chrome/Firefox, nítido en cualquier densidad
   src/app/favicon.ico     · 16/32/48/64/128/256, para el resto
-  src/app/apple-icon.png  · 180x180, para "agregar a pantalla de inicio" en iOS
+  (apple-icon.png ya no: lo genera generar-icono-app.mjs, en 3D)
 
 Uso: python3 public/brand/generar-favicon.py
 """
@@ -117,6 +117,6 @@ if __name__ == "__main__":
     capas = [dibujar(m) for m in medidas]
     capas[-1].save(APP / "favicon.ico", format="ICO", sizes=[(m, m) for m in medidas])
 
-    dibujar(180).save(APP / "apple-icon.png")
+    # apple-icon.png lo genera generar-icono-app.mjs (la versión 3D).
 
-    print(f"OK · icon.svg, favicon.ico ({'/'.join(map(str, medidas))}), apple-icon.png en {APP}")
+    print(f"OK · icon.svg, favicon.ico ({'/'.join(map(str, medidas))}) en {APP}")
