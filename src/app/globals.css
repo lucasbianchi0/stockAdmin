@@ -466,6 +466,18 @@
   .prosa td {
     @apply border-b border-line py-2 pr-4 align-top;
   }
+  .prosa figure img {
+    @apply h-auto w-full rounded-lg border border-line;
+  }
+  .prosa figure[data-galeria] {
+    @apply grid grid-cols-2 gap-2;
+  }
+  .prosa figure[data-galeria] img {
+    @apply aspect-[4/3] object-cover;
+  }
+  .prosa figcaption {
+    @apply mt-1.5 text-center text-[11.5px] text-ink-muted;
+  }
 }
 
 /* ── El latido del botón del asistente ──────────────────────────────────────

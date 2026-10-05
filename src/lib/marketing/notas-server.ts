@@ -253,6 +253,39 @@ export async function subirPortada(
   }
 }
 
+/**
+ * Una foto del cuerpo de la nota (la que se inserta con `![pie](url)`). Mismo
+ * tratamiento que la portada pero sin piso de 600 px: una foto de evento sacada
+ * con el celular y recortada sigue sirviendo en una galería de dos columnas.
+ *
+ * No se borran solas: la foto vive en el markdown, no en una columna, así que
+ * sacar el renglón del cuerpo no avisa a nadie. Es el precio de que el texto
+ * mande sobre dónde va cada foto.
+ */
+export async function subirFoto(archivo: File): Promise<{ url: string } | { error: string }> {
+  try {
+    const entrada = Buffer.from(await archivo.arrayBuffer())
+    const salida = await sharp(entrada)
+      .rotate()
+      .resize({ width: 1600, withoutEnlargement: true })
+      .webp({ quality: 82 })
+      .toBuffer()
+
+    const ruta = `fotos/${crypto.randomUUID()}.webp`
+    const { error } = await supabase.storage
+      .from(BUCKET_NOTAS)
+      .upload(ruta, salida, { contentType: "image/webp", upsert: false })
+    if (error) {
+      console.error("[notas foto upload]", error)
+      return { error: "No se pudo subir la foto" }
+    }
+    return { url: urlPublica(ruta) }
+  } catch (e) {
+    console.error("[notas foto sharp]", e)
+    return { error: "No se pudo procesar la foto. ¿Es un archivo válido?" }
+  }
+}
+
 export async function borrarObjetos(rutas: (string | null | undefined)[]): Promise<void> {
   const limpias = rutas.filter((r): r is string => typeof r === "string" && r.length > 0)
   if (limpias.length === 0) return

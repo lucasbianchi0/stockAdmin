@@ -101,6 +101,9 @@ export function NotaEditor({ id }: { id: string | null }) {
   const [portada, setPortada] = useState<File | null>(null)
   const [quitarPortada, setQuitarPortada] = useState(false)
   const [guardando, setGuardando] = useState(false)
+  const [subiendoFoto, setSubiendoFoto] = useState(false)
+  const cuerpoRef = useRef<HTMLTextAreaElement>(null)
+  const fotoRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
 
   /* ── Carga ─────────────────────────────────────────────────────────────── */
@@ -157,6 +160,36 @@ export function NotaEditor({ id }: { id: string | null }) {
 
   const set = <K extends keyof BorradorNota>(campo: K, valor: BorradorNota[K]) =>
     setF((prev) => ({ ...prev, [campo]: valor }))
+
+  /**
+   * Sube la foto en el momento y escribe `![](url)` donde está el cursor, en un
+   * renglón propio. El pie queda vacío a propósito: es lo primero que hay que
+   * escribir, y un pie inventado ("Foto 1") se publica igual que uno bueno.
+   */
+  const insertarFoto = async (archivo: File) => {
+    setSubiendoFoto(true)
+    try {
+      const datos = new FormData()
+      datos.set("foto", archivo)
+      const r = await fetch("/api/marketing/notas/fotos", { method: "POST", body: datos })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error ?? "No se pudo subir la foto")
+      const area = cuerpoRef.current
+      setF((prev) => {
+        const pos = area ? area.selectionStart : prev.cuerpo.length
+        const antes = prev.cuerpo.slice(0, pos).replace(/\n*$/, "")
+        const despues = prev.cuerpo.slice(pos).replace(/^\n*/, "")
+        const linea = `![](${d.url})`
+        return { ...prev, cuerpo: [antes, linea, despues].filter(Boolean).join("\n\n") }
+      })
+      toast.success("Foto subida: escribile el pie entre los corchetes")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo subir la foto")
+    } finally {
+      setSubiendoFoto(false)
+      if (fotoRef.current) fotoRef.current.value = ""
+    }
+  }
 
   /* ── Portada ───────────────────────────────────────────────────────────── */
 
@@ -281,6 +314,7 @@ export function NotaEditor({ id }: { id: string | null }) {
           }
         >
           <Textarea
+            ref={cuerpoRef}
             rows={26}
             value={f.cuerpo}
             maxLength={LIMITES.cuerpo}
@@ -296,9 +330,32 @@ export function NotaEditor({ id }: { id: string | null }) {
             <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[11px]">&gt; cita</code> ·{" "}
             <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[11px]">**negrita**</code> ·{" "}
             <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[11px]">[texto](url)</code> · tablas con{" "}
-            <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[11px]">| a | b |</code>. Todo lo demás
-            es un párrafo.
+            <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[11px]">| a | b |</code> ·{" "}
+            <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[11px]">![pie](url)</code> foto, varias
+            seguidas son una galería. Todo lo demás es un párrafo.
           </p>
+          <div>
+            <input
+              ref={fotoRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/avif"
+              className="hidden"
+              onChange={(e) => {
+                const archivo = e.target.files?.[0]
+                if (archivo) insertarFoto(archivo)
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={subiendoFoto}
+              onClick={() => fotoRef.current?.click()}
+            >
+              {subiendoFoto ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
+              Insertar foto donde está el cursor
+            </Button>
+          </div>
         </Seccion>
 
         <Seccion
