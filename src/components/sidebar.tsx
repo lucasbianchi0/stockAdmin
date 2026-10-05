@@ -82,7 +82,18 @@ const GRUPOS: Grupo[] = [
          revisa, después se programa. El camino anterior —los planes de 15 días
          y el Content Studio— queda fuera del menú por ahora; las páginas siguen
          enteras y se llega entrando a mano a /contenido/calendario y /contenido. */
-      { name: "Generación de contenido", href: "/contenido/generacion", available: true },
+      /* Imagen y texto son dos generadores separados a propósito: el pedido,
+         los parámetros y lo que se descarga no tienen nada en común. */
+      {
+        name: "Generación de contenido",
+        available: true,
+        hijos: [
+          { name: "Generar imagen", href: "/contenido/imagen", available: true },
+          { name: "Generar texto", href: "/contenido/texto", available: true },
+          { name: "Historial y templates", href: "/contenido/historial", available: true },
+          { name: "Banco de piezas", href: "/contenido/generacion", available: true },
+        ],
+      },
       { name: "Calendario de contenido", href: "/contenido/agenda", available: true },
     ],
   },
