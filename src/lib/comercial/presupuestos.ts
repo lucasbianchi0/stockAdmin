@@ -53,14 +53,48 @@ export const ESTADO_TONO: Record<
  *
  * Decide dos cosas: qué margen le toca por defecto y bajo qué título se lista en
  * la propuesta que recibe el cliente, que separa MANO DE OBRA de MATERIALES.
+ *
+ * Hardware, licencia y servicio los pidió Comercial: con solo tres tipos, la
+ * Wacom, los cargadores y las licencias caían en "otro", que arranca sin margen,
+ * y había que escribir la venta a mano en cada uno.
  */
-export const TIPOS_ITEM = ["material", "mano_obra", "otro"] as const
+export const TIPOS_ITEM = [
+  "material",
+  "mano_obra",
+  "hardware",
+  "licencia",
+  "servicio",
+  "otro",
+] as const
 export type TipoItem = (typeof TIPOS_ITEM)[number]
 
 export const TIPO_ITEM_LABEL: Record<TipoItem, string> = {
-  material: "Material",
+  material: "Materiales",
   mano_obra: "Mano de obra",
-  otro: "Otro",
+  hardware: "Hardware",
+  licencia: "Licencia",
+  servicio: "Servicios",
+  otro: "Otros",
+}
+
+/* ── IVA ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * Las alícuotas que se le pueden poner a un renglón. Son las dos que se usan:
+ * 21 % la general y 10,5 % la de bienes informáticos y algunos servicios. La
+ * base de datos no acepta otra, para que un 0,15 tipeado por error no salga
+ * discriminado en una propuesta.
+ */
+export const ALICUOTAS_IVA = [0.21, 0.105] as const
+export type AlicuotaIva = (typeof ALICUOTAS_IVA)[number]
+
+export const ALICUOTA_IVA_LABEL: Record<AlicuotaIva, string> = {
+  0.21: "21 %",
+  0.105: "10,5 %",
+}
+
+export function esAlicuotaIva(v: unknown): v is AlicuotaIva {
+  return ALICUOTAS_IVA.includes(Number(v) as AlicuotaIva)
 }
 
 export type ItemPresupuesto = {
@@ -74,7 +108,7 @@ export type ItemPresupuesto = {
   costoUnitario: number
   venta: number
   impPct: number
-  iva: number
+  iva: AlicuotaIva
   stock: boolean
 }
 
@@ -214,9 +248,48 @@ export function calcularTotales(items: Parameters<typeof calcularItem>[0][]): To
 }
 
 /**
+ * El IVA de la propuesta, discriminado por alícuota.
+ *
+ * Va aparte de los totales de la planilla porque no es plata de la empresa: no
+ * entra en la rentabilidad ni en el % de renta, que se siguen leyendo sobre el
+ * neto como en la Excel. Lo que sí hace es decir cuánto paga el cliente, que es
+ * lo que necesita la propuesta que sale directo.
+ *
+ * Las alícuotas sin renglones no aparecen: un "IVA 10,5 %: 0,00" en un
+ * presupuesto que no tiene nada al 10,5 es ruido.
+ */
+export type DesgloseIva = {
+  neto: number
+  alicuotas: { alicuota: AlicuotaIva; base: number; iva: number }[]
+  iva: number
+  total: number
+}
+
+export function calcularIva(
+  items: { cantidad: number; venta: number; iva: AlicuotaIva }[]
+): DesgloseIva {
+  const alicuotas = ALICUOTAS_IVA.map((alicuota) => {
+    const base = redondear(
+      items
+        .filter((i) => i.iva === alicuota)
+        .reduce((a, i) => a + redondear(i.cantidad * i.venta), 0)
+    )
+    return { alicuota, base, iva: redondear(base * alicuota) }
+  }).filter((a) => a.base !== 0)
+
+  const neto = redondear(alicuotas.reduce((a, x) => a + x.base, 0))
+  const iva = redondear(alicuotas.reduce((a, x) => a + x.iva, 0))
+  return { neto, alicuotas, iva, total: redondear(neto + iva) }
+}
+
+/**
  * El margen que le toca a un renglón según lo que es.
  *
- * "Otro" arranca en cero —no se vende— porque es lo que hace la planilla real:
+ * Hardware y licencias se revenden como un material; un servicio se cobra como
+ * la mano de obra. Es la sugerencia de arranque: si una licencia lleva otro
+ * margen, se escribe su venta y manda lo escrito.
+ *
+ * "Otros" arranca en cero —no se vende— porque es lo que hace la planilla real:
  * el flete figura con costo 30 y venta 0, o sea que la empresa lo absorbe y su
  * renglón da rentabilidad negativa a propósito. Ponerle margen 1 —venderlo al
  * costo— daría un total distinto al de la planilla que esto reemplaza.
@@ -228,9 +301,17 @@ export function margenDe(
   tipo: TipoItem,
   cabecera: { margenMateriales: number; margenManoObra: number }
 ): number {
-  if (tipo === "material") return cabecera.margenMateriales
-  if (tipo === "mano_obra") return cabecera.margenManoObra
-  return 0
+  switch (tipo) {
+    case "material":
+    case "hardware":
+    case "licencia":
+      return cabecera.margenMateriales
+    case "mano_obra":
+    case "servicio":
+      return cabecera.margenManoObra
+    case "otro":
+      return 0
+  }
 }
 
 /** La venta que el sistema propone al cargar un costo. Después se puede pisar a

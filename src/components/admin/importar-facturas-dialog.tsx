@@ -41,7 +41,7 @@ import {
 import { sumarDias } from "@/lib/admin/fecha"
 import { FILAS_MAX, esCsv } from "@/lib/admin/importar-csv"
 import { IMPACTO_VACIO, type Impacto } from "@/lib/admin/impacto"
-import { formatearImporte, parsearImporte, type Moneda } from "@/lib/admin/moneda"
+import { formatearImporte, numeroEditable, parsearImporte, type Moneda } from "@/lib/admin/moneda"
 import { cn } from "@/lib/utils"
 
 /**
@@ -132,7 +132,8 @@ type Campos = {
   condicionPago: string
 }
 
-const n = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v))
+// Con coma decimal: `String(1234.567)` se leería como 1.234.567 (ver `numeroEditable`).
+const n = (v: number | null | undefined) => numeroEditable(v)
 
 /**
  * Si la fila tiene resuelta la identidad de la contraparte.

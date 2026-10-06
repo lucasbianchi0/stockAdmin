@@ -17,6 +17,7 @@ import {
   formatearImporte,
   formatearTc,
   parsearImporte,
+  numeroEditable,
   type Moneda,
 } from "@/lib/admin/moneda"
 import { useInvalidarAdmin } from "@/lib/admin/query"
@@ -138,11 +139,11 @@ export function MovimientoDialog({
       /* El importe vuelve como se cargó y no como quedó guardado: un gasto
          tipeado en dólares sobre la cuenta en pesos se guarda convertido, pero
          lo que hay que poder corregir es el número que alguien escribió. */
-      setImporte(String(edicion.importeOrigen ?? edicion.importe))
+      setImporte(numeroEditable(edicion.importeOrigen ?? edicion.importe))
       setImporteDestino("")
       setMoneda(edicion.monedaOrigen ?? edicion.moneda)
       setMonedaDestino("ARS")
-      setTc(edicion.tc === null ? "" : String(edicion.tc))
+      setTc(edicion.tc === null ? "" : numeroEditable(edicion.tc))
       setCategoria(edicion.categoria ?? "otros")
       setCuentaContableId(edicion.cuentaContableId ?? "")
       setReferencia(edicion.referencia ?? "")
@@ -192,7 +193,7 @@ export function MovimientoDialog({
 
   useEffect(() => {
     const necesitaTc = moneda === "USD" || monedaDestino === "USD"
-    if (necesitaTc && !tc && cotizacion.venta) setTc(String(cotizacion.venta))
+    if (necesitaTc && !tc && cotizacion.venta) setTc(numeroEditable(cotizacion.venta))
   }, [moneda, monedaDestino, tc, cotizacion.venta])
 
   if (!modo && !edicion) return null

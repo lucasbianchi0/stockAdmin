@@ -8,6 +8,7 @@ import {
   ESTADO_LABEL,
   TIPOS_ITEM,
   calcularTotales,
+  esAlicuotaIva,
   type EstadoPresupuesto,
   type ItemPresupuesto,
   type Presupuesto,
@@ -50,7 +51,7 @@ function aItem(f: FilaItem): ItemPresupuesto {
     costoUnitario: num(f.costo_unitario),
     venta: num(f.venta_unitaria),
     impPct: num(f.imp_pct),
-    iva: num(f.iva, 0.21),
+    iva: esAlicuotaIva(f.iva) ? (Number(f.iva) as ItemPresupuesto["iva"]) : 0.21,
     stock: f.stock !== false,
   }
 }
@@ -334,7 +335,9 @@ export async function guardarPresupuesto(req: Request, id: string) {
           costo_unitario: redondear(num(i.costoUnitario), 4),
           venta_unitaria: redondear(num(i.venta), 4),
           imp_pct: redondear(num(i.impPct), 4),
-          iva: redondear(num(i.iva, 0.21), 4),
+          // Solo las alícuotas que existen: la base las rechaza igual, pero
+          // acá se resuelve sin que el guardado entero falle por un renglón.
+          iva: esAlicuotaIva(i.iva) ? Number(i.iva) : 0.21,
           stock: i.stock !== false,
         }
       })

@@ -28,6 +28,7 @@ import {
   formatearTc,
   parsearImporte,
   redondear,
+  numeroEditable,
   type Moneda,
 } from "@/lib/admin/moneda"
 import { sumarDias } from "@/lib/admin/fecha"
@@ -172,7 +173,7 @@ function aBorrador(c: Comprobante): Borrador {
     numeroCompleto: formatearNumero(c.puntoVenta, c.numero).replace("—", ""),
     detalle: c.detalle ?? "",
     moneda: c.moneda,
-    tc: c.moneda === "USD" ? String(c.tc) : "",
+    tc: c.moneda === "USD" ? numeroEditable(c.tc) : "",
     netos,
     noGravado: String(c.noGravado || ""),
     cuentaNoGravadoId: c.cuentaNoGravadoId ?? "",
@@ -317,7 +318,7 @@ export function ComprobanteDialog({
   // equivocado.
   useEffect(() => {
     if (f.moneda === "USD" && !f.tc && cotizacion.venta) {
-      set("tc", String(cotizacion.venta))
+      set("tc", numeroEditable(cotizacion.venta))
     }
   }, [f.moneda, f.tc, cotizacion.venta])
 
@@ -617,7 +618,7 @@ export function ComprobanteDialog({
                       variant="outline"
                       size="sm"
                       type="button"
-                      onClick={() => set("tc", String(cotizacion.venta))}
+                      onClick={() => set("tc", numeroEditable(cotizacion.venta))}
                       disabled={guardando}
                       title="Usar la cotización de hoy"
                     >
@@ -700,7 +701,7 @@ export function ComprobanteDialog({
                   >
                     <CampoMoneda
                       id={`iva-${i}`}
-                      valor={r.ivaPisado ? r.ivaManual : calc ? String(calc) : ""}
+                      valor={r.ivaPisado ? r.ivaManual : calc ? numeroEditable(calc) : ""}
                       onChange={(v) => cambiar({ ivaManual: v, ivaPisado: true })}
                       moneda={f.moneda}
                       tc={tc}

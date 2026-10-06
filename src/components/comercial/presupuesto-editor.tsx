@@ -13,18 +13,28 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ErrorState, LoadingState } from "@/components/ui/states"
 import { Textarea } from "@/components/ui/textarea"
-import { MONEDAS, NOMBRE_MONEDA, formatearImporte, parsearImporte } from "@/lib/admin/moneda"
+import {
+  MONEDAS,
+  NOMBRE_MONEDA,
+  formatearImporte,
+  numeroEditable,
+  parsearImporte,
+} from "@/lib/admin/moneda"
 import type { Moneda } from "@/lib/admin/moneda"
 import { claves, mensajeError, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import {
+  ALICUOTAS_IVA,
+  ALICUOTA_IVA_LABEL,
   ESTADOS,
   ESTADO_LABEL,
   ESTADO_TONO,
   TIPOS_ITEM,
   TIPO_ITEM_LABEL,
   calcularItem,
+  calcularIva,
   calcularTotales,
   ventaSugerida,
+  type AlicuotaIva,
   type EstadoPresupuesto,
   type Presupuesto,
   type TipoItem,
@@ -48,6 +58,18 @@ import { cn } from "@/lib/utils"
  * La venta se propone como costo × margen y queda editable. Si alguien la pisa,
  * manda lo escrito: el pedido lo dice con todas las letras, y hay renglones —el
  * flete que se absorbe— donde la cuenta automática no es la que se quiere.
+ *
+ * `IVA` es la alícuota del renglón. No toca ninguna cuenta de la planilla —la
+ * rentabilidad se lee sobre el neto, como en la Excel—; lo que hace es que la
+ * propuesta salga con el IVA discriminado al 10,5 y al 21.
+ *
+ * LOS NÚMEROS DENTRO DE LOS CAMPOS
+ *
+ * Siempre con coma decimal y sin punto de miles (`numeroEditable`), y se
+ * reescriben así al salir de cada celda. Cargar `String(70.7544)` = "70.7544"
+ * hacía que el parser leyera 707.544 al reabrir el presupuesto; y normalizar al
+ * salir muestra en el momento cómo se entendió lo tipeado: quien escribe
+ * "70.754" ve aparecer "70754" antes de guardar, no después.
  */
 
 type Renglon = {
@@ -62,6 +84,7 @@ type Renglon = {
   /** La venta se recalcula sola hasta que alguien la escribe. A partir de ahí
    *  manda el número escrito, aunque después cambie el costo. */
   ventaPisada: boolean
+  iva: AlicuotaIva
   stock: boolean
 }
 
@@ -75,11 +98,12 @@ const RENGLON_VACIO = (): Renglon => ({
   costoUnitario: "",
   venta: "",
   ventaPisada: false,
+  iva: 0.21,
   stock: true,
 })
 
 const pct = (v: string): number => (parsearImporte(v) ?? 0) / 100
-const aPct = (v: number): string => String(Math.round(v * 10000) / 100)
+const aPct = (v: number): string => numeroEditable(Math.round(v * 10000) / 100, 2)
 
 export function PresupuestoEditor({ id }: { id: string }) {
   const router = useRouter()
@@ -116,8 +140,8 @@ export function PresupuestoEditor({ id }: { id: string }) {
   const [estado, setEstado] = useState<EstadoPresupuesto>("borrador")
   const [vendedorId, setVendedorId] = useState("")
   const [breakPct, setBreakPct] = useState("10")
-  const [margenMateriales, setMargenMateriales] = useState("1.7")
-  const [margenManoObra, setMargenManoObra] = useState("1.7")
+  const [margenMateriales, setMargenMateriales] = useState("1,7")
+  const [margenManoObra, setMargenManoObra] = useState("1,7")
   const [observaciones, setObservaciones] = useState("")
   const [renglones, setRenglones] = useState<Renglon[]>([])
   const [guardando, setGuardando] = useState(false)
@@ -132,25 +156,26 @@ export function PresupuestoEditor({ id }: { id: string }) {
     setFecha(p.fecha)
     setFechaValidez(p.fechaValidez ?? "")
     setMoneda(p.moneda)
-    setTc(p.tc ? String(p.tc) : "")
+    setTc(p.tc ? numeroEditable(p.tc) : "")
     setEstado(p.estado)
     setVendedorId(p.vendedorId ?? "")
     setBreakPct(aPct(p.breakPct))
-    setMargenMateriales(String(p.margenMateriales))
-    setMargenManoObra(String(p.margenManoObra))
+    setMargenMateriales(numeroEditable(p.margenMateriales))
+    setMargenManoObra(numeroEditable(p.margenManoObra))
     setObservaciones(p.observaciones ?? "")
     setRenglones(
       p.items.map((i) => ({
         key: i.id,
         proveedor: i.proveedor ?? "",
         parte: i.parte ?? "",
-        cantidad: String(i.cantidad),
+        cantidad: numeroEditable(i.cantidad),
         descripcion: i.descripcion,
         tipo: i.tipo,
-        costoUnitario: String(i.costoUnitario),
-        venta: String(i.venta),
+        costoUnitario: numeroEditable(i.costoUnitario),
+        venta: numeroEditable(i.venta),
         // Lo guardado ya es una decisión tomada: no se recalcula solo.
         ventaPisada: true,
+        iva: i.iva,
         stock: i.stock,
       }))
     )
@@ -195,6 +220,11 @@ export function PresupuestoEditor({ id }: { id: string }) {
 
   const totales = useMemo(() => calcularTotales(calculados), [calculados])
 
+  const desgloseIva = useMemo(
+    () => calcularIva(calculados.map((c, i) => ({ ...c, iva: renglones[i].iva }))),
+    [calculados, renglones]
+  )
+
   /* ── Acciones sobre la planilla ────────────────────────────────────────── */
 
   const cambiar = (i: number, parche: Partial<Renglon>) => {
@@ -208,9 +238,35 @@ export function PresupuestoEditor({ id }: { id: string }) {
         const tocoLaBase = parche.costoUnitario !== undefined || parche.tipo !== undefined
         if (tocoLaBase && !siguiente.ventaPisada) {
           const costo = parsearImporte(siguiente.costoUnitario) ?? 0
-          siguiente.venta = costo ? String(ventaSugerida(costo, siguiente.tipo, margenes)) : ""
+          siguiente.venta = costo ? numeroEditable(ventaSugerida(costo, siguiente.tipo, margenes)) : ""
         }
         return siguiente
+      })
+    )
+  }
+
+  /*
+   * Cambiar un margen de la cabecera mueve las ventas que todavía son
+   * sugeridas. Antes solo se recalculaban al tocar el costo o el tipo, así que
+   * pasar Materiales de 1,7 a 1,8 dejaba los renglones con la venta del 1,7 sin
+   * ningún aviso. Las escritas a mano no se tocan: ahí manda la persona.
+   */
+  const cambiarMargen = (cual: "materiales" | "manoObra", valor: string) => {
+    setSucio(true)
+    if (cual === "materiales") setMargenMateriales(valor)
+    else setMargenManoObra(valor)
+
+    const leido = parsearImporte(valor)
+    if (leido === null) return
+    const nuevos = {
+      ...margenes,
+      [cual === "materiales" ? "margenMateriales" : "margenManoObra"]: leido,
+    }
+    setRenglones((prev) =>
+      prev.map((r) => {
+        if (r.ventaPisada) return r
+        const costo = parsearImporte(r.costoUnitario) ?? 0
+        return { ...r, venta: costo ? numeroEditable(ventaSugerida(costo, r.tipo, nuevos)) : "" }
       })
     )
   }
@@ -270,7 +326,7 @@ export function PresupuestoEditor({ id }: { id: string }) {
             descripcion: r.descripcion,
             tipo: r.tipo,
             stock: r.stock,
-            iva: 0.21,
+            iva: r.iva,
           })),
         }),
       })
@@ -410,8 +466,8 @@ export function PresupuestoEditor({ id }: { id: string }) {
           {/* Los tres parámetros arriba de la planilla, como en la Excel: son de
               todo el presupuesto y cambian todas las cuentas de abajo. */}
           <div className="flex flex-wrap items-center gap-3">
-            <Parametro rotulo="TC" valor={tc} onChange={setTc} ancho="w-24" />
-            <Parametro rotulo="Break %" valor={breakPct} onChange={setBreakPct} />
+            <Parametro rotulo="TC" valor={tc} onChange={(v) => { setSucio(true); setTc(v) }} ancho="w-24" />
+            <Parametro rotulo="Break %" valor={breakPct} onChange={(v) => { setSucio(true); setBreakPct(v) }} />
             {/* El margen es un multiplicador, no un porcentaje: "1,7" quiere
                 decir que se vende a 1,7 veces el costo. Se escribe como en la
                 Excel —traducirlo obligaría a comparar mentalmente cada vez— y
@@ -419,14 +475,14 @@ export function PresupuestoEditor({ id }: { id: string }) {
             <Parametro
               rotulo="Materiales"
               valor={margenMateriales}
-              onChange={setMargenMateriales}
-              ayuda="Multiplicador sobre el costo: 1,7 = se vende a 1,7 veces el costo (70 % de recargo)"
+              onChange={(v) => cambiarMargen("materiales", v)}
+              ayuda="Multiplicador sobre el costo para Materiales, Hardware y Licencias: 1,7 = se vende a 1,7 veces el costo (70 % de recargo)"
             />
             <Parametro
               rotulo="Mano de obra"
               valor={margenManoObra}
-              onChange={setMargenManoObra}
-              ayuda="Multiplicador sobre el costo: 1,7 = se vende a 1,7 veces el costo (70 % de recargo)"
+              onChange={(v) => cambiarMargen("manoObra", v)}
+              ayuda="Multiplicador sobre el costo para Mano de obra y Servicios: 1,7 = se vende a 1,7 veces el costo (70 % de recargo)"
             />
           </div>
         </div>
@@ -439,7 +495,10 @@ export function PresupuestoEditor({ id }: { id: string }) {
                 <th className="w-[90px]">P/N</th>
                 <th className="w-[62px]">Cant</th>
                 <th>Descripción</th>
-                <th className="w-[112px]">Tipo</th>
+                <th className="w-[124px]">Tipo</th>
+                <th className="w-[74px]" title="Alícuota de IVA del renglón: sale discriminada en la propuesta">
+                  IVA
+                </th>
                 <th className="w-[104px] text-right">Costo unit.</th>
                 <th className="w-[104px] text-right">Costo total</th>
                 <th className="w-[104px] text-right">Venta unit.</th>
@@ -473,7 +532,7 @@ export function PresupuestoEditor({ id }: { id: string }) {
                       <CeldaTexto
                         valor={r.cantidad}
                         onChange={(v) => cambiar(i, { cantidad: v })}
-                        alineado="text-right"
+                        numerico
                         disabled={guardando}
                       />
                     </td>
@@ -500,10 +559,30 @@ export function PresupuestoEditor({ id }: { id: string }) {
                       </select>
                     </td>
                     <td>
+                      <select
+                        value={r.iva}
+                        onChange={(e) => cambiar(i, { iva: Number(e.target.value) as AlicuotaIva })}
+                        disabled={guardando}
+                        aria-label="Alícuota de IVA"
+                        className={cn(
+                          "num h-7 w-full rounded-md border border-line bg-surface px-1.5 text-[11.5px]",
+                          // El 10,5 es la excepción: se marca para que se vea
+                          // de un vistazo qué renglones van aparte.
+                          r.iva === 0.105 ? "border-brand-300 bg-brand-50 text-brand-700" : "text-ink"
+                        )}
+                      >
+                        {ALICUOTAS_IVA.map((a) => (
+                          <option key={a} value={a}>
+                            {ALICUOTA_IVA_LABEL[a]}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
                       <CeldaTexto
                         valor={r.costoUnitario}
                         onChange={(v) => cambiar(i, { costoUnitario: v })}
-                        alineado="text-right"
+                        numerico
                         disabled={guardando}
                       />
                     </td>
@@ -514,7 +593,7 @@ export function PresupuestoEditor({ id }: { id: string }) {
                       <CeldaTexto
                         valor={r.venta}
                         onChange={(v) => cambiar(i, { venta: v, ventaPisada: true })}
-                        alineado="text-right"
+                        numerico
                         disabled={guardando}
                         // Lo que sale del margen se ve gris; lo escrito a mano,
                         // en tinta plena: la diferencia importa al revisar.
@@ -557,7 +636,7 @@ export function PresupuestoEditor({ id }: { id: string }) {
 
               {renglones.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="px-4 py-10 text-center text-[12.5px] text-ink-muted">
+                  <td colSpan={13} className="px-4 py-10 text-center text-[12.5px] text-ink-muted">
                     La planilla está vacía. Agregá el primer renglón.
                   </td>
                 </tr>
@@ -587,6 +666,23 @@ export function PresupuestoEditor({ id }: { id: string }) {
             valor={totales.venta === 0 ? "—" : `${Math.round(totales.rentaPct * 100)} %`}
             tono={totales.rentabilidad < 0 ? "danger" : undefined}
           />
+
+          {/* Lo que paga el cliente, aparte de la cuenta de la empresa: el IVA
+              no es rentabilidad, y mezclarlo en la misma fila invitaría a
+              leer el total con IVA como precio de venta. */}
+          {desgloseIva.alicuotas.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 sm:ml-auto sm:border-l sm:border-line sm:pl-6">
+              {desgloseIva.alicuotas.map((a) => (
+                <Total
+                  key={a.alicuota}
+                  rotulo={`IVA ${ALICUOTA_IVA_LABEL[a.alicuota]}`}
+                  valor={formatearImporte(a.iva, moneda)}
+                  ayuda={`Sobre ${formatearImporte(a.base, moneda)} de renglones al ${ALICUOTA_IVA_LABEL[a.alicuota]}`}
+                />
+              ))}
+              <Total rotulo="Total con IVA" valor={formatearImporte(desgloseIva.total, moneda)} fuerte />
+            </div>
+          )}
         </div>
       </section>
 
@@ -650,18 +746,30 @@ export function PresupuestoEditor({ id }: { id: string }) {
 
 /* ── Piezas ───────────────────────────────────────────────────────────────── */
 
+/**
+ * Al salir de un campo numérico, lo tipeado se reescribe como se entendió:
+ * "61.42" → "61,42", "1.234" → "1234". Si el sistema leyó otra cosa que la que
+ * la persona quiso, lo ve en ese momento y no en el total.
+ */
+function normalizarAlSalir(valor: string, onChange: (v: string) => void) {
+  const n = parsearImporte(valor)
+  if (n === null) return
+  const normalizado = numeroEditable(n)
+  if (normalizado !== valor) onChange(normalizado)
+}
+
 function CeldaTexto({
   valor,
   onChange,
   placeholder,
-  alineado,
+  numerico,
   disabled,
   className,
 }: {
   valor: string
   onChange: (v: string) => void
   placeholder?: string
-  alineado?: string
+  numerico?: boolean
   disabled?: boolean
   className?: string
 }) {
@@ -669,12 +777,14 @@ function CeldaTexto({
     <input
       value={valor}
       onChange={(e) => onChange(e.target.value)}
+      onBlur={numerico ? () => normalizarAlSalir(valor, onChange) : undefined}
+      inputMode={numerico ? "decimal" : undefined}
       placeholder={placeholder}
       disabled={disabled}
       className={cn(
         "h-7 w-full rounded-md border border-transparent bg-transparent px-1.5 text-[11.5px] text-ink",
         "transition-colors placeholder:text-ink-faint hover:border-line focus:border-brand-300 focus:bg-surface",
-        alineado === "text-right" && "num text-right",
+        numerico && "num text-right",
         className
       )}
     />
@@ -707,6 +817,7 @@ function Parametro({
       <input
         value={valor}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={() => normalizarAlSalir(valor, onChange)}
         inputMode="decimal"
         className={cn(
           "num h-7 rounded-md border border-line-strong bg-surface px-2 text-right text-[11.5px] text-ink",
@@ -722,14 +833,16 @@ function Total({
   valor,
   fuerte,
   tono,
+  ayuda,
 }: {
   rotulo: string
   valor: string
   fuerte?: boolean
   tono?: "danger"
+  ayuda?: string
 }) {
   return (
-    <div>
+    <div title={ayuda}>
       <p className="eyebrow">{rotulo}</p>
       <p
         className={cn(

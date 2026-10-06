@@ -35,6 +35,7 @@ import {
   formatearTc,
   parsearImporte,
   redondear,
+  numeroEditable,
   type Moneda,
 } from "@/lib/admin/moneda"
 import { formatearFecha } from "@/lib/admin/fecha"
@@ -229,10 +230,10 @@ export function PagoDialog({
     setCliente({ id: cobro.clienteId, razonSocial: cobro.clienteNombre ?? "" })
     setFecha(cobro.fecha)
     setMoneda(cobro.moneda)
-    setTc(cobro.tc ? String(cobro.tc) : "")
+    setTc(cobro.tc ? numeroEditable(cobro.tc) : "")
     setImputado(
       Object.fromEntries(
-        cobro.imputaciones.map((i) => [i.comprobanteId, String(i.importe)] as const)
+        cobro.imputaciones.map((i) => [i.comprobanteId, numeroEditable(i.importe)] as const)
       )
     )
     // Solo los renglones que se saldaron a un TC propio. El que canceló al TC de
@@ -241,14 +242,14 @@ export function PagoDialog({
       Object.fromEntries(
         cobro.imputaciones
           .filter((i) => i.tcAplicado !== null && i.tcAplicado !== cobro.tc)
-          .map((i) => [i.comprobanteId, String(i.tcAplicado)] as const)
+          .map((i) => [i.comprobanteId, numeroEditable(i.tcAplicado)] as const)
       )
     )
     setMedios(
       cobro.medios.length > 0
         ? cobro.medios.map((m) => ({
             cuentaId: m.cuentaId,
-            importe: String(m.importe),
+            importe: numeroEditable(m.importe),
             referencia: m.referencia ?? "",
           }))
         : [{ cuentaId: "", importe: "", referencia: "" }]
@@ -257,14 +258,14 @@ export function PagoDialog({
       cobro.retenciones.map((r) => ({
         tipo: r.tipo,
         jurisdiccion: r.jurisdiccion,
-        importe: String(r.importe),
+        importe: numeroEditable(r.importe),
         numeroCertificado: r.numeroCertificado ?? "",
       }))
     )
     setObservaciones(cobro.observaciones ?? "")
     setAplicado(
       Object.fromEntries(
-        (cobro.aplicaciones ?? []).map((a) => [a.pagoOrigenId, String(a.importe)])
+        (cobro.aplicaciones ?? []).map((a) => [a.pagoOrigenId, numeroEditable(a.importe)])
       )
     )
     cargarPendientes(cobro.clienteId, cobro.id)
@@ -291,7 +292,7 @@ export function PagoDialog({
         if (p.moneda === moneda) continue
         if (siguiente[p.id] !== undefined) continue
         if (!p.tc || p.tc <= 0) continue
-        siguiente[p.id] = String(p.tc)
+        siguiente[p.id] = numeroEditable(p.tc)
         hubo = true
       }
       return hubo ? siguiente : prev
@@ -388,7 +389,7 @@ export function PagoDialog({
   // es lo mismo que "cuando el recibo está en dólares": un cobro en pesos de una
   // factura en dólares también la necesita — es el caso del punto 5.
   useEffect(() => {
-    if (necesitaTc && !tc && cotizacion.venta) setTc(String(cotizacion.venta))
+    if (necesitaTc && !tc && cotizacion.venta) setTc(numeroEditable(cotizacion.venta))
   }, [necesitaTc, tc, cotizacion.venta])
   const hayImputaciones = Object.values(imputado).some((v) => (parsearImporte(v) ?? 0) > 0)
 
@@ -423,13 +424,13 @@ export function PagoDialog({
   /** Imputa el saldo completo de una factura. Es el gesto más frecuente con
    *  diferencia: casi todos los cobros cancelan facturas enteras. */
   const saldarTodo = (p: Pendiente) =>
-    setImputado((prev) => ({ ...prev, [p.id]: String(p.saldo) }))
+    setImputado((prev) => ({ ...prev, [p.id]: numeroEditable(p.saldo) }))
 
   /** Completa los medios de pago con lo que falta para que el recibo cierre. */
   const completarMedio = (i: number) => {
     const resto = balance.imputado - balance.retenciones - (totalMedios - (parsearImporte(medios[i].importe) ?? 0))
     if (resto <= 0) return
-    setMedios((prev) => prev.map((m, j) => (j === i ? { ...m, importe: String(resto) } : m)))
+    setMedios((prev) => prev.map((m, j) => (j === i ? { ...m, importe: numeroEditable(redondear(resto)) } : m)))
   }
 
   const guardar = async () => {
@@ -657,7 +658,7 @@ export function PagoDialog({
                   disabled={guardando}
                   onValor={(v) => setAplicado((prev) => ({ ...prev, [o.id]: v }))}
                   onTodo={() =>
-                    setAplicado((prev) => ({ ...prev, [o.id]: String(o.saldo) }))
+                    setAplicado((prev) => ({ ...prev, [o.id]: numeroEditable(o.saldo) }))
                   }
                 />
               ))}

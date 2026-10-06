@@ -151,6 +151,20 @@ export function formatearContravalor(
 }
 
 /**
+ * Un número guardado → el texto que va dentro de un campo editable: `70,7544`,
+ * `1275`, `1,7`. Es la vuelta exacta de `parsearImporte`.
+ *
+ * `String(70.7544)` da `"70.7544"`, y `parsearImporte` lee un punto con tres o
+ * más cifras detrás como separador de miles: 707.544. Así es como un presupuesto
+ * que se guardaba bien explotaba al reabrirlo (pedido de Comercial, 06-10-26).
+ * Con coma decimal y sin separador de miles no hay nada ambiguo que adivinar.
+ */
+export function numeroEditable(valor: number | null | undefined, decimales = 4): string {
+  if (valor === null || valor === undefined || !Number.isFinite(valor)) return ""
+  return valor.toLocaleString("es-AR", { useGrouping: false, maximumFractionDigits: decimales })
+}
+
+/**
  * Lo que escribe una persona → número. Acepta `1.234,56` (formato argentino),
  * `1234.56` (lo que sale de copiar de un Excel en inglés) y `1234,56`.
  *
