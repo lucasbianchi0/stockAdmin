@@ -2,7 +2,13 @@
 
 import { Fragment, useCallback, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { toast } from "sonner"
 import { claveDe } from "@/lib/admin/query"
+import {
+  ESTADOS_PEDIDO,
+  ESTADO_PEDIDO_LABEL,
+  type EstadoPedido,
+} from "@/lib/pedidos"
 import {
   Table,
   TableBody,
@@ -17,7 +23,10 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
 import { cn } from "@/lib/utils"
 import {
   AlertCircle,
+  ChevronDown,
   ChevronRight,
+  History,
+  Loader2,
   PackageOpen,
   RefreshCw,
   TriangleAlert,
@@ -36,13 +45,30 @@ interface OrderItem {
 interface Order {
   id: string
   sales_order_id: string | null
-  status: string
+  status: EstadoPedido
   environment: string
   total_usd: number | null
   error: string | null
   created_at: string
+  status_note: string | null
+  status_updated_at: string | null
+  status_updated_by_nombre: string | null
   items: OrderItem[]
 }
+
+/** El color de cada estado. Entregado es la única buena noticia; cancelado se
+ *  apaga en gris en vez de rojo, porque no es un problema: es una decisión. El
+ *  rojo queda para el error, que sí pide que alguien mire. */
+const TONO_ESTADO: Record<EstadoPedido, string> = {
+  enviado: "border-brand-300 bg-brand-50 text-brand-700",
+  confirmado: "border-warning-line bg-warning-soft text-warning-text",
+  entregado: "border-success-line bg-success-soft text-success-text",
+  cancelado: "border-line bg-surface-muted text-ink-muted",
+  error: "border-danger-line bg-danger-soft text-danger-text",
+}
+
+const fechaHora = (iso: string) =>
+  new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })
 
 function fmtUsd(n: number | null) {
   if (n === null) return "—"
@@ -88,6 +114,48 @@ export function OrdersTable() {
     void refetch()
   }, [refetch])
 
+  /*
+   * Cambiar el estado, directo y sin confirmación. Lo que cuida de un click
+   * errado en el desplegable es el "Deshacer" del aviso, que devuelve el pedido
+   * al estado que tenía.
+   */
+  const [cambiando, setCambiando] = useState<string | null>(null)
+
+  const cambiarEstado = async (order: Order, status: EstadoPedido, deshacible = true) => {
+    setCambiando(order.id)
+    try {
+      const res = await fetch(`/api/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "No se pudo cambiar el estado")
+      const anterior = order.status
+      toast.success(
+        `${order.sales_order_id ?? "Pedido"}: ${ESTADO_PEDIDO_LABEL[status].toLowerCase()}`,
+        deshacible
+          ? {
+              action: {
+                label: "Deshacer",
+                onClick: () => void cambiarEstado({ ...order, status }, anterior, false),
+              },
+            }
+          : undefined
+      )
+      await refetch()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo cambiar el estado")
+    } finally {
+      setCambiando(null)
+    }
+  }
+
+  const elegirEstado = (order: Order, status: EstadoPedido) => {
+    if (status === order.status) return
+    void cambiarEstado(order, status)
+  }
+
   const toggle = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -128,7 +196,7 @@ export function OrdersTable() {
               {orders.length} {orders.length === 1 ? "pedido" : "pedidos"}
             </p>
             <p className="mt-1 text-[11.5px] text-ink-muted">
-              La API de Distecna no expone estado de pedido — este es nuestro registro
+              Distecna no informa el estado de los pedidos: lo actualizamos nosotros desde la columna Estado
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={load} disabled={query.isFetching}>
@@ -150,7 +218,7 @@ export function OrdersTable() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-9" />
                   <TableHead className="min-w-[180px]">N° de pedido</TableHead>
-                  <TableHead className="w-[110px]">Estado</TableHead>
+                  <TableHead className="w-[150px]">Estado</TableHead>
                   <TableHead className="hidden w-[100px] sm:table-cell">Ítems</TableHead>
                   <TableHead className="w-[140px] text-right">Total</TableHead>
                   <TableHead className="hidden w-[150px] md:table-cell">Fecha</TableHead>
@@ -161,6 +229,7 @@ export function OrdersTable() {
                 {orders.map((order) => {
                   const isOpen = expanded.has(order.id)
                   const units = order.items.reduce((a, i) => a + i.quantity, 0)
+                  const cancelado = order.status === "cancelado"
 
                   return (
                     <Fragment key={order.id}>
@@ -178,7 +247,12 @@ export function OrdersTable() {
                         </TableCell>
 
                         <TableCell>
-                          <span className="font-mono text-[12.5px] font-semibold text-ink">
+                          <span
+                            className={cn(
+                              "font-mono text-[12.5px] font-semibold",
+                              cancelado ? "text-ink-muted" : "text-ink"
+                            )}
+                          >
                             {order.sales_order_id ?? "—"}
                           </span>
                           {order.environment === "qa" && (
@@ -188,11 +262,36 @@ export function OrdersTable() {
                           )}
                         </TableCell>
 
-                        <TableCell>
+                        {/* El click en el estado no despliega la fila: es otra acción. */}
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           {order.status === "error" ? (
                             <Badge tone="danger" size="sm">Error</Badge>
                           ) : (
-                            <Badge tone="success" size="sm">Enviado</Badge>
+                            <div className="relative inline-flex items-center">
+                              <select
+                                value={order.status}
+                                onChange={(e) => elegirEstado(order, e.target.value as EstadoPedido)}
+                                disabled={cambiando === order.id}
+                                aria-label={`Estado del pedido ${order.sales_order_id ?? ""}`}
+                                title="Cambiar el estado del pedido"
+                                className={cn(
+                                  "h-7 cursor-pointer appearance-none rounded-full border py-0 pl-2.5 pr-7 text-[11.5px] font-semibold transition-colors",
+                                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-wait disabled:opacity-60",
+                                  TONO_ESTADO[order.status]
+                                )}
+                              >
+                                {ESTADOS_PEDIDO.map((e) => (
+                                  <option key={e} value={e}>
+                                    {ESTADO_PEDIDO_LABEL[e]}
+                                  </option>
+                                ))}
+                              </select>
+                              {cambiando === order.id ? (
+                                <Loader2 className="pointer-events-none absolute right-2 h-3 w-3 animate-spin opacity-70" />
+                              ) : (
+                                <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 opacity-70" />
+                              )}
+                            </div>
                           )}
                         </TableCell>
 
@@ -200,15 +299,17 @@ export function OrdersTable() {
                           {order.items.length} / {units} u.
                         </TableCell>
 
-                        <TableCell className="num text-right font-mono text-[12.5px] font-semibold text-ink">
+                        <TableCell
+                          className={cn(
+                            "num text-right font-mono text-[12.5px] font-semibold",
+                            cancelado ? "text-ink-faint line-through" : "text-ink"
+                          )}
+                        >
                           {fmtUsd(order.total_usd)}
                         </TableCell>
 
                         <TableCell className="hidden text-[11.5px] text-ink-muted md:table-cell">
-                          {new Date(order.created_at).toLocaleString("es-AR", {
-                            dateStyle: "short",
-                            timeStyle: "short",
-                          })}
+                          {fechaHora(order.created_at)}
                         </TableCell>
                       </TableRow>
 
@@ -216,6 +317,24 @@ export function OrdersTable() {
                         <TableRow className="hover:bg-transparent">
                           <TableCell colSpan={6} className="bg-surface-subtle p-0">
                             <div className="space-y-3 px-5 py-4 sm:px-8">
+                              {order.status_updated_at && (
+                                <div className="flex gap-2.5 text-[12px] leading-relaxed text-ink-secondary">
+                                  <History className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-muted" />
+                                  <div>
+                                    <p>
+                                      <span className="font-semibold text-ink">
+                                        {ESTADO_PEDIDO_LABEL[order.status]}
+                                      </span>{" "}
+                                      por {order.status_updated_by_nombre ?? "alguien"} el{" "}
+                                      {fechaHora(order.status_updated_at)}
+                                    </p>
+                                    {order.status_note && (
+                                      <p className="mt-0.5 text-ink-muted">“{order.status_note}”</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
                               {order.error && (
                                 <div className="flex gap-2.5 rounded-lg border border-danger-line bg-danger-soft p-3">
                                   <AlertCircle className="mt-px h-4 w-4 shrink-0 text-danger-text" />
