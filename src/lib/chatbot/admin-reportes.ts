@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase"
 import { redondear } from "@/lib/admin/moneda"
 import { ideaDeFila } from "@/lib/banco-server"
 import { CANAL_LABEL, type Canal } from "@/lib/calendario-context"
-import { normalizeIva } from "@/lib/iva"
+import { calcPrecioMinimo } from "@/lib/precio-minimo"
 import { CATEGORIA_LABEL, MODALIDAD_LABEL, TIPO_LABEL } from "@/lib/marketing/eventos"
 import type { Acceso, Modulo } from "@/lib/permisos"
 import { citar } from "@/lib/chatbot/sanear"
@@ -672,15 +672,11 @@ async function dolarOficial(): Promise<number | null> {
   }
 }
 
-/** La misma cuenta que la tabla de Nuestros Productos: si cambia allá, cambia acá. */
-const precioMinimo = (costo: number, dolar: number, margen: number, iva: number) =>
-  costo * dolar * 1.155 * margen * (1 + normalizeIva(iva)) + 8000
-
 async function catalogoPropio(): Promise<string> {
   const [mis, ajuste, dolar] = await Promise.all([
     supabase
       .from("my_products")
-      .select("code, publication_name, published_price, publication_link")
+      .select("code, published_price, publication_link, convenio_pct")
       .order("added_at", { ascending: true })
       .limit(1000),
     supabase.from("settings").select("value").eq("key", "margen_accedra").maybeSingle(),
@@ -703,8 +699,7 @@ async function catalogoPropio(): Promise<string> {
   }
 
   const margen = parseFloat(String(ajuste.data?.value ?? "1.30")) || 1.3
-  const peso = { rojo: 0, amarillo: 1, verde: 2 } as const
-  const cuenta = { verde: 0, amarillo: 0, rojo: 0, rojoPorPrecio: 0, sinStock: 0, sinLink: 0, sinPrecio: 0 }
+  const cuenta = { bajoMinimo: 0, sinStock: 0, conConvenio: 0, sinLink: 0, sinPrecio: 0 }
 
   const filas = propias.map((r) => {
     const p = productos.get(r.code as string) ?? {}
@@ -712,30 +707,21 @@ async function catalogoPropio(): Promise<string> {
     const costo = Number(p.price) || 0
     const iva = Number(p.iva) || 0
     const publicado = r.published_price === null || r.published_price === undefined ? null : Number(r.published_price)
-    const minimo = dolar ? precioMinimo(costo, dolar, margen, iva) : null
+    const convenio = r.convenio_pct === null || r.convenio_pct === undefined ? null : Number(r.convenio_pct)
+    // La misma cuenta que la tabla de Nuestros Productos, del mismo lugar.
+    const minimo = dolar ? calcPrecioMinimo({ costo, dolar, margen, iva, convenioPct: convenio }) : null
 
-    let color: keyof typeof peso
-    let causa: string
-    if (publicado !== null && minimo !== null && publicado <= minimo) {
-      color = "rojo"
-      causa = "precio publicado igual o menor al mínimo"
-      cuenta.rojoPorPrecio++
-    } else if (stock >= 30) {
-      color = "verde"
-      causa = "stock de 30 o más"
-    } else if (stock >= 10) {
-      color = "amarillo"
-      causa = `stock ${stock}, entre 10 y 29`
-    } else {
-      color = "rojo"
-      causa = stock > 0 ? `stock ${stock}, entre 1 y 9` : "sin stock"
-    }
-    cuenta[color]++
+    // Lo que hay que mirar primero: publicaciones que no cubren el mínimo,
+    // después las que no tienen stock. Ya no hay semáforo en la pantalla.
+    const bajoMinimo = publicado !== null && minimo !== null && publicado <= minimo
+    const urgencia = bajoMinimo ? 0 : stock <= 0 ? 1 : 2
+    if (bajoMinimo) cuenta.bajoMinimo++
+    if (convenio) cuenta.conConvenio++
     if (stock <= 0) cuenta.sinStock++
     if (!r.publication_link) cuenta.sinLink++
     if (publicado === null) cuenta.sinPrecio++
 
-    const nombre = (p.name as string | null) ?? (r.publication_name as string | null) ?? (r.code as string)
+    const nombre = (p.name as string | null) ?? (r.code as string)
     // Distecna la escribe "U$S": se normaliza para que no quede un "US" suelto.
     const moneda = /^A?R?\$$|ARS|PES/i.test(String(p.currency ?? "")) ? "ARS" : "USD"
     const sobreMinimo =
@@ -744,28 +730,29 @@ async function catalogoPropio(): Promise<string> {
     const linea = [
       `- ${citar(nombre, 70)}${p.brand ? ` · ${citar(p.brand as string, 30)}` : ""}`,
       `stock ${stock}`,
-      `costo ${moneda} ${costo.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`,
+      `costo ${moneda} ${costo.toLocaleString("es-AR", { maximumFractionDigits: 2 })}` +
+        (convenio ? ` con convenio del ${convenio.toLocaleString("es-AR")}%` : ""),
       minimo !== null ? `mínimo ${importe("ARS", minimo)}` : "mínimo sin calcular",
       publicado !== null ? `publicado ${importe("ARS", publicado)}${sobreMinimo}` : "sin precio publicado",
       r.publication_link ? "con publicación" : "sin enlace de publicación",
-      `semáforo ${color} (${causa})`,
+      ...(bajoMinimo ? ["el precio publicado NO cubre el mínimo"] : []),
     ].join(" · ")
 
-    return { color, linea }
+    return { urgencia, linea }
   })
 
-  filas.sort((a, b) => peso[a.color] - peso[b.color])
+  filas.sort((a, b) => a.urgencia - b.urgencia)
   const TOPE = 60
 
   return [
     `Nuestros Productos: ${propias.length} productos.`,
-    `- Semáforo: ${cuenta.verde} verdes, ${cuenta.amarillo} amarillos, ${cuenta.rojo} rojos (${cuenta.rojoPorPrecio} por precio, el resto por stock).`,
-    `- Sin stock: ${cuenta.sinStock}. Sin precio publicado: ${cuenta.sinPrecio}. Sin enlace de publicación: ${cuenta.sinLink}.`,
+    `- Precio publicado que no cubre el mínimo: ${cuenta.bajoMinimo}. Sin stock: ${cuenta.sinStock}. Con convenio: ${cuenta.conConvenio}.`,
+    `- Sin precio publicado: ${cuenta.sinPrecio}. Sin enlace de publicación: ${cuenta.sinLink}.`,
     dolar
-      ? `- Precio mínimo = ((costo × dólar oficial ${importe("ARS", dolar)}) × 1,155 × margen ${margen.toLocaleString("es-AR")} × (1 + IVA)) + $ 8.000 de envío.`
-      : "- No pude leer el dólar oficial: el precio mínimo no está calculado y el semáforo sólo mira el stock.",
+      ? `- Precio mínimo = ((costo × (1 − convenio) × dólar oficial ${importe("ARS", dolar)}) × 1,155 × margen ${margen.toLocaleString("es-AR")} × (1 + IVA)) + $ 8.000 de envío. El convenio es un % de descuento sobre el costo que se carga por producto; sin convenio, el costo es el de lista de Distecna.`
+      : "- No pude leer el dólar oficial: el precio mínimo no está calculado.",
     "",
-    `Por producto, los rojos primero${filas.length > TOPE ? ` (los primeros ${TOPE})` : ""}:`,
+    `Por producto, primero los que no cubren el mínimo y después los sin stock${filas.length > TOPE ? ` (los primeros ${TOPE})` : ""}:`,
     ...filas.slice(0, TOPE).map((f) => f.linea),
     "",
     "- Detalle y edición: /mis-productos",

@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge, Dot } from "@/components/ui/badge"
+import { Badge } from "@/components/ui/badge"
 import { StatCard } from "@/components/ui/stat-card"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
 import {
@@ -21,7 +21,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { toast } from "sonner"
 import { formatIva, normalizeIva } from "@/lib/iva"
+import { numeroEditable, parsearImporte } from "@/lib/admin/moneda"
+import { COEFICIENTE_FIJO, ENVIO_FIJO, calcPrecioMinimo, costoConConvenio } from "@/lib/precio-minimo"
 import { cn } from "@/lib/utils"
 import {
   OrderDialog,
@@ -39,6 +42,7 @@ import {
   DollarSign,
   PackageOpen,
   Check,
+  Copy,
   ShoppingCart,
   X,
   Plus,
@@ -53,46 +57,14 @@ interface MyProduct {
   currency: string
   sku: string
   iva: number
-  publication_name: string | null
   published_price: number | null
   publication_link: string | null
+  /** % de descuento sobre el costo por convenio con la marca. Nulo = sin convenio. */
+  convenio_pct: number | null
   added_at: string
 }
 
-type EditableField = "publication_name" | "published_price" | "publication_link"
-type SemaforoColor = "verde" | "amarillo" | "rojo"
-
-function calcPrecioMinimo(
-  costo: number,
-  dolar: number,
-  margen: number,
-  iva: number
-): number {
-  return ((costo * dolar) * 1.155 * margen * (1 + normalizeIva(iva))) + 8000
-}
-
-function getSemaforo(
-  stock: number,
-  publishedPrice: number | null,
-  minPrice: number
-): SemaforoColor {
-  if (publishedPrice !== null && publishedPrice <= minPrice) return "rojo"
-  if (stock >= 30) return "verde"
-  if (stock >= 10) return "amarillo"
-  return "rojo"
-}
-
-function getSemaforoDetail(
-  stock: number,
-  publishedPrice: number | null,
-  minPrice: number
-): string {
-  if (publishedPrice !== null && publishedPrice <= minPrice) return "Precio ≤ mínimo"
-  if (stock >= 30) return "Stock ≥ 30"
-  if (stock >= 10) return `Stock ${stock} (10–29)`
-  if (stock > 0) return `Stock ${stock} (1–9)`
-  return "Sin stock"
-}
+type EditableField = "published_price" | "publication_link" | "convenio_pct"
 
 function formatARS(value: number): string {
   return `$ ${value.toLocaleString("es-AR", {
@@ -107,35 +79,6 @@ function StockBadge({ stock }: { stock: number }) {
   return <Badge tone="success" size="sm" className="num">{stock}</Badge>
 }
 
-/**
- * Semáforo: punto de color + etiqueta + causa. El punto solo no alcanza —
- * "rojo" puede venir de precio bajo o de falta de stock, y son dos acciones
- * distintas. Y el color solo tampoco es accesible.
- */
-function SemaforoBadge({ color, detail }: { color: SemaforoColor; detail: string }) {
-  const tone = { verde: "success", amarillo: "warning", rojo: "danger" } as const
-  const label = { verde: "Verde", amarillo: "Amarillo", rojo: "Rojo" }
-
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="flex items-center gap-1.5">
-        <Dot tone={tone[color]} />
-        <span
-          className={cn(
-            "text-[11.5px] font-semibold",
-            color === "verde" && "text-success-text",
-            color === "amarillo" && "text-warning-text",
-            color === "rojo" && "text-danger-text"
-          )}
-        >
-          {label[color]}
-        </span>
-      </span>
-      <span className="text-[10.5px] leading-none text-ink-muted">{detail}</span>
-    </div>
-  )
-}
-
 function fmtNum(value: number, decimals = 0): string {
   return value.toLocaleString("es-AR", {
     minimumFractionDigits: decimals,
@@ -145,6 +88,7 @@ function fmtNum(value: number, decimals = 0): string {
 
 function PrecioMinimoTooltip({
   costo,
+  convenioPct,
   currency,
   dolar,
   margen,
@@ -152,6 +96,7 @@ function PrecioMinimoTooltip({
   minPrice,
 }: {
   costo: number
+  convenioPct: number | null
   currency: string
   dolar: number
   margen: number
@@ -159,6 +104,7 @@ function PrecioMinimoTooltip({
   minPrice: number
 }) {
   const ivaFactor = 1 + normalizeIva(iva)
+  const costoNeto = costoConConvenio(costo, convenioPct)
   return (
     <div className="space-y-2">
       <p className="text-[10px] font-semibold uppercase tracking-[0.11em] text-white/45">
@@ -167,20 +113,28 @@ function PrecioMinimoTooltip({
       <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-[11px] tabular-nums">
         <span className="text-white/45">Costo</span>
         <span className="text-right text-white/90">{currency} {fmtNum(costo, 2)}</span>
+        {convenioPct ? (
+          <>
+            <span className="text-white/45">Convenio</span>
+            <span className="text-right text-emerald-300">−{fmtNum(convenioPct, 2)} %</span>
+            <span className="text-white/45">Costo con convenio</span>
+            <span className="text-right text-white/90">{currency} {fmtNum(costoNeto, 2)}</span>
+          </>
+        ) : null}
         <span className="text-white/45">T/C BNA</span>
         <span className="text-right text-white/90">$ {fmtNum(dolar, 2)}</span>
         <span className="text-white/45">Coef. fijo</span>
-        <span className="text-right text-white/90">1,155</span>
+        <span className="text-right text-white/90">{fmtNum(COEFICIENTE_FIJO, 3)}</span>
         <span className="text-white/45">Margen</span>
         <span className="text-right text-white/90">{fmtNum(margen, 2)}</span>
         <span className="text-white/45">IVA</span>
         <span className="text-right text-white/90">{formatIva(iva)} (×{fmtNum(ivaFactor, 3)})</span>
         <span className="text-white/45">Envío</span>
-        <span className="text-right text-white/90">$ 8.000</span>
+        <span className="text-right text-white/90">$ {fmtNum(ENVIO_FIJO)}</span>
       </div>
       <div className="border-t border-white/10 pt-2 font-mono text-[10.5px] leading-relaxed">
         <p className="text-white/55">
-          (({fmtNum(costo, 2)} × {fmtNum(dolar, 2)}) × 1,155 × {fmtNum(margen, 2)} × {fmtNum(ivaFactor, 3)}) + 8.000
+          (({fmtNum(costoNeto, 2)} × {fmtNum(dolar, 2)}) × {fmtNum(COEFICIENTE_FIJO, 3)} × {fmtNum(margen, 2)} × {fmtNum(ivaFactor, 3)}) + {fmtNum(ENVIO_FIJO)}
         </p>
         <p className="mt-1 text-[12px] font-semibold text-emerald-300">
           = {formatARS(minPrice)}
@@ -190,11 +144,100 @@ function PrecioMinimoTooltip({
   )
 }
 
+/**
+ * Copiar al portapapeles con confirmación en el lugar: el ícono pasa a tilde un
+ * momento. El toast confirma también a quien no estaba mirando el botón.
+ */
+function BotonCopiar({ texto, que }: { texto: string; que: string }) {
+  const [copiado, setCopiado] = useState(false)
+
+  const copiar = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(texto)
+      setCopiado(true)
+      toast.success(`${que} copiado`)
+      setTimeout(() => setCopiado(false), 1500)
+    } catch {
+      toast.error("No se pudo copiar: el navegador no dio permiso")
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copiar}
+      aria-label={`Copiar ${que.toLowerCase()}`}
+      title={`Copiar ${que.toLowerCase()}`}
+      className={cn(
+        "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
+        copiado
+          ? "text-success-text"
+          : "text-ink-faint hover:bg-brand-50 hover:text-brand-700 focus-visible:text-brand-700"
+      )}
+    >
+      {copiado ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  )
+}
+
+/**
+ * El nombre del producto, entero.
+ *
+ * Los nombres de Distecna rondan los 60 caracteres y llegan a 90: en una línea
+ * se leía la mitad. Ahora ocupa hasta dos, y el tooltip lo muestra completo con
+ * marca, código y SKU, para cuando hay que buscarlo o pegarlo en otro lado.
+ */
+function NombreProducto({ product }: { product: MyProduct }) {
+  const nombre = product.name ?? product.code
+  return (
+    <div className="min-w-0">
+      <div className="flex items-start gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              tabIndex={0}
+              className="line-clamp-2 cursor-default rounded-sm text-[13px] font-medium leading-snug text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            >
+              {nombre}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="start" className="max-w-[380px]">
+            <p className="text-[12.5px] font-medium leading-snug text-white">{nombre}</p>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px]">
+              {product.brand && (
+                <>
+                  <dt className="text-white/45">Marca</dt>
+                  <dd className="text-white/85">{product.brand}</dd>
+                </>
+              )}
+              <dt className="text-white/45">Código</dt>
+              <dd className="font-mono text-white/85">{product.code}</dd>
+              {product.sku && (
+                <>
+                  <dt className="text-white/45">SKU</dt>
+                  <dd className="font-mono text-white/85">{product.sku}</dd>
+                </>
+              )}
+            </dl>
+          </TooltipContent>
+        </Tooltip>
+        <BotonCopiar texto={nombre} que="Nombre" />
+      </div>
+      <p className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-ink-muted">
+        {product.brand && <span className="truncate">{product.brand}</span>}
+        {product.brand && <span className="text-ink-faint">·</span>}
+        <span className="truncate font-mono">{product.code}</span>
+      </p>
+    </div>
+  )
+}
+
 /** Celda editable in-place: en reposo se lee como texto, al hover insinúa que
  *  se puede tocar. Un input visible por fila convertiría la tabla en formulario. */
 function CeldaEditableVacia({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-ink-faint transition-colors group-hover:text-brand-600">
+    <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11.5px] font-medium text-ink-faint transition-colors group-hover:text-brand-600">
       <Plus className="h-3 w-3" />
       {label}
     </span>
@@ -322,7 +365,11 @@ export function MisProductosTable() {
 
   const startEdit = useCallback(
     (code: string, field: EditableField, current: string | number | null) => {
-      setEditingCell({ code, field, value: String(current ?? "") })
+      setEditingCell({
+        code,
+        field,
+        value: typeof current === "number" && field === "convenio_pct" ? numeroEditable(current) : String(current ?? ""),
+      })
     },
     []
   )
@@ -336,20 +383,42 @@ export function MisProductosTable() {
     if (field === "published_price") {
       const num = parseFloat(value)
       payload[field] = isNaN(num) ? null : num
+    } else if (field === "convenio_pct") {
+      // Vacío o 0 = sin convenio. Se acepta "20", "20 %" y "12,5".
+      const num = parsearImporte(value.replace("%", ""))
+      if (num !== null && (num < 0 || num >= 100)) {
+        toast.error("El convenio tiene que ser un porcentaje entre 0 y 100")
+        return
+      }
+      payload[field] = num ? num : null
     } else {
       payload[field] = value.trim() || null
     }
 
+    // Se muestra al instante y se deshace si el servidor no lo guarda: un
+    // convenio que parece cargado y no está cambia el precio mínimo en silencio.
+    const anterior = products.find((p) => p.code === code)
     setProducts((prev) =>
       prev.map((p) => (p.code === code ? { ...p, ...payload } : p))
     )
 
-    await fetch(`/api/my-products/${encodeURIComponent(code)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-  }, [editingCell])
+    try {
+      const res = await fetch(`/api/my-products/${encodeURIComponent(code)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? "No se pudo guardar")
+      }
+    } catch (e) {
+      if (anterior) {
+        setProducts((prev) => prev.map((p) => (p.code === code ? anterior : p)))
+      }
+      toast.error(e instanceof Error ? e.message : "No se pudo guardar")
+    }
+  }, [editingCell, products])
 
   const handleDelete = useCallback(async (code: string) => {
     setDeletingCode(null)
@@ -364,7 +433,7 @@ export function MisProductosTable() {
     .filter((p) => selected.has(p.code))
     .map((p) => ({
       code: p.code,
-      name: p.publication_name ?? p.name,
+      name: p.name,
       quantity: selected.get(p.code) ?? 1,
       price: p.price ?? 0,
       currency: p.currency,
@@ -446,7 +515,7 @@ export function MisProductosTable() {
               {products.length} {products.length === 1 ? "producto" : "productos"}
             </p>
             <p className="mt-1 truncate font-mono text-[10.5px] text-ink-muted">
-              Precio mínimo = ((Costo × T/C BNA) × 1,155 × Margen × (1 + IVA)) + $8.000
+              Precio mínimo = ((Costo × (1 − Convenio) × T/C BNA) × 1,155 × Margen × (1 + IVA)) + $8.000
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={fetchAll}>
@@ -470,10 +539,11 @@ export function MisProductosTable() {
             }
           />
         ) : (
+          <TooltipProvider delayDuration={250}>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="hover:bg-transparent">
+                <TableRow className="hover:bg-transparent [&_th]:whitespace-nowrap">
                   <TableHead className="w-10 text-center">
                     <input
                       type="checkbox"
@@ -496,14 +566,19 @@ export function MisProductosTable() {
                   </TableHead>
                   <TableHead className="w-9 text-center">N°</TableHead>
                   <TableHead className="w-[100px]">Cantidad</TableHead>
-                  <TableHead className="min-w-[230px]">Publicación</TableHead>
+                  <TableHead className="min-w-[300px]">Producto</TableHead>
                   <TableHead className="w-[85px]">Stock</TableHead>
-                  <TableHead className="w-[125px] text-right">Costo</TableHead>
-                  <TableHead className="w-[70px] text-right">IVA</TableHead>
-                  <TableHead className="hidden w-[130px] md:table-cell">SKU</TableHead>
-                  <TableHead className="w-[160px] text-right">Precio mínimo</TableHead>
-                  <TableHead className="w-[150px] text-right">Precio publicado</TableHead>
-                  <TableHead className="w-[125px]">Semáforo</TableHead>
+                  <TableHead className="min-w-[160px] text-right">Costo</TableHead>
+                  <TableHead
+                    className="w-[96px] text-right"
+                    title="% de descuento sobre el costo por convenio con la marca. Entra en el precio mínimo."
+                  >
+                    Convenio
+                  </TableHead>
+                  <TableHead className="min-w-[70px] text-right">IVA</TableHead>
+                  <TableHead className="hidden min-w-[150px] md:table-cell">SKU</TableHead>
+                  <TableHead className="min-w-[150px] text-right">Precio mínimo</TableHead>
+                  <TableHead className="min-w-[150px] text-right">Precio publicado</TableHead>
                   <TableHead className="hidden min-w-[160px] lg:table-cell">Link</TableHead>
                   <TableHead className="w-[112px] text-right">Acciones</TableHead>
                 </TableRow>
@@ -513,20 +588,24 @@ export function MisProductosTable() {
                 {products.map((product, idx) => {
                   const minPrice =
                     dolarNum > 0
-                      ? calcPrecioMinimo(product.price, dolarNum, margenNum, product.iva)
+                      ? calcPrecioMinimo({
+                          costo: product.price,
+                          dolar: dolarNum,
+                          margen: margenNum,
+                          iva: product.iva,
+                          convenioPct: product.convenio_pct,
+                        })
                       : null
-                  const semaforo =
-                    minPrice !== null
-                      ? getSemaforo(product.stock, product.published_price, minPrice)
-                      : null
-                  const semaforoDetail =
-                    minPrice !== null
-                      ? getSemaforoDetail(product.stock, product.published_price, minPrice)
-                      : null
+                  // Lo único que el semáforo decía y la columna Stock no: que la
+                  // publicación está a un precio que no cubre el mínimo.
+                  const bajoMinimo =
+                    minPrice !== null &&
+                    product.published_price !== null &&
+                    product.published_price <= minPrice
 
-                  const isEditingPub =
+                  const isEditingConvenio =
                     editingCell?.code === product.code &&
-                    editingCell.field === "publication_name"
+                    editingCell.field === "convenio_pct"
                   const isEditingPrice =
                     editingCell?.code === product.code &&
                     editingCell.field === "published_price"
@@ -581,70 +660,83 @@ export function MisProductosTable() {
                         )}
                       </TableCell>
 
-                      {/* Publicación */}
-                      <TableCell className="max-w-[230px]">
-                        {isEditingPub ? (
-                          <Input
-                            autoFocus
-                            value={editingCell.value}
-                            onChange={(e) =>
-                              setEditingCell((c) => (c ? { ...c, value: e.target.value } : null))
-                            }
-                            onBlur={() => setTimeout(commitEdit, 150)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") commitEdit()
-                              if (e.key === "Escape") setEditingCell(null)
-                            }}
-                            className="h-7"
-                            placeholder="Nombre de publicación…"
-                          />
-                        ) : (
-                          <div
-                            className="group -mx-1.5 cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-brand-50"
-                            onClick={() =>
-                              startEdit(product.code, "publication_name", product.publication_name)
-                            }
-                          >
-                            {product.publication_name ? (
-                              <span className="block truncate text-[13px] font-medium text-ink transition-colors group-hover:text-brand-700">
-                                {product.publication_name}
-                              </span>
-                            ) : (
-                              <>
-                                <span className="block truncate text-[13px] font-medium text-ink-secondary">
-                                  {product.name ?? product.code}
-                                </span>
-                                {product.brand && (
-                                  <span className="block truncate text-[11px] text-ink-muted">
-                                    {product.brand}
-                                  </span>
-                                )}
-                                <CeldaEditableVacia label="Agregar nombre de publicación" />
-                              </>
-                            )}
-                          </div>
-                        )}
+                      <TableCell className="max-w-[340px]">
+                        <NombreProducto product={product} />
                       </TableCell>
 
                       <TableCell>
                         <StockBadge stock={product.stock} />
                       </TableCell>
 
-                      {/* Costo — el dato de entrada del cálculo, en tinta secundaria */}
-                      <TableCell className="num text-right font-mono text-[12.5px] font-medium text-ink-secondary">
-                        {product.currency}{" "}
-                        {product.price?.toLocaleString("es-AR", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+                      {/* Costo — el dato de entrada del cálculo, en tinta secundaria.
+                          Con convenio se ve el costo que entra en la cuenta y,
+                          tachado abajo, el de lista de Distecna. */}
+                      <TableCell className="num text-right font-mono text-[12.5px] font-medium whitespace-nowrap text-ink-secondary">
+                        {product.convenio_pct ? (
+                          <>
+                            <span className="block text-ink">
+                              {product.currency}{" "}
+                              {fmtNum(costoConConvenio(product.price, product.convenio_pct), 2)}
+                            </span>
+                            <span className="block text-[10.5px] font-normal text-ink-faint line-through">
+                              {product.currency} {fmtNum(product.price, 2)}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            {product.currency} {fmtNum(product.price ?? 0, 2)}
+                          </>
+                        )}
                       </TableCell>
 
-                      <TableCell className="num text-right font-mono text-[12px] text-ink-muted">
+                      {/* Convenio */}
+                      <TableCell className="text-right">
+                        {isEditingConvenio ? (
+                          <div className="relative">
+                            <Input
+                              autoFocus
+                              value={editingCell.value}
+                              onChange={(e) =>
+                                setEditingCell((c) => (c ? { ...c, value: e.target.value } : null))
+                              }
+                              onBlur={() => setTimeout(commitEdit, 150)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") commitEdit()
+                                if (e.key === "Escape") setEditingCell(null)
+                              }}
+                              inputMode="decimal"
+                              className="num h-7 w-full pr-6 text-right"
+                              placeholder="0"
+                              aria-label={`Convenio de ${product.name ?? product.code}`}
+                            />
+                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-ink-muted">
+                              %
+                            </span>
+                          </div>
+                        ) : (
+                          <div
+                            className="group -mx-1.5 cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-brand-50"
+                            onClick={() =>
+                              startEdit(product.code, "convenio_pct", product.convenio_pct)
+                            }
+                          >
+                            {product.convenio_pct ? (
+                              <Badge tone="success" size="sm" className="num">
+                                −{product.convenio_pct.toLocaleString("es-AR", { maximumFractionDigits: 2 })} %
+                              </Badge>
+                            ) : (
+                              <CeldaEditableVacia label="Agregar" />
+                            )}
+                          </div>
+                        )}
+                      </TableCell>
+
+                      <TableCell className="num whitespace-nowrap text-right font-mono text-[12px] text-ink-muted">
                         {formatIva(product.iva)}
                       </TableCell>
 
                       <TableCell className="hidden md:table-cell">
-                        <span className="font-mono text-[11.5px] text-ink-muted">
+                        <span className="whitespace-nowrap font-mono text-[11.5px] text-ink-muted">
                           {product.sku || "—"}
                         </span>
                       </TableCell>
@@ -655,13 +747,14 @@ export function MisProductosTable() {
                           <TooltipProvider delayDuration={150}>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="num cursor-help border-b border-dashed border-ink-faint font-mono text-[12.5px] font-semibold text-ink">
+                                <span className="num cursor-help whitespace-nowrap border-b border-dashed border-ink-faint font-mono text-[12.5px] font-semibold text-ink">
                                   {formatARS(minPrice)}
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent side="left" align="center" className="max-w-none">
                                 <PrecioMinimoTooltip
                                   costo={product.price}
+                                  convenioPct={product.convenio_pct}
                                   currency={product.currency}
                                   dolar={dolarNum}
                                   margen={margenNum}
@@ -702,21 +795,27 @@ export function MisProductosTable() {
                             }
                           >
                             {product.published_price !== null ? (
-                              <span className="num font-mono text-[12.5px] font-semibold text-ink transition-colors group-hover:text-brand-700">
-                                {formatARS(product.published_price)}
-                              </span>
+                              <>
+                                <span
+                                  className={cn(
+                                    "num block whitespace-nowrap font-mono text-[12.5px] font-semibold transition-colors",
+                                    bajoMinimo
+                                      ? "text-danger-text"
+                                      : "text-ink group-hover:text-brand-700"
+                                  )}
+                                >
+                                  {formatARS(product.published_price)}
+                                </span>
+                                {bajoMinimo && (
+                                  <span className="mt-0.5 block whitespace-nowrap text-[10.5px] font-medium leading-none text-danger-text">
+                                    No cubre el mínimo
+                                  </span>
+                                )}
+                              </>
                             ) : (
                               <CeldaEditableVacia label="Ingresar precio" />
                             )}
                           </div>
-                        )}
-                      </TableCell>
-
-                      <TableCell>
-                        {semaforo && semaforoDetail ? (
-                          <SemaforoBadge color={semaforo} detail={semaforoDetail} />
-                        ) : (
-                          <span className="text-[11.5px] text-ink-faint">—</span>
                         )}
                       </TableCell>
 
@@ -810,6 +909,7 @@ export function MisProductosTable() {
               </TableBody>
             </Table>
           </div>
+          </TooltipProvider>
         )}
       </div>
 

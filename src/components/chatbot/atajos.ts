@@ -27,7 +27,7 @@ const POR_MODULO: Record<Modulo, Atajo[]> = {
   productos: [
     { emoji: "🧾", corto: "Pedidos", texto: "¿Cómo vienen los pedidos a Distecna del último mes?" },
     { emoji: "📦", corto: "Inventario", texto: "¿Qué muestra el inventario y cómo encuentro un producto?" },
-    { emoji: "⭐", corto: "Nuestros productos", texto: "¿Para qué sirve Nuestros Productos y qué significa el semáforo?" },
+    { emoji: "⭐", corto: "Nuestros productos", texto: "¿Para qué sirve Nuestros Productos y cómo se calcula el precio mínimo?" },
     { emoji: "🛒", corto: "Hacer un pedido", texto: "¿Desde dónde se genera un pedido a Distecna?" },
     { emoji: "🏢", corto: "Datos de Accedra", texto: "Pasame los datos de la empresa: razón social, CUIT, domicilio y contacto." },
     { emoji: "🧭", corto: "Qué tengo", texto: "¿Qué pantallas tengo habilitadas y para qué sirve cada una?" },

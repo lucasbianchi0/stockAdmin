@@ -6,7 +6,7 @@ export default function MisProductosPage() {
     <main className="flex min-h-full flex-col">
       <PageHeader
         title="Nuestros Productos"
-        description="Productos seleccionados, precios mínimos y semáforo de publicación"
+        description="Productos seleccionados, costos con convenio y precios mínimos"
       />
       <PageBody>
         <MisProductosTable />

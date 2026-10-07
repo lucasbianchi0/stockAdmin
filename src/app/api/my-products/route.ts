@@ -28,9 +28,10 @@ export async function GET() {
     const products = myRows.map((r) => ({
       code: r.code,
       added_at: r.added_at,
-      publication_name: r.publication_name ?? null,
       published_price: r.published_price ?? null,
       publication_link: r.publication_link ?? null,
+      // numeric llega como texto desde PostgREST
+      convenio_pct: r.convenio_pct === null || r.convenio_pct === undefined ? null : Number(r.convenio_pct),
       name: null,
       brand: null,
       stock: 0,
