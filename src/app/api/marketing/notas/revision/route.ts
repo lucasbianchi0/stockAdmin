@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk"
+import { crearClienteClaude, hayClaveClaude } from "@/lib/anthropic"
 import { NextResponse } from "next/server"
 
 import { ruta } from "@/lib/admin/ruta"
@@ -26,7 +27,7 @@ import { ESQUEMA_REVISION, armarPedido, revisionDe } from "@/lib/marketing/notas
  * dejar pasar sin poder contar es quedarse sin techo.
  */
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const anthropic = crearClienteClaude()
 
 const LIMITE_DIA = 10
 const LIMITE_RAFAGA_SEGUNDOS = 15
@@ -44,8 +45,8 @@ export const POST = ruta("notas revision", async (req: Request) => {
   const sinPermiso = await exigirModulo("marketing")
   if (sinPermiso) return sinPermiso
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: "Falta configurar ANTHROPIC_API_KEY" }, { status: 503 })
+  if (!hayClaveClaude()) {
+    return NextResponse.json({ error: "Falta configurar OPENROUTER_API_KEY (o ANTHROPIC_API_KEY)" }, { status: 503 })
   }
 
   const supabaseUsuario = await createSupabaseServer()

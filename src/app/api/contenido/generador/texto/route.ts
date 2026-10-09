@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk"
+import { crearClienteClaude, hayClaveClaude } from "@/lib/anthropic"
 import { NextResponse } from "next/server"
 
 import { ruta } from "@/lib/admin/ruta"
@@ -8,7 +9,7 @@ import { PROMPTS, armarPrompt } from "@/lib/brand-kit"
 import { CONTEXTOS_MARCA, EXTENSIONES_TEXTO, TIPOS_TEXTO, type TextoGenerado } from "@/lib/generador"
 import { usuarioActual } from "@/lib/generador-server"
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const anthropic = crearClienteClaude()
 
 /**
  * Opus 5.5 y no Sonnet: es texto que sale publicado con la firma de la empresa,
@@ -65,8 +66,8 @@ export const POST = ruta("generador texto POST", async (req: Request) => {
   const sinPermiso = await exigirModulo("marketing")
   if (sinPermiso) return sinPermiso
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: "Falta ANTHROPIC_API_KEY" }, { status: 500 })
+  if (!hayClaveClaude()) {
+    return NextResponse.json({ error: "Falta OPENROUTER_API_KEY o ANTHROPIC_API_KEY" }, { status: 500 })
   }
 
   let raw: Record<string, unknown>

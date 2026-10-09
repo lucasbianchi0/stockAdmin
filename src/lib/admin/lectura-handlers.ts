@@ -1,3 +1,4 @@
+import { hayClaveClaude } from "@/lib/anthropic"
 import { NextResponse } from "next/server"
 
 import { supabase } from "@/lib/supabase"
@@ -28,7 +29,7 @@ import { archivoDelForm, leerDocumento } from "@/lib/admin/lectura-server"
 
 function faltaClave() {
   return NextResponse.json(
-    { error: "Falta configurar ANTHROPIC_API_KEY en el servidor" },
+    { error: "Falta configurar OPENROUTER_API_KEY (o ANTHROPIC_API_KEY) en el servidor" },
     { status: 500 }
   )
 }
@@ -36,7 +37,7 @@ function faltaClave() {
 /* ── Ficha de cliente o proveedor ─────────────────────────────────────────── */
 
 export async function leerFicha(tipo: TipoEntidad, req: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) return faltaClave()
+  if (!hayClaveClaude()) return faltaClave()
 
   const entrada = await archivoDelForm(req)
   if ("error" in entrada) return NextResponse.json({ error: entrada.error }, { status: 400 })
@@ -130,7 +131,7 @@ function peso(rol: string | null, preferido: string): number {
 /* ── Gasto de caja ────────────────────────────────────────────────────────── */
 
 export async function leerGasto(req: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) return faltaClave()
+  if (!hayClaveClaude()) return faltaClave()
 
   const entrada = await archivoDelForm(req)
   if ("error" in entrada) return NextResponse.json({ error: entrada.error }, { status: 400 })

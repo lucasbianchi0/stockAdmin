@@ -1,3 +1,4 @@
+import { hayClaveClaude } from "@/lib/anthropic"
 import { NextResponse } from "next/server"
 
 import { supabase } from "@/lib/supabase"
@@ -42,9 +43,9 @@ import {
  * a los demás: vuelve con su propio error y el resto se carga igual.
  */
 export async function importarComprobantes(tipo: TipoComprobante, req: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!hayClaveClaude()) {
     return NextResponse.json(
-      { error: "Falta configurar ANTHROPIC_API_KEY en el servidor" },
+      { error: "Falta configurar OPENROUTER_API_KEY (o ANTHROPIC_API_KEY) en el servidor" },
       { status: 500 }
     )
   }

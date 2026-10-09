@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk"
+import { crearClienteClaude } from "@/lib/anthropic"
 
 import { TAMANO_MAX_MB, tipoAceptado } from "@/lib/admin/extraccion"
 
@@ -20,7 +20,7 @@ import { TAMANO_MAX_MB, tipoAceptado } from "@/lib/admin/extraccion"
  * declaración jurada.
  */
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const anthropic = crearClienteClaude()
 
 export type Lectura<T> = { datos: T } | { error: string }
 

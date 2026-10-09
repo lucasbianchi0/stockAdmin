@@ -8,7 +8,7 @@
  * es la forma en la que este sistema siempre se rompió.
  */
 
-import Anthropic from "@anthropic-ai/sdk"
+import { crearClienteClaude } from "@/lib/anthropic"
 
 import {
   HEADLINE_MAX_CARACTERES,
@@ -23,7 +23,7 @@ import {
 } from "@/lib/placa/sistema"
 import type { Opcion } from "@/lib/calendario-context"
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const anthropic = crearClienteClaude()
 
 /**
  * Los titulares que se pasaron del presupuesto, reescritos en vez de cortados.

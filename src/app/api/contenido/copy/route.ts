@@ -1,6 +1,6 @@
 import { exigirModulo } from "@/lib/guard-api"
 import { NextResponse } from "next/server"
-import Anthropic from "@anthropic-ai/sdk"
+import { crearClienteClaude } from "@/lib/anthropic"
 import {
   ACCEDRA_BRAND_CONTEXT,
   PLATFORM_LABELS,
@@ -19,7 +19,7 @@ import {
 } from "@/lib/contenido-context"
 import { IMAGE_PROMPT_BASE } from "@/lib/contenido-context"
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const anthropic = crearClienteClaude()
 
 const VALID_IDEA_FORMATS = new Set(["imagen", "carrusel", "reel", "story", "articulo"])
 

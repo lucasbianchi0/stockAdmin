@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk"
+import { crearClienteClaude } from "@/lib/anthropic"
 import { NextResponse } from "next/server"
 
 import { exigirModulo } from "@/lib/guard-api"
@@ -33,7 +33,7 @@ import {
   esPatron,
 } from "@/lib/copy-headline"
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const anthropic = crearClienteClaude()
 
 export const maxDuration = 60
 

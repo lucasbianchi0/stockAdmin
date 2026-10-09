@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk"
+import { crearClienteClaude } from "@/lib/anthropic"
 import { NextResponse } from "next/server"
 
 import { exigirModulo } from "@/lib/guard-api"
@@ -71,7 +71,7 @@ import { TEMPLATES_FEED } from "@/lib/templates-feed"
  *   el mismo banco y se programa por el mismo camino que las del lote.
  */
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const anthropic = crearClienteClaude()
 
 /** El pedido es texto libre y viaja al prompt: tope para que no entre un libro. */
 const BRIEF_MAX = 1200

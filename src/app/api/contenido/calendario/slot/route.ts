@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk"
+import { crearClienteClaude } from "@/lib/anthropic"
 import { NextResponse } from "next/server"
 
 import { exigirModulo } from "@/lib/guard-api"
@@ -21,7 +21,7 @@ import {
 import { IMAGE_PROMPT_BASE } from "@/lib/contenido-context"
 import { aSlotsCliente } from "@/lib/calendario-server"
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const anthropic = crearClienteClaude()
 
 /** Tope del plan hobby de Vercel; con Pro esto puede volver a 90. */
 export const maxDuration = 60

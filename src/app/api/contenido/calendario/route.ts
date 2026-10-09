@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk"
+import { crearClienteClaude } from "@/lib/anthropic"
 import { NextResponse } from "next/server"
 
 import { exigirModulo } from "@/lib/guard-api"
@@ -41,7 +41,7 @@ import {
   limpiarTitular,
 } from "@/lib/copy-headline"
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const anthropic = crearClienteClaude()
 
 /**
  * Generar el plan entero es una sola llamada larga: 11 publicaciones con 3

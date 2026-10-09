@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk"
+import { crearClienteClaude, hayClaveClaude } from "@/lib/anthropic"
 import { NextResponse } from "next/server"
 
 import { createSupabaseServer } from "@/lib/supabase-server"
@@ -68,9 +69,11 @@ export const maxDuration = 60
  * de la dirección). Sonnet 5 no admite `fallbacks`: un rechazo se muestra como
  * tal. Para volver a Opus, cambiar la constante y restaurar el `fallbacks` de
  * abajo con `claude-opus-4-8`.
+ *
+ * 9/10/2026: a Sonnet 5.5, que en OpenRouter cuesta lo mismo que Sonnet 5.
  */
-const MODELO_ASISTENTE = "claude-sonnet-5"
-const MODELO_ESPECIALISTA = "claude-sonnet-5"
+const MODELO_ASISTENTE = "claude-sonnet-5-5"
+const MODELO_ESPECIALISTA = "claude-sonnet-5-5"
 /** Con herramientas, dos vueltas alcanzan (pide, contesta). La tercera es de
  *  gracia y va sin poder pedir más: sin tope, un bucle se come la cuenta. */
 const VUELTAS = 3
@@ -229,7 +232,7 @@ function etiquetaDePaso(nombres: string[]): string {
 }
 
 export async function POST(req: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!hayClaveClaude()) {
     return NextResponse.json(
       { error: "El asistente todavía no está configurado." },
       { status: 503 }
@@ -368,7 +371,7 @@ export async function POST(req: Request) {
     tickets: 0,
   }
   const vueltas = esp ? VUELTAS_ESPECIALISTA : VUELTAS
-  const client = new Anthropic()
+  const client = crearClienteClaude()
   const mensajes: Anthropic.Beta.BetaMessageParam[] = historial.map((m) => ({
     role: m.role,
     content: m.content,

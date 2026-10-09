@@ -1,9 +1,9 @@
 import { exigirModulo } from "@/lib/guard-api"
 import { NextResponse } from "next/server"
-import Anthropic from "@anthropic-ai/sdk"
+import { crearClienteClaude } from "@/lib/anthropic"
 import { ACCEDRA_BRAND_CONTEXT, BRAND_PROMPT_MAX_LEN, sanitizeBrief, sanitizeText } from "@/lib/contenido-context"
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const anthropic = crearClienteClaude()
 
 const VALID_SECTIONS = new Set(["caption", "captionCorto", "hashtags", "cta", "promptImagen", "guion"])
 
