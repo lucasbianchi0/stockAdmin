@@ -5,7 +5,7 @@ import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
 
-import { Sidebar } from "./sidebar"
+import { Sidebar, type UsuarioSesion } from "./sidebar"
 import { ChatbotProvider } from "./chatbot/provider"
 import { DisparadorBuscador, PaletaBusqueda, useAtajoBusqueda } from "./buscador-global"
 import type { Acceso } from "@/lib/permisos"
@@ -14,10 +14,13 @@ export function AppShell({
   children,
   acceso,
   usuarioId,
+  usuario,
 }: {
   children: React.ReactNode
   acceso: Acceso
   usuarioId: string | null
+  /** Quién está adentro, para el pie de la sidebar. */
+  usuario: UsuarioSesion | null
 }) {
   const { modulos } = acceso
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -72,7 +75,7 @@ export function AppShell({
    */
   const shell = (
     <div className="fixed inset-0 flex overflow-hidden bg-background">
-      <Sidebar modulos={modulos} onAbrirBuscador={abrirBuscador} />
+      <Sidebar modulos={modulos} admin={acceso.admin} usuario={usuario} onAbrirBuscador={abrirBuscador} />
 
       {/* Overlay mobile */}
       {sidebarOpen && (
@@ -85,6 +88,8 @@ export function AppShell({
             <Sidebar
               mobile
               modulos={modulos}
+              admin={acceso.admin}
+              usuario={usuario}
               onAbrirAgentes={() => setSidebarOpen(false)}
               onAbrirBuscador={() => {
                 // El menú se va: el popup se abre encima y volver a encontrarlo

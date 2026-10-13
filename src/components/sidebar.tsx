@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -8,6 +9,7 @@ import {
   Bot,
   ChevronRight,
   FileText,
+  Globe,
   KanbanSquare,
   LogOut,
   Megaphone,
@@ -20,6 +22,9 @@ import { useChatbotOpcional } from "@/components/chatbot/provider"
 import { DisparadorBuscador } from "@/components/buscador-global"
 import { createSupabaseBrowser } from "@/lib/supabase-browser"
 import { borrarHistoriales } from "@/lib/chatbot/historial"
+import { Avatar } from "@/components/ui/avatar"
+import { claveDe, pedirJson } from "@/lib/admin/query"
+import { URL_PENDIENTES_CRM } from "@/lib/comercial/crm"
 import { cn } from "@/lib/utils"
 import type { Modulo } from "@/lib/permisos"
 
@@ -41,10 +46,15 @@ type NavItem = {
   salvo?: string[]
   /** Las pantallas que cuelgan de este submódulo. */
   hijos?: NavItem[]
+  /** Un número al lado del nombre, que se pide aparte (ver `Contador`). */
+  contador?: "crm"
 }
 
 type Grupo = {
-  id: Modulo
+  /** Clave del plegado. No es el permiso: dos grupos pueden colgar del mismo módulo. */
+  id: string
+  /** Quién lo ve: el grupo se dibuja si el usuario tiene este módulo. */
+  modulo: Modulo
   titulo: string
   icon: LucideIcon
   items: NavItem[]
@@ -53,6 +63,7 @@ type Grupo = {
 const GRUPOS: Grupo[] = [
   {
     id: "productos",
+    modulo: "productos",
     titulo: "Productos",
     icon: Package,
     items: [
@@ -61,8 +72,27 @@ const GRUPOS: Grupo[] = [
       { name: "Pedidos", href: "/orders", available: true },
     ],
   },
+  /*
+   * Lo que cambia cómo se ve accedra.com.ar, separado de Marketing, que es medir
+   * y promocionar. Cuelga del mismo permiso que Marketing —quien edita el sitio
+   * hoy es el mismo que hace campañas— y las rutas siguen bajo /marketing para
+   * no romper enlaces guardados. Eventos se queda en Marketing: las inscripciones
+   * entran por el sitio, pero un evento es una acción comercial.
+   */
+  {
+    id: "sitio",
+    modulo: "marketing",
+    titulo: "Sitio web",
+    icon: Globe,
+    items: [
+      { name: "Landings y SEO", href: "/marketing/landings", available: true },
+      { name: "Notas del sitio", href: "/marketing/notas", available: true },
+      { name: "Popup del sitio", href: "/marketing/popup", available: true },
+    ],
+  },
   {
     id: "marketing",
+    modulo: "marketing",
     titulo: "Marketing",
     icon: Megaphone,
     items: [
@@ -70,14 +100,13 @@ const GRUPOS: Grupo[] = [
          venimos. Informes va abajo porque es lo que se manda, no lo que se
          consulta. */
       { name: "Resultados", href: "/marketing/resultados", available: true },
+      /* La base de gente. De acá sale lo que va al CRM de Comercial. */
+      { name: "Contactos", href: "/marketing/contactos", available: true },
       { name: "Informes de campañas", href: "/marketing/informes", available: true },
       { name: "Brand Kit", href: "/marketing/brand", available: true },
       { name: "Plantillas de mensajes", href: "/marketing/mensajes", available: true },
       { name: "Brochures", href: "/marketing/brochures", available: true },
-      { name: "Landings y SEO", href: "/marketing/landings", available: true },
-      { name: "Popup del sitio", href: "/marketing/popup", available: true },
       { name: "Eventos y certificados", href: "/marketing/eventos", available: true },
-      { name: "Notas del sitio", href: "/marketing/notas", available: true },
       /* El flujo nuevo, en el orden en el que se usa: primero se genera y se
          revisa, después se programa. El camino anterior —los planes de 15 días
          y el Content Studio— queda fuera del menú por ahora; las páginas siguen
@@ -104,9 +133,12 @@ const GRUPOS: Grupo[] = [
    */
   {
     id: "comercial",
+    modulo: "comercial",
     titulo: "Comercial",
     icon: FileText,
     items: [
+      /* Primero el CRM: es lo que se abre a la mañana para saber qué sigue. */
+      { name: "CRM", href: "/comercial/crm", available: true, contador: "crm" },
       { name: "Presupuestos", href: "/comercial/presupuestos", available: true },
       /* La misma base de clientes que Administración, con otra puerta. No es
          una copia ni una sincronización: es la misma tabla. */
@@ -116,6 +148,7 @@ const GRUPOS: Grupo[] = [
   },
   {
     id: "administracion",
+    modulo: "administracion",
     titulo: "Administración",
     icon: SlidersHorizontal,
     /*
@@ -197,8 +230,20 @@ function esActivo(item: NavItem, pathname: string): boolean {
 const grupoActivo = (grupo: Grupo, pathname: string) =>
   grupo.items.some((i) => esActivo(i, pathname))
 
+/** Quién está adentro: el pie de la sidebar. */
+export type UsuarioSesion = { id: string; nombre: string; email: string | null }
+
+const NOMBRE_MODULO: Record<Modulo, string> = {
+  productos: "Productos",
+  marketing: "Marketing",
+  comercial: "Comercial",
+  administracion: "Administración",
+}
+
 interface SidebarProps {
   mobile?: boolean
+  usuario?: UsuarioSesion | null
+  admin?: boolean
   /** Módulos habilitados del usuario. Filtra qué grupos se dibujan. */
   modulos: Modulo[]
   /** Después de abrir los agentes. En el teléfono cierra el menú, que taparía el chat. */
@@ -208,7 +253,7 @@ interface SidebarProps {
   onAbrirBuscador?: () => void
 }
 
-export function Sidebar({ mobile, modulos, onAbrirAgentes, onAbrirBuscador }: SidebarProps) {
+export function Sidebar({ mobile, modulos, usuario, admin, onAbrirAgentes, onAbrirBuscador }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const chat = useChatbotOpcional()
@@ -221,7 +266,7 @@ export function Sidebar({ mobile, modulos, onAbrirAgentes, onAbrirBuscador }: Si
   // useMemo para que la identidad del array no cambie en cada render: sin eso
   // el efecto de abajo se dispara siempre y el linter tiene razón en quejarse.
   const grupos = useMemo(
-    () => GRUPOS.filter((g) => modulos.includes(g.id)),
+    () => GRUPOS.filter((g) => modulos.includes(g.modulo)),
     [modulos]
   )
 
@@ -349,18 +394,43 @@ export function Sidebar({ mobile, modulos, onAbrirAgentes, onAbrirBuscador }: Si
         ))}
       </nav>
 
-      <div className="mt-auto border-t border-white/[0.07] px-5 py-5">
-        <p className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-white/45">
-          Backoffice
-        </p>
-        <p className="mt-0.5 text-[12px] text-white/35">Accedra IT Solutions</p>
-        <button
-          onClick={handleLogout}
-          className="-ml-2.5 mt-4 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white/90"
-        >
-          <LogOut className="h-4 w-4" />
-          Cerrar sesión
-        </button>
+      {/* Quién está adentro. La tarjeta entera es la sesión: nombre, qué ve
+          y la salida, sin un renglón de "Cerrar sesión" suelto debajo. */}
+      <div className="mt-auto border-t border-white/[0.07] p-3">
+        <div className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 transition-colors hover:bg-white/[0.04]">
+          <span className="relative shrink-0">
+            <Avatar
+              id={usuario?.id ?? null}
+              nombre={usuario?.nombre ?? "?"}
+              size="md"
+              className="h-9 w-9 text-[12px] ring-2 ring-white/10"
+            />
+            <span
+              aria-hidden
+              className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-success ring-2 ring-navy-950"
+            />
+          </span>
+          <div className="min-w-0 flex-1" title={usuario?.email ?? undefined}>
+            <p className="truncate text-[13px] font-semibold tracking-[-0.005em] text-white">
+              {usuario?.nombre ?? "Backoffice"}
+            </p>
+            <p className="truncate text-[11.5px] text-white/45">
+              {admin
+                ? "Administrador"
+                : modulos.length > 0
+                  ? modulos.map((m) => NOMBRE_MODULO[m]).join(" · ")
+                  : (usuario?.email ?? "Accedra IT Solutions")}
+            </p>
+          </div>
+          <button
+            onClick={handleLogout}
+            aria-label="Cerrar sesión"
+            title="Cerrar sesión"
+            className="shrink-0 rounded-lg p-2 text-white/40 transition-colors hover:bg-white/[0.08] hover:text-white"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </>
   )
@@ -589,7 +659,32 @@ function ItemNav({ item, pathname }: { item: NavItem; pathname: string }) {
           activo ? "opacity-100" : "opacity-0"
         )}
       />
-      <span className="truncate">{item.name}</span>
+      <span className="flex-1 truncate">{item.name}</span>
+      {item.contador === "crm" && <ContadorCrm />}
     </Link>
+  )
+}
+
+/**
+ * Las próximas acciones del CRM propio vencidas o de hoy: lo que hay que hacer
+ * ya, a la vista desde cualquier pantalla. Se refresca solo cada pocos minutos
+ * y cada vez que el CRM cambia algo (ver `confirmar` en crm-client).
+ */
+function ContadorCrm() {
+  const q = useQuery({
+    queryKey: claveDe("comercial", URL_PENDIENTES_CRM),
+    queryFn: ({ signal }) => pedirJson<{ pendientes: number }>(URL_PENDIENTES_CRM, { signal }),
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  })
+  const n = q.data?.pendientes ?? 0
+  if (n === 0) return null
+  return (
+    <span
+      title={`${n} ${n === 1 ? "acción vencida o para hoy" : "acciones vencidas o para hoy"}`}
+      className="ml-2 shrink-0 rounded-full bg-danger/90 px-1.5 py-0.5 text-[10px] font-bold tabular-nums leading-none text-white animate-in fade-in-0 zoom-in-90 duration-200"
+    >
+      {n}
+    </span>
   )
 }

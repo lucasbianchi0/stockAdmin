@@ -72,6 +72,11 @@ const RUTAS: { prefijo: string; modulos: Modulo[] }[] = [
   { prefijo: "/api/orders", modulos: ["productos"] },
   { prefijo: "/api/distecna", modulos: ["productos"] },
 
+  // Contactos compartidos: el aviso de duplicados, la ficha de una empresa y
+  // las plantillas para escribirle a alguien sirven igual desde Contactos
+  // (marketing) que desde el CRM (comercial).
+  { prefijo: "/api/contactos", modulos: ["marketing", "comercial"] },
+
   // Comercial
   { prefijo: "/comercial", modulos: ["comercial"] },
   { prefijo: "/api/comercial", modulos: ["comercial"] },
@@ -109,6 +114,9 @@ const RUTAS: { prefijo: string; modulos: Modulo[] }[] = [
   // El asistente es de todos los que tienen algún módulo. Lo que ve cada uno lo
   // recorta la propia ruta según el acceso de la sesión.
   { prefijo: "/api/chat", modulos: [...MODULOS] },
+  // Quiénes somos: la fila de avatares del CRM y el AM de un contacto. Es la
+  // misma lista que la ticketera, y no expone nada más que id y nombre.
+  { prefijo: "/api/equipo", modulos: [...MODULOS] },
 ]
 
 export function esPublica(pathname: string): boolean {

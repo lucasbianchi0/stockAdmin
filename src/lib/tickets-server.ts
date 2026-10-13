@@ -87,7 +87,18 @@ export function aProyecto(fila: Fila): Proyecto {
  */
 const FUERA_DEL_TABLERO = ["diazstellamaris2@gmail.com"]
 
+/**
+ * El equipo se pide al servicio de autenticación (`listUsers`), que es la
+ * llamada más lenta de cualquier pantalla que lo usa, y cambia una vez por
+ * mes. Se guarda un minuto en memoria: la ticketera, el CRM y Contactos lo
+ * comparten, y alta de alguien nuevo tarda como mucho eso en aparecer.
+ */
+const EQUIPO_TTL_MS = 60_000
+let equipoEnCache: { hasta: number; equipo: Usuario[] } | null = null
+
 export async function listarEquipo(): Promise<Usuario[]> {
+  if (equipoEnCache && equipoEnCache.hasta > Date.now()) return equipoEnCache.equipo
+
   const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 })
 
   if (error) {
@@ -95,7 +106,7 @@ export async function listarEquipo(): Promise<Usuario[]> {
     return []
   }
 
-  return (data?.users ?? [])
+  const equipo = (data?.users ?? [])
     .filter((u) => {
       if (FUERA_DEL_TABLERO.includes((u.email ?? "").trim().toLowerCase())) return false
       const acceso = accesoDeUsuario(u)
@@ -103,6 +114,9 @@ export async function listarEquipo(): Promise<Usuario[]> {
     })
     .map((u) => ({ id: u.id, nombre: nombreDeUsuario(u) }))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+
+  equipoEnCache = { hasta: Date.now() + EQUIPO_TTL_MS, equipo }
+  return equipo
 }
 
 /* ── Normalización de lo que llega del cliente ────────────────────────────── */

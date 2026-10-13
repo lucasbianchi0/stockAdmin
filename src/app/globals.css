@@ -498,6 +498,16 @@
   animation: chat-latido 6s ease-out 2s infinite;
 }
 
+/* ── La línea de "cargando" de los paneles (ui/barra-carga) ────────────── */
+@keyframes barra-carga {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
 /* Respeta la preferencia del sistema: nada de animaciones decorativas. */
 @media (prefers-reduced-motion: reduce) {
   *,

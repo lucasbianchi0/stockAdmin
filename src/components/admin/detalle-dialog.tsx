@@ -28,6 +28,7 @@ export function DetalleDialog({
   acciones,
   cargando = false,
   error = null,
+  saliendo = false,
   children,
 }: {
   abierto: boolean
@@ -40,6 +41,9 @@ export function DetalleDialog({
   acciones?: React.ReactNode
   cargando?: boolean
   error?: string | null
+  /** Se está cerrando: anima la salida. Lo maneja quien lo monta, con
+   *  `usePresencia`, porque es quien decide cuándo desmontarlo. */
+  saliendo?: boolean
   children: React.ReactNode
 }) {
   useEffect(() => {
@@ -55,11 +59,23 @@ export function DetalleDialog({
   return (
     <div className="fixed inset-0 z-[55] flex justify-end" role="dialog" aria-modal="true">
       <div
-        className="absolute inset-0 bg-navy-950/45 backdrop-blur-[2px] animate-in fade-in-0 duration-200"
+        className={cn(
+          "absolute inset-0 bg-navy-950/45 backdrop-blur-[2px]",
+          saliendo
+            ? "animate-out fade-out-0 fill-mode-forwards duration-150"
+            : "animate-in fade-in-0 duration-200"
+        )}
         onClick={onCerrar}
       />
 
-      <aside className="relative flex h-full w-full flex-col border-l border-line bg-surface shadow-e4 animate-in slide-in-from-right-6 fade-in-0 duration-200 sm:max-w-[560px]">
+      <aside
+        className={cn(
+          "relative flex h-full w-full flex-col border-l border-line bg-surface shadow-e4 sm:max-w-[560px]",
+          saliendo
+            ? "animate-out slide-out-to-right-6 fade-out-0 fill-mode-forwards duration-150 ease-in"
+            : "animate-in slide-in-from-right-6 fade-in-0 duration-200 ease-out"
+        )}
+      >
         <header className="flex items-start gap-3 border-b border-line bg-surface-subtle px-5 py-4">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">

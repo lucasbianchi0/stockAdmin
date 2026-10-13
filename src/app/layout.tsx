@@ -7,6 +7,7 @@ import { QueryProvider } from "@/components/query-provider"
 import { Toaster } from "sonner"
 import { createSupabaseServer } from "@/lib/supabase-server"
 import { accesoDeUsuario } from "@/lib/permisos"
+import { nombreDeUsuario } from "@/lib/usuario"
 
 /**
  * Geist es la única familia del sistema. Se carga con todos los pesos porque la
@@ -53,7 +54,11 @@ export default async function RootLayout({
     <html lang="es" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased" suppressHydrationWarning>
         <QueryProvider>
-          <AppShell acceso={acceso} usuarioId={user?.id ?? null}>
+          <AppShell
+            acceso={acceso}
+            usuarioId={user?.id ?? null}
+            usuario={user ? { id: user.id, nombre: nombreDeUsuario(user), email: user.email ?? null } : null}
+          >
             {children}
           </AppShell>
         </QueryProvider>

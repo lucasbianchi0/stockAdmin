@@ -40,6 +40,7 @@ export function Launcher() {
   // null hasta montar: en el servidor no hay viewport, y la posición guardada
   // aplicada en el primer render desencajaría la hidratación.
   const [posicion, setPosicion] = React.useState<Posicion | null>(null)
+  const hayModal = useHayModal()
   const arrastre = React.useRef<{
     x: number
     y: number
@@ -119,9 +120,12 @@ export function Launcher() {
       className={cn(
         "chat-latido fixed z-40 flex touch-none select-none items-center justify-center rounded-full",
         "bg-gradient-to-b from-navy-800 to-navy-950 ring-1 ring-white/10",
-        "transition-transform duration-200 hover:scale-[1.04] active:scale-95",
+        "transition-[transform,opacity] duration-200 hover:scale-[1.04] active:scale-95",
         "h-14 w-14 md:h-[72px] md:w-[72px]",
-        !posicion && "bottom-4 right-4 md:bottom-6 md:right-6"
+        !posicion && "bottom-4 right-4 md:bottom-6 md:right-6",
+        // Con un panel o un diálogo abierto se corre: flotando en la esquina
+        // tapaba el pie de los paneles, donde están "Guardar" y "Crear".
+        hayModal && "pointer-events-none scale-90 opacity-0"
       )}
     >
       <Image
@@ -139,4 +143,23 @@ export function Launcher() {
       />
     </button>
   )
+}
+
+/**
+ * ¿Hay un panel lateral o un diálogo abierto? Todos los de la app se marcan con
+ * `aria-modal`, así que alcanza con mirar si hay alguno en la página.
+ *
+ * Con JS y no con `body:has(...)` en CSS: el compilador de estilos descartaba
+ * esa regla en silencio y el botón nunca se escondía.
+ */
+function useHayModal() {
+  const [hay, setHay] = React.useState(false)
+  React.useEffect(() => {
+    const revisar = () => setHay(!!document.querySelector('[aria-modal="true"]'))
+    revisar()
+    const obs = new MutationObserver(revisar)
+    obs.observe(document.body, { childList: true, subtree: true })
+    return () => obs.disconnect()
+  }, [])
+  return hay
 }

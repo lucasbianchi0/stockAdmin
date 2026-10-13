@@ -316,15 +316,21 @@ export function PresupuestosClient() {
  * número exista desde el principio: con un formulario largo, el número recién
  * aparecería al final, que es cuando ya no sirve para nombrar nada.
  */
-function DialogoNuevo({
+export function DialogoNuevo({
   onCerrar,
   onCreado,
+  clienteInicial = null,
+  referenciaInicial = "",
 }: {
   onCerrar: () => void
-  onCreado: (id: string) => void
+  onCreado: (id: string, numero: number) => void
+  /** Desde el CRM: el cliente que coincide con la empresa y una referencia
+   *  sugerida. Se pueden cambiar las dos. */
+  clienteInicial?: { id: string; razonSocial: string } | null
+  referenciaInicial?: string
 }) {
-  const [cliente, setCliente] = useState<{ id: string; razonSocial: string } | null>(null)
-  const [referencia, setReferencia] = useState("")
+  const [cliente, setCliente] = useState<{ id: string; razonSocial: string } | null>(clienteInicial)
+  const [referencia, setReferencia] = useState(referenciaInicial)
   const [guardando, setGuardando] = useState(false)
 
   const crear = async () => {
@@ -340,7 +346,7 @@ function DialogoNuevo({
         }
       )
       toast.success(`Presupuesto ${presupuesto.numero} creado`)
-      onCreado(presupuesto.id)
+      onCreado(presupuesto.id, presupuesto.numero)
     } catch (e) {
       toast.error(mensajeError(e, "No se pudo crear el presupuesto"))
       setGuardando(false)
