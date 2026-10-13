@@ -17,7 +17,6 @@ export default function PopupPage() {
       <PageHeader
         title="Popup del sitio"
         description="El aviso que aparece sobre accedra.com.ar: un evento, una capacitación, una novedad. Se prende y se apaga desde acá, sin tocar el sitio."
-        back={{ href: "/marketing", label: "Marketing" }}
       />
       <PageBody>
         <PopupsClient />

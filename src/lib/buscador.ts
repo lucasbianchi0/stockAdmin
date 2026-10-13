@@ -99,14 +99,14 @@ export const DESTINOS: Destino[] = [
   {
     titulo: "Landings y SEO",
     href: "/marketing/landings",
-    seccion: "Marketing",
+    seccion: "Sitio web",
     descripcion: "Qué información tiene hoy el sitio, en buscadores y en respuestas de IA",
     claves: ["seo", "sitio", "web", "paginas", "google", "posicionamiento"],
   },
   {
     titulo: "Popup del sitio",
     href: "/marketing/popup",
-    seccion: "Marketing",
+    seccion: "Sitio web",
     descripcion: "El aviso que aparece sobre accedra.com.ar, se prende y se apaga desde acá",
     claves: ["aviso", "cartel", "banner", "modal", "sitio"],
   },

@@ -52,7 +52,6 @@ export default function LandingsSeoPage() {
       <PageHeader
         title="Landings y SEO"
         description="Qué información tiene hoy el sitio, en buscadores y en respuestas de IA"
-        back={{ href: "/marketing", label: "Marketing" }}
         actions={
           <a
             href={DOMINIO}

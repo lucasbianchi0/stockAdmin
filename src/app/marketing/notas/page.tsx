@@ -15,7 +15,6 @@ export default function NotasPage() {
       <PageHeader
         title="Notas"
         description="Guías y notas para las búsquedas informativas: las que hoy el sitio no compite y las que cita una IA cuando le preguntan por el tema. Lo publicado sale en accedra.com.ar/recursos."
-        back={{ href: "/marketing", label: "Marketing" }}
       />
       <PageBody>
         <NotasClient />
