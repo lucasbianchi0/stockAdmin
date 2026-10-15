@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { AlertTriangle, Loader2, Trash2 } from "lucide-react"
+import { AlertTriangle, Loader2, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { DetalleDialog, Bloque } from "@/components/admin/detalle-dialog"
@@ -39,6 +39,7 @@ export function ContactoPanel({
   onCerrar,
   onGuardado,
   onBorrar,
+  onNuevoProyecto,
   alta,
 }: {
   abierto: boolean
@@ -50,9 +51,18 @@ export function ContactoPanel({
   onCerrar: () => void
   onGuardado: (c: Contacto, respuesta: Record<string, unknown>) => void
   onBorrar?: (c: Contacto) => void
+  /** "+ Proyecto" en la ficha: le abre un proyecto en el CRM propio. */
+  onNuevoProyecto?: (c: Contacto) => void
   /** Para dar de alta por otra puerta: el CRM crea y suma al seguimiento en
    *  un paso. `cuerpo` se agrega a lo que manda el formulario. */
-  alta?: { url: string; cuerpo?: Record<string, unknown>; boton: string; subtitulo: string }
+  alta?: {
+    url: string
+    cuerpo?: Record<string, unknown>
+    boton: string
+    subtitulo: string
+    /** Lo que ya se sabe del nuevo, por ejemplo la empresa. */
+    inicial?: Partial<BorradorContacto>
+  }
 }) {
   const { montado, saliendo } = usePresencia(abierto)
   // Mientras se va, sigue mostrando el contacto que tenía: quien lo cierra
@@ -74,6 +84,7 @@ export function ContactoPanel({
       onCerrar={onCerrar}
       onGuardado={onGuardado}
       onBorrar={onBorrar}
+      onNuevoProyecto={onNuevoProyecto}
       alta={alta}
     />
   )
@@ -87,6 +98,7 @@ function Formulario({
   onCerrar,
   onGuardado,
   onBorrar,
+  onNuevoProyecto,
   alta,
   saliendo,
 }: Omit<Parameters<typeof ContactoPanel>[0], "abierto"> & { saliendo: boolean }) {
@@ -104,7 +116,7 @@ function Formulario({
           observaciones: contacto.observaciones ?? "",
           amId: contacto.amId,
         }
-      : { ...BORRADOR_VACIO, amId: yoId }
+      : { ...BORRADOR_VACIO, amId: yoId, ...alta?.inicial }
   )
   const [guardando, setGuardando] = useState(false)
   const similares = useSimilares(b, contacto?.id ?? null)
@@ -187,15 +199,39 @@ titulo
           void guardar()
         }}
       >
-        {contacto && contacto.crm.length > 0 && (
-          <Bloque titulo="En seguimiento">
+        {contacto && (contacto.crm.length > 0 || onNuevoProyecto) && (
+          <Bloque
+            titulo="Proyectos"
+            accion={
+              onNuevoProyecto && (
+                <button
+                  type="button"
+                  onClick={() => onNuevoProyecto(contacto)}
+                  className="inline-flex items-center gap-1 text-[11.5px] font-medium text-brand-700 hover:underline"
+                >
+                  <Plus className="h-3 w-3" />
+                  Proyecto
+                </button>
+              )
+            }
+          >
+            {contacto.crm.length === 0 && (
+              <p className="text-[12.5px] text-ink-muted">Todavía no está en ningún CRM.</p>
+            )}
             <ul className="space-y-1.5">
               {contacto.crm.map((c) => (
-                <li key={c.ownerId} className="flex items-center gap-2 text-[12.5px] text-ink-secondary">
+                <li key={c.id} className="flex items-center gap-2 text-[12.5px] text-ink-secondary">
                   <Avatar id={c.ownerId} nombre={c.ownerNombre} size="xs" />
                   <span className="text-ink">{c.ownerNombre}</span>
                   <span className="text-ink-faint">·</span>
-                  {esEstadoCrm(c.estado) ? ESTADO_CRM_LABEL[c.estado] : c.estado}
+                  {c.proyecto && (
+                    <>
+                      <span className="truncate">{c.proyecto}</span>
+                      <span className="text-ink-faint">·</span>
+                    </>
+                  )}
+                  <span className="shrink-0">{esEstadoCrm(c.estado) ? ESTADO_CRM_LABEL[c.estado] : c.estado}</span>
+                  <span className="num ml-auto shrink-0 text-ink-muted">{c.probabilidad}%</span>
                 </li>
               ))}
             </ul>

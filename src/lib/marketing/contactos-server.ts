@@ -37,7 +37,7 @@ import {
  * una vista o una función por cada número.
  */
 
-const SELECT = "*, crm:crm_oportunidades(owner_id, owner_nombre, estado)"
+const SELECT = "*, crm:crm_oportunidades(id, owner_id, owner_nombre, estado, producto, probabilidad)"
 
 type Fila = Record<string, unknown>
 
@@ -58,9 +58,12 @@ function aContacto(f: Fila): Contacto {
     amNombre: (f.am_nombre as string | null) ?? null,
     createdAt: f.created_at as string,
     crm: crm.map((c) => ({
+      id: c.id as string,
+      proyecto: (c.producto as string | null) ?? null,
       ownerId: c.owner_id as string,
       ownerNombre: c.owner_nombre as string,
       estado: c.estado as string,
+      probabilidad: Number(c.probabilidad ?? 0),
     })),
   }
 }

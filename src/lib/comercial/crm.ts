@@ -1,5 +1,9 @@
 /**
- * El CRM: los contactos que cada persona del equipo está trabajando.
+ * El CRM: los proyectos que cada persona del equipo está trabajando.
+ *
+ * Cada fila es un proyecto con una persona de una empresa. Una cuenta grande
+ * tiene muchos a la vez, con la misma persona o con otras, y cada uno se sigue
+ * aparte: etapa, porcentaje de cierre, próxima acción, historial, presupuesto.
  *
  * Se mira de a un dueño por vez —el tuyo, el de Sofía, el de Carlos— y cada uno
  * edita solo el suyo (los admins, todos). Un contacto entra acá desde Marketing
@@ -23,8 +27,8 @@ export const ESTADO_CRM_LABEL: Record<EstadoCrm, string> = {
   calificacion: "Calificación",
   propuesta: "Propuesta",
   negociacion: "En negociación",
-  ganada: "Ganada",
-  perdida: "Perdida",
+  ganada: "Cerrado/Ganado",
+  perdida: "Cerrado/Perdido",
 }
 
 /**
@@ -41,14 +45,43 @@ export const ESTADO_CRM_ESTILO: Record<EstadoCrm, { chip: string; punto: string;
   perdida: { chip: "border-danger-line bg-danger-soft text-danger-text", punto: "bg-danger", barra: "bg-danger" },
 }
 
-/** Probabilidad que se sugiere al pasar a cada estado. Se puede pisar a mano. */
-export const PROBABILIDAD_SUGERIDA: Record<EstadoCrm, number> = {
-  nuevo: 10,
-  calificacion: 30,
-  propuesta: 50,
-  negociacion: 70,
-  ganada: 100,
-  perdida: 0,
+/** Los escalones del porcentaje de cierre. */
+export const PORCENTAJES = [0, 25, 50, 75, 100] as const
+
+/** El escalón más cercano: lo que venga suelto (un 70, un "30") cae en uno. */
+export const aPorcentaje = (n: number) =>
+  PORCENTAJES.reduce((a, b) => (Math.abs(b - n) < Math.abs(a - n) ? b : a), 0 as number)
+
+/**
+ * El porcentaje de cierre y el estado se mueven juntos:
+ *   · 100% es ganado, y ganado es 100%.
+ *   · Perdido es 0%.
+ *   · Si deja de estar ganado (otra etapa, o un % menor), queda en 75% y
+ *     En negociación: estaba por cerrarse.
+ * Recibe cómo estaba y lo que se pidió; devuelve el estado y el % que quedan.
+ * La usan la pantalla (para mostrarlo en el acto) y el servidor (que manda).
+ */
+export function reglaDeCierre(
+  antes: { estado: EstadoCrm; probabilidad: number },
+  pedido: { estado?: EstadoCrm; probabilidad?: number }
+): { estado: EstadoCrm; probabilidad: number } {
+  let estado = pedido.estado ?? antes.estado
+  let probabilidad = aPorcentaje(pedido.probabilidad ?? antes.probabilidad)
+
+  if (pedido.estado !== undefined && pedido.estado !== antes.estado) {
+    if (estado === "ganada") probabilidad = 100
+    else if (estado === "perdida") probabilidad = 0
+    else if (antes.estado === "ganada" && pedido.probabilidad === undefined) probabilidad = 75
+  } else if (pedido.probabilidad !== undefined && probabilidad !== antes.probabilidad) {
+    if (probabilidad === 100) estado = "ganada"
+    else if (antes.estado === "ganada") estado = "negociacion"
+  }
+
+  // Lo que quede tiene que ser coherente, venga como venga.
+  if (estado === "ganada") probabilidad = 100
+  else if (estado === "perdida") probabilidad = 0
+  else if (probabilidad === 100) probabilidad = 75
+  return { estado, probabilidad }
 }
 
 /** Las próximas acciones vencidas o de hoy del CRM propio (el número del menú). */
@@ -71,8 +104,8 @@ export const esEstadoCrm = (v: unknown): v is EstadoCrm =>
 
 export const ESTA_ABIERTA = (e: EstadoCrm) => e !== "ganada" && e !== "perdida"
 
-/** Lo que más se vende. El campo es libre: esto son solo sugerencias. */
-export const PRODUCTOS_SUGERIDOS = [
+/** Para nombrar un proyecto: lo que más se vende. El campo es libre. */
+export const PROYECTOS_SUGERIDOS = [
   "Firma biométrica",
   "Software & AI",
   "Ciberseguridad",
@@ -110,7 +143,8 @@ export type Oportunidad = {
   id: string
   ownerId: string
   ownerNombre: string
-  producto: string | null
+  /** El nombre del proyecto. En la base es la columna `producto`. */
+  proyecto: string | null
   estado: EstadoCrm
   proximaAccion: string | null
   fechaProxima: string | null
@@ -163,7 +197,8 @@ export type RespuestaCrm = {
   yo: { id: string; nombre: string; admin: boolean }
   owner: { id: string; nombre: string }
   puedeEditar: boolean
-  productos: string[]
+  /** Para sugerir al nombrar un proyecto. */
+  proyectos: string[]
 }
 
 export type OpcionesContacto = { empresas: string[]; verticales: string[]; departamentos: string[] }
@@ -183,7 +218,7 @@ export type Actividad = {
 export type CambiosOportunidad = Partial<
   Pick<
     Oportunidad,
-    | "producto"
+    | "proyecto"
     | "estado"
     | "proximaAccion"
     | "fechaProxima"

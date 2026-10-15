@@ -33,6 +33,8 @@ export type FichaEmpresa = {
       ownerId: string
       ownerNombre: string
       estado: EstadoCrm
+      probabilidad: number
+      proyecto: string | null
       proximaAccion: string | null
       fechaProxima: string | null
     }[]

@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
+  FolderPlus,
   ArrowUpRight,
   Building2,
   ChevronDown,
@@ -41,7 +42,9 @@ import { EmpresaPanel } from "@/components/contactos/empresa-panel"
 import { CampanaDialog, type DestinoCampana } from "@/components/contactos/campana-dialog"
 import { EscribirDialog, type PersonaParaEscribir } from "@/components/contactos/escribir-dialog"
 import { EscribirVariosDialog, type Destinatario } from "@/components/contactos/escribir-varios-dialog"
+import { ProyectoDialog, type BaseProyecto } from "@/components/comercial/proyecto-dialog"
 import { ContactoPanel } from "@/components/marketing/contacto-panel"
+import { EnviarCrmDialog, type EnvioCrm } from "@/components/marketing/enviar-crm-dialog"
 import { FranjaGrupo, LoteDialog, type ModoLote } from "@/components/marketing/contactos-lote"
 import { ImportarContactosDialog } from "@/components/marketing/importar-contactos-dialog"
 import { claveDe, mensajeError, pedirJson } from "@/lib/admin/query"
@@ -284,6 +287,9 @@ export function ContactosClient() {
   const [aBorrar, setABorrar] = useState<Contacto[] | null>(null)
   const [borrando, setBorrando] = useState(false)
   const [enviando, setEnviando] = useState(false)
+  /** A qué CRM se está por mandar lo elegido: abre el diálogo del proyecto. */
+  const [enviarA, setEnviarA] = useState<Usuario | null>(null)
+  const [nuevoProyecto, setNuevoProyecto] = useState<BaseProyecto | null>(null)
   const [exportando, setExportando] = useState(false)
   const [lote, setLote] = useState<ModoLote | null>(null)
   const [escribirA, setEscribirA] = useState<PersonaParaEscribir | null>(null)
@@ -292,26 +298,46 @@ export function ContactosClient() {
   const [escribirVarios, setEscribirVarios] = useState<Destinatario[] | null>(null)
   const [campana, setCampana] = useState<DestinoCampana | null>(null)
 
-  async function enviarAlCrm(owner: Usuario | null) {
+  /** "Enviar a mi CRM" (o al de otra persona): primero, el diálogo del proyecto. */
+  function elegirCrm(owner: Usuario | null) {
     if (cantidadElegida === 0) return
+    setEnviarA(owner ?? (yo?.id ? { id: yo.id, nombre: yo.nombre } : null))
+  }
+
+  async function enviarAlCrm(owner: Usuario, envio: EnvioCrm) {
     setEnviando(true)
     try {
       const d = destino()
-      const r = await pedirJson<{ agregados: number; yaEstaban: number; owner: Usuario }>(
+      const r = await pedirJson<{ agregados: number; yaEstaban: number; conOtros: number; owner: Usuario }>(
         "/api/marketing/contactos/enviar-crm",
-        json("POST", { contactoIds: d.ids, filtro: d.filtro, ownerId: owner?.id ?? null })
+        json("POST", {
+          contactoIds: d.ids,
+          filtro: d.filtro,
+          ownerId: owner.id,
+          proyecto: envio.proyecto || null,
+          estado: envio.estado,
+          probabilidad: envio.probabilidad,
+        })
       )
       const deQuien = r.owner.id === yo?.id ? "tu CRM" : `el CRM de ${r.owner.nombre.split(" ")[0]}`
-      toast.success(
-        r.agregados > 0
-          ? `${plural(r.agregados, "contacto enviado", "contactos enviados")} a ${deQuien}`
-          : `Ya estaban todos en ${deQuien}`,
-        {
-          description:
-            r.yaEstaban > 0 && r.agregados > 0 ? `${r.yaEstaban} ya estaban y no se duplicaron` : undefined,
-          action: { label: "Ver CRM", onClick: () => router.push(`/comercial/crm?owner=${r.owner.id}`) },
-        }
-      )
+      const que = envio.proyecto
+        ? `“${envio.proyecto}” en ${deQuien}: ${plural(r.agregados, "proyecto nuevo", "proyectos nuevos")}`
+        : r.agregados > 0
+          ? `${plural(r.agregados, "persona enviada", "personas enviadas")} a ${deQuien}`
+          : `Ya estaban todos en ${deQuien}`
+      toast.success(que, {
+        description: envio.proyecto
+          ? r.conOtros > 0
+            ? `${plural(r.conOtros, "ya tenía otros proyectos", "ya tenían otros proyectos")}: se sumó este aparte`
+            : undefined
+          : r.yaEstaban > 0 && r.agregados > 0
+            ? `${r.yaEstaban} ya estaban y no se duplicaron. Para abrirles otro proyecto, ponele nombre.`
+            : r.agregados === 0
+              ? "Para abrirles otro proyecto, ponele nombre al enviar."
+              : undefined,
+        action: { label: "Ver CRM", onClick: () => router.push(`/comercial/crm?owner=${r.owner.id}`) },
+      })
+      setEnviarA(null)
       limpiarSeleccion()
       await refrescar()
     } catch (e) {
@@ -411,7 +437,7 @@ export function ContactosClient() {
           c.email ?? "",
           c.telefono ?? "",
           c.observaciones ?? "",
-          c.crm.map((x) => x.ownerNombre).join(", "),
+          [...new Set(c.crm.map((x) => x.ownerNombre))].join(", "),
         ])
       )
     } catch (e) {
@@ -503,7 +529,7 @@ export function ContactosClient() {
             acciones={
               <>
                 <div className="flex items-center">
-                  <Button size="sm" className="rounded-r-none" onClick={() => void enviarAlCrm(null)} disabled={enviando}>
+                  <Button size="sm" className="rounded-r-none" onClick={() => elegirCrm(null)} disabled={enviando}>
                     {enviando && <Loader2 className="animate-spin" />}
                     Enviar a mi CRM
                   </Button>
@@ -529,7 +555,7 @@ export function ContactosClient() {
                             key={u.id}
                             onClick={() => {
                               cerrar()
-                              void enviarAlCrm(u)
+                              elegirCrm(u)
                             }}
                           >
                             <Avatar id={u.id} nombre={u.nombre} size="xs" />
@@ -860,6 +886,7 @@ export function ContactosClient() {
                         onAbrir={() => setPanel({ abierto: true, contacto: c })}
                         onEmpresa={() => setEmpresa(c.empresa)}
                         onEscribir={() => setEscribirA(c)}
+                        onProyecto={yo?.id ? () => setNuevoProyecto({ empresa: c.empresa, contactoId: c.id }) : undefined}
                         onBorrar={() => setABorrar([c])}
                       />
                     ))}
@@ -907,6 +934,50 @@ export function ContactosClient() {
             else void refrescar()
           }}
           onBorrar={(c) => setABorrar([c])}
+          onNuevoProyecto={yo?.id ? (c) => setNuevoProyecto({ empresa: c.empresa, contactoId: c.id }) : undefined}
+        />
+
+        <EnviarCrmDialog
+          owner={enviarA}
+          esYo={enviarA?.id === yo?.id}
+          cantidad={cantidadElegida}
+          onCerrar={() => setEnviarA(null)}
+          onEnviar={(e) => (enviarA ? enviarAlCrm(enviarA, e) : Promise.resolve())}
+        />
+
+        <ProyectoDialog
+          base={nuevoProyecto}
+          ownerId={yo?.id ?? ""}
+          destino="tu CRM"
+          url="/api/marketing/contactos/proyectos"
+          onCerrar={() => setNuevoProyecto(null)}
+          onCreado={(o) => {
+            setNuevoProyecto(null)
+            // La ficha abierta suma el proyecto en el acto; la lista, al refrescar.
+            const c = panel.contacto
+            if (c && c.id === o.contacto.id) {
+              const conProyecto: Contacto = {
+                ...c,
+                crm: [
+                  ...c.crm,
+                  {
+                    id: o.id,
+                    proyecto: o.proyecto,
+                    ownerId: o.ownerId,
+                    ownerNombre: o.ownerNombre,
+                    estado: o.estado,
+                    probabilidad: o.probabilidad,
+                  },
+                ],
+              }
+              setPanel({ abierto: true, contacto: conProyecto })
+              reemplazar(conProyecto)
+            }
+            void qc.invalidateQueries({ queryKey: ["comercial"], refetchType: "none" })
+            toast.success(`Proyecto “${o.proyecto}” en tu CRM`, {
+              action: { label: "Ver CRM", onClick: () => router.push("/comercial/crm") },
+            })
+          }}
         />
 
         <ImportarContactosDialog
@@ -1020,6 +1091,7 @@ function FilaContacto({
   onAbrir,
   onEmpresa,
   onEscribir,
+  onProyecto,
   onBorrar,
 }: {
   c: Contacto
@@ -1029,6 +1101,8 @@ function FilaContacto({
   onAbrir: () => void
   onEmpresa: () => void
   onEscribir: () => void
+  /** Abrirle un proyecto en el CRM propio. */
+  onProyecto?: () => void
   onBorrar: () => void
 }) {
   return (
@@ -1119,6 +1193,20 @@ function FilaContacto({
         >
           {(cerrar) => (
             <>
+              {onProyecto && (
+                <>
+                  <MenuItem
+                    onClick={() => {
+                      cerrar()
+                      onProyecto()
+                    }}
+                  >
+                    <FolderPlus />
+                    Nuevo proyecto en mi CRM…
+                  </MenuItem>
+                  <MenuSeparador />
+                </>
+              )}
               <MenuItem
                 onClick={() => {
                   cerrar()
@@ -1189,9 +1277,18 @@ function Seguimiento({ c, yoId }: { c: Contacto; yoId: string | null }) {
   const ref = mio ?? c.crm[0]
   const estado = esEstadoCrm(ref.estado) ? ref.estado : "nuevo"
   const detalle = c.crm
-    .map((x) => `${x.ownerId === yoId ? "Vos" : x.ownerNombre}: ${esEstadoCrm(x.estado) ? ESTADO_CRM_LABEL[x.estado] : x.estado}`)
+    .map(
+      (x) =>
+        `${x.ownerId === yoId ? "Vos" : x.ownerNombre}${x.proyecto ? ` (${x.proyecto})` : ""}: ${esEstadoCrm(x.estado) ? ESTADO_CRM_LABEL[x.estado] : x.estado}`
+    )
     .join(" · ")
-  return <span title={`En seguimiento — ${detalle}`} className={cn("h-1.5 w-1.5 shrink-0 rounded-full", ESTADO_CRM_ESTILO[estado].punto)} />
+  return (
+    <span title={`En seguimiento — ${detalle}`} className="inline-flex shrink-0 items-center gap-1">
+      <span className={cn("h-1.5 w-1.5 rounded-full", ESTADO_CRM_ESTILO[estado].punto)} />
+      {/* Con varios proyectos, cuántos: se ve sin abrir la ficha. */}
+      {c.crm.length > 1 && <span className="num text-[11px] text-ink-faint">{c.crm.length}</span>}
+    </span>
+  )
 }
 
 /* ── Fila (celular) ─────────────────────────────────────────────────────── */

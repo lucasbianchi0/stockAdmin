@@ -8,7 +8,15 @@
  */
 
 /** En qué CRM está un contacto. */
-export type EnCrm = { ownerId: string; ownerNombre: string; estado: string }
+/** Un proyecto de la persona en el CRM de alguien. Puede tener varios en el mismo. */
+export type EnCrm = {
+  id: string
+  proyecto: string | null
+  ownerId: string
+  ownerNombre: string
+  estado: string
+  probabilidad: number
+}
 
 export type Contacto = {
   id: string

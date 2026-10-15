@@ -34,7 +34,7 @@ import {
   ESTADO_CRM_ESTILO,
   ESTADO_CRM_LABEL,
   MOTIVOS_PERDIDA,
-  PROBABILIDAD_SUGERIDA,
+  PORCENTAJES,
   diasHasta,
   type Actividad,
   type CambiosOportunidad,
@@ -45,7 +45,8 @@ import { usePresencia } from "@/lib/use-presencia"
 import { cn } from "@/lib/utils"
 
 /**
- * El detalle de una oportunidad: quién es el contacto, en qué está y qué pasó.
+ * El detalle de un proyecto: con quién es, en qué está y qué pasó. Abajo, los
+ * otros proyectos de la misma empresa, para saltar de uno a otro.
  *
  * Seguimiento se guarda solo, campo por campo, al salir de cada uno: el CRM se
  * actualiza entre llamadas, y un botón "Guardar" que alguien se olvida de tocar
@@ -58,7 +59,10 @@ type Pestana = "info" | "seguimiento" | "historial"
 export function OportunidadPanel({
   oportunidad,
   puedeEditar,
-  productos,
+  proyectos,
+  hermanas,
+  onAbrir,
+  onNuevoProyecto,
   onCerrar,
   onGuardar,
   onContacto,
@@ -68,7 +72,12 @@ export function OportunidadPanel({
 }: {
   oportunidad: Oportunidad | null
   puedeEditar: boolean
-  productos: string[]
+  /** Para sugerir al nombrar el proyecto. */
+  proyectos: string[]
+  /** Los otros proyectos de la misma empresa en el CRM que se mira. */
+  hermanas: Oportunidad[]
+  onAbrir: (id: string) => void
+  onNuevoProyecto?: (o: Oportunidad) => void
   onCerrar: () => void
   onGuardar: (id: string, cambios: CambiosOportunidad) => Promise<Oportunidad | null>
   /** Una llamada, reunión o mail anotados: el server ya movió el "último
@@ -96,15 +105,17 @@ export function OportunidadPanel({
       abierto
       saliendo={saliendo}
       onCerrar={onCerrar}
-      titulo={persona || c.email || "Sin nombre"}
+      titulo={o.proyecto ?? (persona || c.email || "Sin nombre")}
       subtitulo={
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {[c.cargo, c.empresa].filter(Boolean).join(" · ")}
+          {[o.proyecto ? persona || c.email : c.cargo, c.empresa].filter(Boolean).join(" · ")}
           <span className="text-ink-faint">·</span>
           <span className="inline-flex items-center gap-1.5 text-ink-secondary">
             <span className={cn("h-1.5 w-1.5 rounded-full", estilo.punto)} />
             {ESTADO_CRM_LABEL[o.estado]}
           </span>
+          <span className="text-ink-faint">·</span>
+          <span className="num text-ink-secondary">{o.probabilidad}%</span>
         </span>
       }
     >
@@ -221,10 +232,55 @@ export function OportunidadPanel({
           key={o.id}
           o={o}
           editable={puedeEditar}
-          productos={productos}
+          proyectos={proyectos}
           onGuardar={(cambios) => onGuardar(o.id, cambios)}
           onPresupuesto={() => onPresupuesto(o)}
         />
+      )}
+
+      {pestana === "seguimiento" && (hermanas.length > 0 || onNuevoProyecto) && (
+        <Bloque
+          titulo={`Otros proyectos en ${c.empresa}`}
+          accion={
+            onNuevoProyecto && (
+              <button
+                type="button"
+                onClick={() => onNuevoProyecto(o)}
+                className="inline-flex items-center gap-1 text-[11.5px] font-medium text-brand-700 hover:underline"
+              >
+                <Plus className="h-3 w-3" />
+                Proyecto
+              </button>
+            )
+          }
+        >
+          {hermanas.length === 0 ? (
+            <p className="text-[12.5px] text-ink-muted">Es el único proyecto con {c.empresa} en este CRM.</p>
+          ) : (
+            <ul className="divide-y divide-line-soft overflow-hidden rounded-lg border border-line">
+              {hermanas.map((h) => (
+                <li key={h.id}>
+                  <button
+                    type="button"
+                    onClick={() => onAbrir(h.id)}
+                    className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-subtle"
+                  >
+                    <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", ESTADO_CRM_ESTILO[h.estado].punto)} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] text-ink">{h.proyecto ?? "Sin nombre"}</span>
+                      <span className="block truncate text-[11.5px] text-ink-muted">
+                        {[h.contacto.nombre, h.contacto.apellido].filter(Boolean).join(" ") || h.contacto.email}
+                        {" · "}
+                        {ESTADO_CRM_LABEL[h.estado]}
+                      </span>
+                    </span>
+                    <span className="num shrink-0 text-[12px] text-ink-secondary">{h.probabilidad}%</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Bloque>
       )}
 
       {pestana === "historial" && <Historial id={o.id} editable={puedeEditar} onContacto={() => onContacto(o.id)} />}
@@ -238,24 +294,23 @@ export function OportunidadPanel({
 function Seguimiento({
   o,
   editable,
-  productos,
+  proyectos,
   onGuardar,
   onPresupuesto,
 }: {
   o: Oportunidad
   editable: boolean
-  productos: string[]
+  proyectos: string[]
   onGuardar: (cambios: CambiosOportunidad) => Promise<Oportunidad | null>
   onPresupuesto: () => void
 }) {
   // Borrador local de los campos de texto: se manda al salir del campo, no en
   // cada tecla.
   const [b, setB] = useState({
-    producto: o.producto ?? "",
+    proyecto: o.proyecto ?? "",
     proximaAccion: o.proximaAccion ?? "",
     fechaProxima: o.fechaProxima ?? "",
     ultimoContacto: o.ultimoContacto ?? "",
-    probabilidad: String(o.probabilidad),
     notas: o.notas ?? "",
   })
   const [guardado, setGuardado] = useState<string | null>(null)
@@ -271,12 +326,11 @@ function Seguimiento({
 
   const alSalir = (campo: keyof typeof b, valor: CambiosOportunidad) => {
     const original = {
-      producto: o.producto ?? "",
+      proyecto: o.proyecto ?? "",
       proximaAccion: o.proximaAccion ?? "",
       fechaProxima: o.fechaProxima ?? "",
       ultimoContacto: o.ultimoContacto ?? "",
-      probabilidad: String(o.probabilidad),
-        notas: o.notas ?? "",
+      notas: o.notas ?? "",
     }[campo]
     if (b[campo] === original) return
     void guardar(campo, valor)
@@ -294,7 +348,7 @@ function Seguimiento({
       {/* Las etapas en una fila: un click mueve la oportunidad y de paso se ve
           en qué punto del recorrido está. */}
       <Bloque titulo="Etapa" accion={indicador("estado")}>
-        <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-line sm:grid-cols-6">
+        <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-line">
           {ESTADOS_CRM.map((e, i) => {
             const activo = o.estado === e
             return (
@@ -303,20 +357,44 @@ function Seguimiento({
                 type="button"
                 onClick={() => {
                   if (activo) return
-                  const prob = PROBABILIDAD_SUGERIDA[e]
-                  setB((x) => ({ ...x, probabilidad: String(prob) }))
-                  void guardar("estado", { estado: e, probabilidad: prob })
+                  void guardar("estado", { estado: e })
                 }}
                 className={cn(
                   "flex items-center justify-center gap-1.5 border-line px-2 py-2 text-center text-[12px] leading-tight transition-colors disabled:cursor-default",
-                  i > 0 && "sm:border-l",
                   i % 3 !== 0 && "border-l",
-                  i >= 3 && "border-t sm:border-t-0",
+                  i >= 3 && "border-t",
                   activo ? "bg-surface-muted font-medium text-ink" : "text-ink-muted hover:bg-surface-subtle hover:text-ink"
                 )}
               >
                 {activo && <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", ESTADO_CRM_ESTILO[e].punto)} />}
                 {ESTADO_CRM_LABEL[e]}
+              </button>
+            )
+          })}
+        </div>
+      </Bloque>
+
+      {/* El % y la etapa se mueven juntos: 100% es Cerrado/Ganado y al revés. */}
+      <Bloque titulo="Porcentaje de cierre" accion={indicador("cierre")}>
+        <div className="grid grid-cols-5 overflow-hidden rounded-lg border border-line">
+          {PORCENTAJES.map((p, i) => {
+            const activo = o.probabilidad === p
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => !activo && void guardar("cierre", { probabilidad: p })}
+                className={cn(
+                  "num py-2 text-center text-[12.5px] transition-colors disabled:cursor-default",
+                  i > 0 && "border-l border-line",
+                  activo
+                    ? p === 100
+                      ? "bg-success-soft font-medium text-success-text"
+                      : "bg-surface-muted font-medium text-ink"
+                    : "text-ink-muted hover:bg-surface-subtle hover:text-ink"
+                )}
+              >
+                {p}%
               </button>
             )
           })}
@@ -421,18 +499,18 @@ function Seguimiento({
         </div>
       </Bloque>
 
-      <Bloque titulo="La oportunidad">
+      <Bloque titulo="El proyecto">
         <div className="space-y-3">
-          <Campo rotulo="Producto o servicio de interés" estado={indicador("producto")}>
+          <Campo rotulo="Proyecto" estado={indicador("proyecto")}>
             <Input
-              value={b.producto}
-              onChange={(e) => setB((x) => ({ ...x, producto: e.target.value }))}
-              onBlur={() => alSalir("producto", { producto: b.producto })}
-              list="crm-productos"
-              placeholder="Firma biométrica"
+              value={b.proyecto}
+              onChange={(e) => setB((x) => ({ ...x, proyecto: e.target.value }))}
+              onBlur={() => alSalir("proyecto", { proyecto: b.proyecto })}
+              list="crm-proyectos"
+              placeholder="Firma biométrica en sucursales"
             />
-            <datalist id="crm-productos">
-              {productos.map((p) => (
+            <datalist id="crm-proyectos">
+              {proyectos.map((p) => (
                 <option key={p} value={p} />
               ))}
             </datalist>
@@ -564,7 +642,7 @@ function Historial({
             }}
             rows={2}
             placeholder={
-              tipo === "nota" ? "Anotá algo sobre esta oportunidad…" : "¿Qué se habló? ¿Quedó algo pendiente?"
+              tipo === "nota" ? "Anotá algo sobre este proyecto…" : "¿Qué se habló? ¿Quedó algo pendiente?"
             }
             className="resize-none rounded-none border-0 bg-transparent shadow-none focus-visible:border-0 focus-visible:shadow-none focus-visible:ring-0"
           />

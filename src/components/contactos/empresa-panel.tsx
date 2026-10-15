@@ -14,8 +14,8 @@ import { usePresencia } from "@/lib/use-presencia"
 import { cn } from "@/lib/utils"
 
 /**
- * La empresa entera: quiénes trabajan ahí, quién sigue a cada uno y en qué
- * etapa, y —si ya es cliente— sus presupuestos.
+ * La empresa entera: quiénes trabajan ahí, los proyectos de cada uno (quién
+ * lo sigue, en qué etapa y con qué %), y —si ya es cliente— sus presupuestos.
  *
  * Se abre al hacer click en el nombre de una empresa, en Contactos o en el CRM.
  * Responde a lo que la tabla de personas no puede: "¿con quién hablamos en
@@ -58,7 +58,7 @@ export function EmpresaPanel({
               f.vertical,
               `${f.personas.length} ${f.personas.length === 1 ? "persona" : "personas"}`,
               enSeguimiento > 0 && `${enSeguimiento} en seguimiento`,
-              abiertas > 0 && `${abiertas} ${abiertas === 1 ? "oportunidad abierta" : "oportunidades abiertas"}`,
+              abiertas > 0 && `${abiertas} ${abiertas === 1 ? "proyecto abierto" : "proyectos abiertos"}`,
             ]
               .filter(Boolean)
               .join(" · ")
@@ -103,7 +103,15 @@ export function EmpresaPanel({
                       {p.crm.map((o) => (
                         <li key={o.id} className="flex items-center gap-2 text-[12px] text-ink-secondary">
                           <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", ESTADO_CRM_ESTILO[o.estado].punto)} />
-                          <span className="text-ink">{ESTADO_CRM_LABEL[o.estado]}</span>
+                          {o.proyecto && (
+                            <>
+                              <span className="truncate text-ink">{o.proyecto}</span>
+                              <span className="text-ink-faint">·</span>
+                            </>
+                          )}
+                          <span className={cn("shrink-0", !o.proyecto && "text-ink")}>
+                            {ESTADO_CRM_LABEL[o.estado]} <span className="num text-ink-muted">{o.probabilidad}%</span>
+                          </span>
                           <span className="text-ink-faint">·</span>
                           <span className="truncate">
                             {o.ownerNombre}

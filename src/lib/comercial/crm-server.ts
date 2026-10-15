@@ -8,8 +8,9 @@ import {
   EQUIPO,
   ESTADO_CRM_LABEL,
   ESTA_ABIERTA,
-  PRODUCTOS_SUGERIDOS,
+  PROYECTOS_SUGERIDOS,
   esEstadoCrm,
+  reglaDeCierre,
   type Actividad,
   type EstadoCrm,
   type OpcionesContacto,
@@ -62,7 +63,7 @@ function aOportunidad(f: Fila): Oportunidad {
     id: f.id as string,
     ownerId: f.owner_id as string,
     ownerNombre: f.owner_nombre as string,
-    producto: (f.producto as string | null) ?? null,
+    proyecto: (f.producto as string | null) ?? null,
     estado: esEstadoCrm(f.estado) ? f.estado : "nuevo",
     proximaAccion: (f.proxima_accion as string | null) ?? null,
     fechaProxima: (f.fecha_proxima as string | null) ?? null,
@@ -168,10 +169,10 @@ export async function listarCrm(req: Request, yo: Sesion) {
     }
   }
 
-  const productos = [
+  const proyectos = [
     ...new Set([
-      ...PRODUCTOS_SUGERIDOS,
-      ...oportunidades.map((o) => o.producto).filter((p): p is string => !!p),
+      ...oportunidades.map((o) => o.proyecto).filter((p): p is string => !!p),
+      ...PROYECTOS_SUGERIDOS,
     ]),
   ]
 
@@ -182,7 +183,7 @@ export async function listarCrm(req: Request, yo: Sesion) {
     owner,
     // En la vista de equipo cada fila decide por su dueño (ver `puedeEditarFila`).
     puedeEditar: esEquipo ? false : puedeEditar(yo, ownerId),
-    productos,
+    proyectos,
   }
   return NextResponse.json(respuesta)
 }
@@ -233,7 +234,11 @@ export async function opcionesContacto() {
 /**
  * Lo que dispara la barra de selección de Contactos. Por defecto va al CRM de
  * quien lo manda; con `ownerId`, al de otra persona del equipo (para repartir
- * cuentas). Mandar algo que ya estaba no lo duplica ni lo pisa.
+ * cuentas).
+ *
+ * Con `proyecto`, entra un proyecto con ese nombre para cada persona, aunque ya
+ * tenga otros en ese CRM: es la forma de abrir uno nuevo desde Contactos. Sin
+ * nombre, a quien ya tenía algún proyecto no se le suma otro vacío.
  */
 export async function enviarAlCrm(req: Request, yo: Sesion) {
 
@@ -241,6 +246,9 @@ export async function enviarAlCrm(req: Request, yo: Sesion) {
     contactoIds?: unknown
     filtro?: unknown
     ownerId?: unknown
+    proyecto?: unknown
+    estado?: unknown
+    probabilidad?: unknown
   }
   // Una lista de ids, o "todos los que coinciden" con el filtro de Contactos.
   const ids = (await destinatarios({ ids: b.contactoIds, filtro: b.filtro })).slice(0, 2000)
@@ -255,34 +263,139 @@ export async function enviarAlCrm(req: Request, yo: Sesion) {
     return NextResponse.json({ error: "Esa persona no es parte del equipo" }, { status: 400 })
   }
 
-  const { data, error } = await supabase
-    .from("crm_oportunidades")
-    .upsert(
-      ids.map((contacto_id) => ({
-        contacto_id,
-        owner_id: owner.id,
-        owner_nombre: owner.nombre,
-        created_by: yo.id,
-      })),
-      { onConflict: "contacto_id,owner_id", ignoreDuplicates: true }
-    )
-    .select("id")
-
-  if (error) throw error
-
-  const nuevas = (data ?? []).map((f) => f.id as string)
+  const proyecto = textoONull(b.proyecto, 120) ?? null
+  const cierre = cierreInicial(b as Record<string, unknown>)
+  const ya = await yaEnCrm(ids, owner.id)
+  const faltan = proyecto ? ids : ids.filter((id) => !ya.has(id))
+  let nuevas: string[] = []
+  if (faltan.length > 0) {
+    const { data, error } = await supabase
+      .from("crm_oportunidades")
+      .insert(
+        faltan.map((contacto_id) => ({
+          contacto_id,
+          owner_id: owner.id,
+          owner_nombre: owner.nombre,
+          producto: proyecto,
+          estado: cierre.estado,
+          probabilidad: cierre.probabilidad,
+          created_by: yo.id,
+        }))
+      )
+      .select("id")
+    if (error) throw error
+    nuevas = (data ?? []).map((f) => f.id as string)
+  }
   await anotar(
     nuevas,
     "alta",
-    owner.id === yo.id ? "Lo sumó a su CRM" : `Lo mandó ${yo.nombre} desde Contactos`,
+    textoDeAlta(
+      proyecto,
+      cierre,
+      owner.id === yo.id ? "Lo sumó a su CRM" : `Lo mandó ${yo.nombre} desde Contactos`
+    ),
     yo
   )
 
   return NextResponse.json({
     agregados: nuevas.length,
     yaEstaban: ids.length - nuevas.length,
+    // Con nombre de proyecto: cuántos ya tenían otros y suman este.
+    conOtros: proyecto ? ids.filter((id) => ya.has(id)).length : 0,
     owner: { id: owner.id, nombre: owner.nombre },
   })
+}
+
+/**
+ * La etapa y el % con que entra un proyecto nuevo, si vinieron. Pasan por la
+ * misma regla que al editar: 100% entra ganado, perdido entra en 0%.
+ */
+function cierreInicial(b: Record<string, unknown>): { estado: EstadoCrm; probabilidad: number } {
+  const estado = esEstadoCrm(b.estado) ? b.estado : undefined
+  const n = Number(b.probabilidad)
+  const probabilidad = b.probabilidad !== undefined && b.probabilidad !== null && Number.isFinite(n) ? n : undefined
+  return reglaDeCierre({ estado: "nuevo", probabilidad: 0 }, { estado, probabilidad })
+}
+
+const textoDeAlta = (proyecto: string | null, c: { estado: EstadoCrm; probabilidad: number }, base: string) =>
+  [
+    proyecto ? `Nuevo proyecto: ${proyecto}` : base,
+    c.estado !== "nuevo" || c.probabilidad > 0 ? `(${ESTADO_CRM_LABEL[c.estado]}, ${c.probabilidad}%)` : "",
+  ]
+    .filter(Boolean)
+    .join(" ")
+
+/** De estos contactos, los que ya tienen algún proyecto en el CRM de `ownerId`. */
+async function yaEnCrm(contactoIds: string[], ownerId: string): Promise<Set<string>> {
+  const ya = new Set<string>()
+  // De a tandas: una lista larga de ids no entra en la URL de la consulta.
+  for (let i = 0; i < contactoIds.length; i += 200) {
+    const { data, error } = await supabase
+      .from("crm_oportunidades")
+      .select("contacto_id")
+      .eq("owner_id", ownerId)
+      .in("contacto_id", contactoIds.slice(i, i + 200))
+    if (error) throw error
+    for (const f of data ?? []) ya.add(f.contacto_id as string)
+  }
+  return ya
+}
+
+/* ── POST · un proyecto nuevo ────────────────────────────────────────────── */
+
+/**
+ * "+ Proyecto": otro proyecto con una persona que ya está en Contactos, en el
+ * CRM de `ownerId` (el propio si no viene). Puede ser alguien que ya tiene
+ * otros proyectos en ese CRM: cada uno se sigue aparte.
+ */
+export async function crearProyecto(req: Request, yo: Sesion) {
+  const b = (await req.json().catch(() => ({}))) as Record<string, unknown>
+  const ownerId = typeof b.ownerId === "string" && b.ownerId ? b.ownerId : yo.id
+  if (!puedeEditar(yo, ownerId)) return ajeno()
+  const proyecto = textoONull(b.proyecto, 120)
+  if (!proyecto) return NextResponse.json({ error: "Poné el nombre del proyecto" }, { status: 400 })
+  const cierre = cierreInicial(b)
+  if (typeof b.contactoId !== "string" || !b.contactoId) {
+    return NextResponse.json({ error: "Elegí con quién es el proyecto" }, { status: 400 })
+  }
+
+  const [equipo, contacto] = await Promise.all([
+    listarEquipo(),
+    supabase.from("contactos").select("id").eq("id", b.contactoId).maybeSingle(),
+  ])
+  if (contacto.error) throw contacto.error
+  if (!contacto.data) return NextResponse.json({ error: "Esa persona ya no está en Contactos" }, { status: 404 })
+  const owner = equipo.find((u) => u.id === ownerId) ?? (ownerId === yo.id ? yo : null)
+  if (!owner) {
+    return NextResponse.json({ error: "Esa persona no es parte del equipo" }, { status: 400 })
+  }
+
+  const { data, error } = await supabase
+    .from("crm_oportunidades")
+    .insert({
+      contacto_id: b.contactoId,
+      owner_id: owner.id,
+      owner_nombre: owner.nombre,
+      producto: proyecto,
+      estado: cierre.estado,
+      probabilidad: cierre.probabilidad,
+      created_by: yo.id,
+    })
+    .select("id")
+    .single()
+  if (error) throw error
+
+  await anotar([data.id as string], "alta", textoDeAlta(proyecto, cierre, ""), yo)
+
+  const { data: fila, error: e2 } = await supabase
+    .from("crm_oportunidades")
+    .select(SELECT)
+    .eq("id", data.id)
+    .order("created_at", { referencedTable: "actividades", ascending: false })
+    .limit(1, { referencedTable: "actividades" })
+    .single()
+  if (e2) throw e2
+  return NextResponse.json({ oportunidad: aOportunidad(fila as Fila) }, { status: 201 })
 }
 
 /* ── POST · una persona nueva, directo al CRM ─────────────────────────────── */
@@ -291,6 +404,9 @@ export async function enviarAlCrm(req: Request, yo: Sesion) {
  * El "Nuevo contacto" del CRM: se carga en la base de Contactos —la de
  * marketing, que es una sola— y en el mismo paso entra al CRM que se está
  * mirando. Si el mail ya existía, se suma al CRM la persona que ya estaba.
+ *
+ * Con `proyecto` entra siempre como un proyecto nuevo; sin él, solo si la
+ * persona todavía no tenía ninguno en ese CRM.
  */
 export async function crearContactoEnCrm(req: Request, yo: Sesion) {
 
@@ -307,22 +423,24 @@ export async function crearContactoEnCrm(req: Request, yo: Sesion) {
   const r = await insertarContacto(b, yo)
   if ("error" in r) return NextResponse.json({ error: r.error }, { status: r.status })
 
-  const { data, error } = await supabase
-    .from("crm_oportunidades")
-    .upsert(
-      {
+  const proyecto = textoONull(b.proyecto, 120) ?? null
+  let nueva: string | undefined
+  if (proyecto || !(await yaEnCrm([r.contacto.id], owner.id)).has(r.contacto.id)) {
+    const { data, error } = await supabase
+      .from("crm_oportunidades")
+      .insert({
         contacto_id: r.contacto.id,
         owner_id: owner.id,
         owner_nombre: owner.nombre,
+        producto: proyecto,
         created_by: yo.id,
-      },
-      { onConflict: "contacto_id,owner_id", ignoreDuplicates: true }
-    )
-    .select("id")
-  if (error) throw error
-
-  const nueva = data?.[0]?.id as string | undefined
-  if (nueva) await anotar([nueva], "alta", "Lo cargó desde el CRM", yo)
+      })
+      .select("id")
+      .single()
+    if (error) throw error
+    nueva = data.id as string
+    await anotar([nueva], "alta", proyecto ? `Nuevo proyecto: ${proyecto}` : "Lo cargó desde el CRM", yo)
+  }
 
   return NextResponse.json(
     { contacto: r.contacto, yaExistia: r.yaExistia, yaEnCrm: !nueva, oportunidadId: nueva ?? null },
@@ -348,7 +466,7 @@ const fechaONull = (v: unknown) => {
 /** Lo que llega del cliente a columnas de la tabla. Lo que no se entiende se ignora. */
 function aColumnas(b: Record<string, unknown>): Fila | { error: string } {
   const f: Fila = {}
-  if ("producto" in b) f.producto = textoONull(b.producto, 120)
+  if ("proyecto" in b) f.producto = textoONull(b.proyecto, 120)
   if ("estado" in b) {
     if (!esEstadoCrm(b.estado)) return { error: "Estado inválido" }
     f.estado = b.estado
@@ -357,8 +475,8 @@ function aColumnas(b: Record<string, unknown>): Fila | { error: string } {
   if ("fechaProxima" in b) f.fecha_proxima = fechaONull(b.fechaProxima)
   if ("ultimoContacto" in b) f.ultimo_contacto = fechaONull(b.ultimoContacto)
   if ("probabilidad" in b) {
-    const n = Math.round(Number(b.probabilidad))
-    if (!Number.isFinite(n) || n < 0 || n > 100) return { error: "La probabilidad va de 0 a 100" }
+    const n = Number(b.probabilidad)
+    if (![0, 25, 50, 75, 100].includes(n)) return { error: "El cierre va en 0, 25, 50, 75 o 100%" }
     f.probabilidad = n
   }
   if ("montoUsd" in b) {
@@ -403,39 +521,69 @@ export async function editarOportunidades(req: Request, yo: Sesion, idUnico?: st
 
   const { data: actuales, error: errActuales } = await supabase
     .from("crm_oportunidades")
-    .select("id, owner_id, estado")
+    .select("id, owner_id, estado, probabilidad")
     .in("id", ids)
   if (errActuales) throw errActuales
   if (!actuales || actuales.length === 0) {
-    return NextResponse.json({ error: "La oportunidad ya no existe" }, { status: 404 })
+    return NextResponse.json({ error: "El proyecto ya no existe" }, { status: 404 })
   }
   if (actuales.some((o) => !puedeEditar(yo, o.owner_id as string))) return ajeno()
 
-  // Al ganar o perder, el motivo de pérdida solo tiene sentido en "perdida".
-  if (cols.estado && cols.estado !== "perdida" && !("motivo_perdida" in cols)) {
-    cols.motivo_perdida = null
+  // Estado y % se mueven juntos (`reglaDeCierre`), y cada fila parte de lo
+  // suyo: en un cambio en lote, la que estaba ganada baja a 75% y las demás
+  // conservan su porcentaje. Las filas que terminan igual van en un mismo update.
+  const tocaCierre = "estado" in cols || "probabilidad" in cols
+  const grupos = new Map<string, { cols: Fila; ids: string[] }>()
+  const despues = new Map<string, { estado: EstadoCrm; probabilidad: number }>()
+  for (const o of actuales) {
+    const antes = {
+      estado: (esEstadoCrm(o.estado) ? o.estado : "nuevo") as EstadoCrm,
+      probabilidad: Number(o.probabilidad ?? 0),
+    }
+    const fila: Fila = { ...cols }
+    if (tocaCierre) {
+      const r = reglaDeCierre(antes, {
+        estado: cols.estado as EstadoCrm | undefined,
+        probabilidad: cols.probabilidad as number | undefined,
+      })
+      fila.estado = r.estado
+      fila.probabilidad = r.probabilidad
+      despues.set(o.id as string, r)
+    }
+    // El motivo de pérdida solo tiene sentido en "perdida".
+    if (fila.estado && fila.estado !== "perdida" && !("motivo_perdida" in cols)) fila.motivo_perdida = null
+    const clave = JSON.stringify(fila)
+    const g = grupos.get(clave) ?? { cols: fila, ids: [] }
+    g.ids.push(o.id as string)
+    grupos.set(clave, g)
+  }
+
+  for (const g of grupos.values()) {
+    const { error } = await supabase.from("crm_oportunidades").update(g.cols).in("id", g.ids)
+    if (error) throw error
   }
 
   const { data, error } = await supabase
     .from("crm_oportunidades")
-    .update(cols)
-    .in("id", ids)
     .select(SELECT)
+    .in("id", ids)
+    .order("created_at", { referencedTable: "actividades", ascending: false })
+    .limit(1, { referencedTable: "actividades" })
   if (error) throw error
 
-  if (cols.estado) {
-    const nuevo = cols.estado as EstadoCrm
-    const cambiaron = actuales.filter((o) => o.estado !== nuevo)
-    const previo = new Map(cambiaron.map((o) => [o.id as string, o.estado as EstadoCrm]))
-    await anotar(
-      cambiaron.map((o) => o.id as string),
-      "cambio_estado",
-      (id) => {
-        const antes = previo.get(id)
-        return `${antes ? ESTADO_CRM_LABEL[antes] : "—"} → ${ESTADO_CRM_LABEL[nuevo]}`
-      },
-      yo
-    )
+  if (tocaCierre) {
+    const textos = new Map<string, string>()
+    for (const o of actuales) {
+      const r = despues.get(o.id as string)!
+      const antesEstado = (esEstadoCrm(o.estado) ? o.estado : "nuevo") as EstadoCrm
+      const antesProb = Number(o.probabilidad ?? 0)
+      if (r.estado !== antesEstado) {
+        textos.set(o.id as string, `${ESTADO_CRM_LABEL[antesEstado]} → ${ESTADO_CRM_LABEL[r.estado]} (${r.probabilidad}%)`)
+      } else if (r.probabilidad !== antesProb) {
+        textos.set(o.id as string, `Cierre ${antesProb}% → ${r.probabilidad}%`)
+      }
+    }
+    await anotar([...textos.keys()], "cambio_estado", (id) => textos.get(id)!, yo)
   }
 
   const oportunidades = (data ?? []).map((f) => aOportunidad(f as Fila))
@@ -500,7 +648,7 @@ export async function crearActividad(req: Request, id: string, yo: Sesion) {
     .eq("id", id)
     .maybeSingle()
   if (e1) throw e1
-  if (!op) return NextResponse.json({ error: "La oportunidad ya no existe" }, { status: 404 })
+  if (!op) return NextResponse.json({ error: "El proyecto ya no existe" }, { status: 404 })
   if (!puedeEditar(yo, op.owner_id as string)) return ajeno()
 
   const { data, error } = await supabase

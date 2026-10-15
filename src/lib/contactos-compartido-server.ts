@@ -84,7 +84,7 @@ export async function fichaEmpresa(req: Request) {
   let qPersonas = supabase
     .from("contactos")
     .select(
-      "id, nombre, apellido, cargo, departamento, vertical, email, telefono, am_id, am_nombre, empresa, crm:crm_oportunidades(id, owner_id, owner_nombre, estado, proxima_accion, fecha_proxima, presupuesto_id)"
+      "id, nombre, apellido, cargo, departamento, vertical, email, telefono, am_id, am_nombre, empresa, crm:crm_oportunidades(id, owner_id, owner_nombre, estado, probabilidad, producto, proxima_accion, fecha_proxima, presupuesto_id)"
     )
   for (const w of palabrasDeBusqueda(nombre)) qPersonas = qPersonas.ilike("busqueda", `%${w}%`)
 
@@ -136,6 +136,8 @@ export async function fichaEmpresa(req: Request) {
         ownerId: o.owner_id as string,
         ownerNombre: o.owner_nombre as string,
         estado: (esEstadoCrm(o.estado) ? o.estado : "nuevo") as EstadoCrm,
+        probabilidad: Number(o.probabilidad ?? 0),
+        proyecto: (o.producto as string | null) ?? null,
         proximaAccion: (o.proxima_accion as string | null) ?? null,
         fechaProxima: (o.fecha_proxima as string | null) ?? null,
       })),

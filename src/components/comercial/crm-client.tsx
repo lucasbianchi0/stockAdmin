@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Building2,
   ChevronDown,
+  ChevronRight,
   Eye,
   FileText,
   Lock,
@@ -18,6 +19,7 @@ import {
   Plus,
   Search,
   Trash2,
+  Upload,
   Users,
   X,
 } from "lucide-react"
@@ -36,6 +38,8 @@ import { ThOrden, type Orden } from "@/components/ui/th-orden"
 import { Vistas } from "@/components/ui/vistas"
 import { DialogoNuevo } from "@/components/comercial/presupuestos-client"
 import { OportunidadPanel } from "@/components/comercial/oportunidad-panel"
+import { ImportarProyectosDialog } from "@/components/comercial/importar-proyectos-dialog"
+import { ProyectoDialog, type BaseProyecto } from "@/components/comercial/proyecto-dialog"
 import { RegistrarDialog, type Registro } from "@/components/comercial/registrar-dialog"
 import { EmpresaPanel } from "@/components/contactos/empresa-panel"
 import { CampanaDialog, type DestinoCampana } from "@/components/contactos/campana-dialog"
@@ -50,13 +54,14 @@ import {
   ESTADO_CRM_ESTILO,
   ESTADO_CRM_LABEL,
   ESTA_ABIERTA,
-  PROBABILIDAD_SUGERIDA,
+  PORCENTAJES,
   URL_PENDIENTES_CRM,
   calcularKpis,
   diasDesde,
   diasHasta,
   esEstancada,
   fechaCorta,
+  reglaDeCierre,
   type CambiosOportunidad,
   type EstadoCrm,
   type OpcionesContacto,
@@ -72,6 +77,9 @@ import { cn } from "@/lib/utils"
  * Comercial → CRM: el seguimiento de una persona del equipo por vez, o de todo
  * el equipo junto.
  *
+ * Cada fila es un proyecto. Cuando una empresa tiene más de uno, van juntos
+ * bajo un encabezado con la empresa, que se pliega; desde ahí se suma otro.
+ *
  * Arriba a la derecha se elige de quién es el CRM que se mira (el tuyo al
  * entrar, o "Todos") y queda en la URL. Las etapas son las pestañas, más
  * "Sin movimiento" para lo que lleva dos semanas quieto. Los encabezados
@@ -83,10 +91,24 @@ import { cn } from "@/lib/utils"
  */
 
 type Vista = "todas" | EstadoCrm | "estancadas"
-type Filtros = { producto: string; fecha: string; empresa: string; vertical: string; am: string }
-const SIN_FILTROS: Filtros = { producto: "", fecha: "", empresa: "", vertical: "", am: "" }
+type Filtros = { proyecto: string; fecha: string; empresa: string; vertical: string; am: string }
+const SIN_FILTROS: Filtros = { proyecto: "", fecha: "", empresa: "", vertical: "", am: "" }
 const SIN_OPCIONES: OpcionesContacto = { empresas: [], verticales: [], departamentos: [] }
-type Campo = "empresa" | "contacto" | "cargo" | "producto" | "estado" | "proximaAccion" | "fechaProxima" | "ultimoContacto"
+type Campo =
+  | "empresa"
+  | "contacto"
+  | "cargo"
+  | "proyecto"
+  | "estado"
+  | "probabilidad"
+  | "proximaAccion"
+  | "fechaProxima"
+  | "ultimoContacto"
+
+/** Un renglón de la tabla: un proyecto suelto o el encabezado de una empresa. */
+type Renglon =
+  | { tipo: "fila"; o: Oportunidad; grupo: string | null }
+  | { tipo: "plegado"; empresa: string }
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
 const nombreDe = (o: Oportunidad) =>
@@ -97,8 +119,9 @@ const VALOR: Record<Campo, (o: Oportunidad) => string | number | null> = {
   empresa: (o) => o.contacto.empresa.toLowerCase(),
   contacto: (o) => nombreDe(o).toLowerCase(),
   cargo: (o) => o.contacto.cargo?.toLowerCase() ?? null,
-  producto: (o) => o.producto?.toLowerCase() ?? null,
+  proyecto: (o) => o.proyecto?.toLowerCase() ?? null,
   estado: (o) => ESTADOS_CRM.indexOf(o.estado),
+  probabilidad: (o) => o.probabilidad,
   proximaAccion: (o) => o.proximaAccion?.toLowerCase() ?? null,
   fechaProxima: (o) => o.fechaProxima,
   ultimoContacto: (o) => o.ultimoContacto,
@@ -147,7 +170,11 @@ export function CrmClient() {
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set())
   const [abiertaId, setAbiertaId] = useState<string | null>(null)
   const [aQuitar, setAQuitar] = useState<string[] | null>(null)
-  const [creando, setCreando] = useState(false)
+  /** El alta de una persona: vacía, o con la empresa y el proyecto ya puestos. */
+  const [creando, setCreando] = useState<{ empresa?: string; proyecto?: string } | null>(null)
+  const [nuevoProyecto, setNuevoProyecto] = useState<BaseProyecto | null>(null)
+  const [plegadas, setPlegadas] = useState<Set<string>>(new Set())
+  const [importando, setImportando] = useState(false)
   const [registrando, setRegistrando] = useState<{ o: Oportunidad; tipo: TipoActividad } | null>(null)
   const [escribiendo, setEscribiendo] = useState<Oportunidad | null>(null)
   const [escribiendoVarios, setEscribiendoVarios] = useState<Oportunidad[] | null>(null)
@@ -162,7 +189,7 @@ export function CrmClient() {
   const opcionesQ = useQuery({
     queryKey: claveDe("comercial", "/api/comercial/crm/opciones"),
     queryFn: ({ signal }) => pedirJson<OpcionesContacto>("/api/comercial/crm/opciones", { signal }),
-    enabled: creando,
+    enabled: creando !== null,
     staleTime: 5 * 60_000,
   })
 
@@ -200,7 +227,7 @@ export function CrmClient() {
     // Sin acentos y por palabra: "rocio navarro" encuentra a Rocío Navarro.
     const palabras = palabrasDeBusqueda(busqueda)
     return todas.filter((o) => {
-      if (filtros.producto && o.producto !== filtros.producto) return false
+      if (filtros.proyecto && o.proyecto !== filtros.proyecto) return false
       if (filtros.empresa && o.contacto.empresa !== filtros.empresa) return false
       if (filtros.vertical && o.contacto.vertical !== filtros.vertical) return false
       if (filtros.am && (filtros.am === "sin" ? o.contacto.amId : o.contacto.amId !== filtros.am)) return false
@@ -220,7 +247,7 @@ export function CrmClient() {
         c.vertical,
         c.email,
         c.telefono,
-        o.producto,
+        o.proyecto,
         o.proximaAccion,
         o.motivoPerdida,
         o.ownerNombre,
@@ -232,10 +259,48 @@ export function CrmClient() {
     vista === "todas" ? base : vista === "estancadas" ? base.filter(esEstancada) : base.filter((o) => o.estado === vista),
     orden
   )
-  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / porPagina))
+
+  // Los proyectos de una misma empresa, juntos: en el lugar donde cae el
+  // primero según el orden de la tabla. Una empresa plegada es un solo renglón.
+  const porEmpresa = new Map<string, Oportunidad[]>()
+  for (const o of filtradas) {
+    const lista = porEmpresa.get(o.contacto.empresa)
+    if (lista) lista.push(o)
+    else porEmpresa.set(o.contacto.empresa, [o])
+  }
+  const renglones: Renglon[] = []
+  for (const [nombre, filas] of porEmpresa) {
+    if (filas.length === 1) renglones.push({ tipo: "fila", o: filas[0], grupo: null })
+    else if (plegadas.has(nombre)) renglones.push({ tipo: "plegado", empresa: nombre })
+    else for (const o of filas) renglones.push({ tipo: "fila", o, grupo: nombre })
+  }
+
+  const totalPaginas = Math.max(1, Math.ceil(renglones.length / porPagina))
   // Si un cambio de etapa vacía la última página, se vuelve a la que queda.
   const paginaReal = Math.min(pagina, totalPaginas)
-  const visibles = filtradas.slice((paginaReal - 1) * porPagina, paginaReal * porPagina)
+  const renglonesPagina = renglones.slice((paginaReal - 1) * porPagina, paginaReal * porPagina)
+  const visibles = renglonesPagina.flatMap((r) => (r.tipo === "fila" ? [r.o] : []))
+  /** El encabezado de la empresa va antes de su primer proyecto en la página. */
+  const abreGrupo = (i: number) => {
+    const r = renglonesPagina[i]
+    if (r.tipo !== "fila" || !r.grupo) return false
+    const previo = renglonesPagina[i - 1]
+    return !previo || previo.tipo !== "fila" || previo.grupo !== r.grupo
+  }
+  /** El último proyecto de su empresa en la página: el grupo cierra con un borde. */
+  const cierraGrupo = (i: number) => {
+    const r = renglonesPagina[i]
+    if (r.tipo !== "fila" || !r.grupo) return false
+    const siguiente = renglonesPagina[i + 1]
+    return !siguiente || siguiente.tipo !== "fila" || siguiente.grupo !== r.grupo
+  }
+  const plegar = (empresa: string) =>
+    setPlegadas((p) => {
+      const n = new Set(p)
+      if (n.has(empresa)) n.delete(empresa)
+      else n.add(empresa)
+      return n
+    })
   const hayFiltros = busqueda.trim() !== "" || Object.values(filtros).some(Boolean)
   const abierta = todas.find((o) => o.id === abiertaId) ?? null
   const esEquipo = d?.owner.id === EQUIPO
@@ -302,13 +367,21 @@ export function CrmClient() {
     void qc.invalidateQueries({ queryKey: claveDe("comercial", URL_PENDIENTES_CRM) })
   }
 
-  const conCambios = (o: Oportunidad, c: CambiosOportunidad): Oportunidad => ({
-    ...o,
-    ...c,
-    ultimoMovimiento: new Date().toISOString(),
-    motivoPerdida:
-      c.estado && c.estado !== "perdida" && !("motivoPerdida" in c) ? null : (c.motivoPerdida ?? o.motivoPerdida),
-  })
+  // El estado y el % se mueven juntos, igual que en el servidor.
+  const conCambios = (o: Oportunidad, c: CambiosOportunidad): Oportunidad => {
+    const cierre =
+      "estado" in c || "probabilidad" in c
+        ? reglaDeCierre(o, { estado: c.estado, probabilidad: c.probabilidad })
+        : { estado: o.estado, probabilidad: o.probabilidad }
+    return {
+      ...o,
+      ...c,
+      ...cierre,
+      ultimoMovimiento: new Date().toISOString(),
+      motivoPerdida:
+        "motivoPerdida" in c ? (c.motivoPerdida ?? null) : cierre.estado !== "perdida" ? null : o.motivoPerdida,
+    }
+  }
 
   async function guardar(id: string, cambios: CambiosOportunidad): Promise<Oportunidad | null> {
     const antes = tocar((o) => (o.id === id ? conCambios(o, cambios) : o))
@@ -328,7 +401,7 @@ export function CrmClient() {
   }
 
   async function cambiarEstado(ids: string[], estado: EstadoCrm) {
-    const cambios = { estado, probabilidad: PROBABILIDAD_SUGERIDA[estado] }
+    const cambios = { estado }
     const enLote = ids.length > 1
     const antes = tocar((o) => (ids.includes(o.id) ? conCambios(o, cambios) : o))
     setSeleccion(new Set())
@@ -339,7 +412,7 @@ export function CrmClient() {
         body: JSON.stringify({ ids, ...cambios }),
       })
       confirmar(r.oportunidades)
-      if (enLote) toast.success(`${ids.length} pasaron a ${ESTADO_CRM_LABEL[estado]}`)
+      if (enLote) toast.success(`${ids.length} proyectos pasaron a ${ESTADO_CRM_LABEL[estado]}`)
     } catch (e) {
       if (antes) qc.setQueryData(clave, antes)
       toast.error(mensajeError(e, "No se pudo actualizar"))
@@ -449,7 +522,20 @@ export function CrmClient() {
   // El contador del dueño sale de las filas, así se mueve en el acto; el de
   // los demás viene del servidor.
   const equipo = d.equipo.map((u) => (u.id === d.owner.id ? { ...u, activas: kpis.activas } : u))
-  const productos = [...new Set(todas.map((o) => o.producto).filter((p): p is string => !!p))].sort()
+  const proyectos = [...new Set(todas.map((o) => o.proyecto).filter((p): p is string => !!p))].sort((a, b) =>
+    a.localeCompare(b, "es")
+  )
+  /** Lo nuevo entra al CRM que se mira; en la vista del equipo, al propio. */
+  const ownerNuevo = esEquipo ? d.yo.id : d.owner.id
+  const puedeCrear = editable || esEquipo
+  const destino = esMio || esEquipo ? "tu CRM" : `el CRM de ${primerNombre}`
+  /** Para nombrar uno nuevo: los de esa empresa primero. */
+  const sugerencias = (empresa: string) => [
+    ...new Set([
+      ...todas.filter((o) => o.contacto.empresa === empresa && o.proyecto).map((o) => o.proyecto!),
+      ...d.proyectos,
+    ]),
+  ]
   const th = (campo: Campo, rotulo: string) => (
     <ThOrden campo={campo} orden={orden} onOrdenar={setOrden}>
       {rotulo}
@@ -473,10 +559,16 @@ export function CrmClient() {
             />
             {/* En la vista del equipo lo nuevo entra al CRM propio. */}
             {(editable || esEquipo) && (
-              <Button onClick={() => setCreando(true)}>
-                <Plus />
-                <span className="hidden sm:inline">Nuevo contacto</span>
-              </Button>
+              <>
+                <Button variant="outline" onClick={() => setImportando(true)}>
+                  <Upload />
+                  <span className="hidden sm:inline">Importar</span>
+                </Button>
+                <Button onClick={() => setNuevoProyecto({ empresa: "" })}>
+                  <Plus />
+                  <span className="hidden sm:inline">Nuevo proyecto</span>
+                </Button>
+              </>
             )}
           </>
         }
@@ -489,7 +581,7 @@ export function CrmClient() {
             { id: "todas", rotulo: "Todas", cantidad: base.length },
             ...ESTADOS_CRM.map((e) => ({
               id: e,
-              rotulo: e === "ganada" ? "Ganadas" : e === "perdida" ? "Perdidas" : ESTADO_CRM_LABEL[e],
+              rotulo: e === "ganada" ? "Ganados" : e === "perdida" ? "Perdidos" : ESTADO_CRM_LABEL[e],
               cantidad: base.filter((o) => o.estado === e).length,
               punto: ESTADO_CRM_ESTILO[e].punto,
             })),
@@ -520,7 +612,7 @@ export function CrmClient() {
 
         {vista === "estancadas" && (
           <p className="mt-3 text-[12.5px] text-ink-muted">
-            Oportunidades abiertas sin ningún cambio, nota ni contacto en los últimos {DIAS_ESTANCADA} días.
+            Proyectos abiertos sin ningún cambio, nota ni contacto en los últimos {DIAS_ESTANCADA} días.
           </p>
         )}
 
@@ -529,7 +621,7 @@ export function CrmClient() {
         <div className="mt-4 overflow-hidden rounded-xl border border-line bg-surface">
           <BarraTabla
             seleccionados={seleccion.size}
-            rotuloSeleccion={(n) => plural(n, "seleccionada", "seleccionadas")}
+            rotuloSeleccion={(n) => plural(n, "proyecto elegido", "proyectos elegidos")}
             onLimpiar={() => setSeleccion(new Set())}
             acciones={
               <>
@@ -633,10 +725,10 @@ export function CrmClient() {
                 opciones={[...d.equipo.map((u) => ({ valor: u.id, etiqueta: u.nombre })), { valor: "sin", etiqueta: "Sin AM" }]}
               />
               <FiltroPill
-                rotulo="Producto"
-                valor={filtros.producto}
-                onCambio={(v) => setFiltros((f) => ({ ...f, producto: v }))}
-                opciones={productos.map((p) => ({ valor: p, etiqueta: p }))}
+                rotulo="Proyecto"
+                valor={filtros.proyecto}
+                onCambio={(v) => setFiltros((f) => ({ ...f, proyecto: v }))}
+                opciones={proyectos.map((p) => ({ valor: p, etiqueta: p }))}
               />
               <FiltroPill
                 rotulo="Próxima acción"
@@ -662,7 +754,7 @@ export function CrmClient() {
             </div>
 
             <span className="num ml-auto hidden shrink-0 text-[12.5px] text-ink-muted sm:inline">
-              {plural(filtradas.length, "oportunidad", "oportunidades")}
+              {plural(filtradas.length, "proyecto", "proyectos")}
             </span>
           </BarraTabla>
 
@@ -670,7 +762,7 @@ export function CrmClient() {
             <div className="border-b border-line bg-brand-50/40 px-4 py-2 text-center text-[12.5px] text-ink-secondary animate-in fade-in-0 duration-150">
               {todasLasQueCoinciden ? (
                 <>
-                  Están elegidas las <strong className="font-semibold text-ink">{idsFiltradas.length}</strong> que
+                  Están elegidos los <strong className="font-semibold text-ink">{idsFiltradas.length}</strong> que
                   coinciden.{" "}
                   <button onClick={() => setSeleccion(new Set())} className="font-medium text-brand-700 hover:underline">
                     Limpiar la selección
@@ -678,9 +770,9 @@ export function CrmClient() {
                 </>
               ) : (
                 <>
-                  Elegiste las {idsPagina.length} de esta página.{" "}
+                  Elegiste los {idsPagina.length} de esta página.{" "}
                   <button onClick={() => setSeleccion(new Set(idsFiltradas))} className="font-medium text-brand-700 hover:underline">
-                    Elegir las {idsFiltradas.length} que coinciden
+                    Elegir los {idsFiltradas.length} que coinciden
                   </button>
                 </>
               )}
@@ -692,14 +784,14 @@ export function CrmClient() {
               icon={Search}
               title={
                 esEquipo
-                  ? "Nadie tiene oportunidades todavía"
+                  ? "Nadie tiene proyectos todavía"
                   : esMio
                     ? "Tu CRM está vacío"
-                    : `${primerNombre} todavía no tiene oportunidades`
+                    : `${primerNombre} todavía no tiene proyectos`
               }
               description={
                 esMio
-                  ? "Cargá una persona acá, o elegí las que vas a trabajar en Contactos y mandalas a tu CRM."
+                  ? "Abrí un proyecto acá, o elegí en Contactos las personas que vas a trabajar y mandalas a tu CRM."
                   : "Cuando le manden contactos van a aparecer acá."
               }
               action={
@@ -708,9 +800,13 @@ export function CrmClient() {
                     <Button variant="outline" asChild>
                       <Link href="/marketing/contactos">Elegir de Contactos</Link>
                     </Button>
-                    <Button onClick={() => setCreando(true)}>
+                    <Button variant="outline" onClick={() => setImportando(true)}>
+                      <Upload />
+                      Importar planilla
+                    </Button>
+                    <Button onClick={() => setNuevoProyecto({ empresa: "" })}>
                       <Plus />
-                      Nuevo contacto
+                      Nuevo proyecto
                     </Button>
                   </div>
                 ) : undefined
@@ -719,10 +815,10 @@ export function CrmClient() {
           ) : filtradas.length === 0 ? (
             <EmptyState
               icon={Search}
-              title={vista === "estancadas" ? "Nada quieto" : "No hay oportunidades acá"}
+              title={vista === "estancadas" ? "Nada quieto" : "No hay proyectos acá"}
               description={
                 vista === "estancadas"
-                  ? `Todas las abiertas tuvieron movimiento en los últimos ${DIAS_ESTANCADA} días.`
+                  ? `Todos los abiertos tuvieron movimiento en los últimos ${DIAS_ESTANCADA} días.`
                   : "Probá con otra pestaña o limpiá los filtros."
               }
             />
@@ -730,19 +826,20 @@ export function CrmClient() {
             <>
               {/* Las columnas del boceto, en su orden. */}
               <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[1100px] table-fixed border-separate border-spacing-0 text-[13px]">
+                <table className="w-full min-w-[1160px] table-fixed border-separate border-spacing-0 text-[13px]">
                   <colgroup>
                     <col className="w-[44px]" />
                     <col className="w-[48px]" />
-                    <col className="w-[11%]" />
-                    <col className="w-[10%]" />
-                    <col className="w-[10%]" />
                     <col className="w-[9%]" />
-                    <col className="w-[158px]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[7%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[160px]" />
+                    <col className="w-[112px]" />
                     <col />
-                    <col className="w-[84px]" />
-                    <col className="w-[84px]" />
-                    <col className="w-[9%]" />
+                    <col className="w-[80px]" />
+                    <col className="w-[80px]" />
+                    <col className="w-[8%]" />
                     <col className="w-[44px]" />
                   </colgroup>
                   <thead>
@@ -764,8 +861,9 @@ export function CrmClient() {
                       {th("empresa", "Empresa")}
                       {th("contacto", "Contacto")}
                       {th("cargo", "Cargo")}
-                      {th("producto", "Producto")}
+                      {th("proyecto", "Proyecto")}
                       {th("estado", "Estado")}
+                      {th("probabilidad", "% cierre")}
                       {th("proximaAccion", "Próxima acción")}
                       {th("fechaProxima", "Fecha próxima")}
                       {th("ultimoContacto", "Último contacto")}
@@ -774,46 +872,96 @@ export function CrmClient() {
                     </tr>
                   </thead>
                   <tbody>
-                    {visibles.map((o) => (
-                      <FilaOportunidad
-                        key={o.id}
-                        o={o}
-                        esEquipo={esEquipo}
-                        editable={puedeEditarFila(o)}
-                        seleccionado={seleccion.has(o.id)}
-                        activa={o.id === abiertaId}
-                        onAlternar={() => alternar(o.id)}
-                        onAbrir={() => setAbiertaId(o.id)}
-                        onEstado={(e) => void cambiarEstado([o.id], e)}
-                        onRegistrar={(tipo) => setRegistrando({ o, tipo })}
-                        onEscribir={() => setEscribiendo(o)}
-                        onEmpresa={() => setEmpresa(o.contacto.empresa)}
-                        onPresupuesto={() => void abrirPresupuesto(o)}
-                        onQuitar={() => setAQuitar([o.id])}
-                      />
-                    ))}
+                    {renglonesPagina.map((r, i) => {
+                      const grupo = r.tipo === "plegado" ? r.empresa : abreGrupo(i) ? r.grupo : null
+                      const fila =
+                        r.tipo === "fila" ? (
+                          <FilaOportunidad
+                            key={r.o.id}
+                            o={r.o}
+                            enGrupo={!!r.grupo}
+                            cierraGrupo={cierraGrupo(i)}
+                            esEquipo={esEquipo}
+                            editable={puedeEditarFila(r.o)}
+                            seleccionado={seleccion.has(r.o.id)}
+                            activa={r.o.id === abiertaId}
+                            onAlternar={() => alternar(r.o.id)}
+                            onAbrir={() => setAbiertaId(r.o.id)}
+                            onEstado={(e) => void cambiarEstado([r.o.id], e)}
+                            onCierre={(n) => void guardar(r.o.id, { probabilidad: n })}
+                            onRegistrar={(tipo) => setRegistrando({ o: r.o, tipo })}
+                            onEscribir={() => setEscribiendo(r.o)}
+                            onEmpresa={() => setEmpresa(r.o.contacto.empresa)}
+                            onPresupuesto={() => void abrirPresupuesto(r.o)}
+                            onNuevoProyecto={puedeCrear ? () => setNuevoProyecto({ empresa: r.o.contacto.empresa, contactoId: r.o.contacto.id }) : undefined}
+                            onQuitar={() => setAQuitar([r.o.id])}
+                          />
+                        ) : null
+                      if (!grupo) return fila
+                      const filas = porEmpresa.get(grupo) ?? []
+                      const ids = filas.filter(puedeEditarFila).map((o) => o.id)
+                      return [
+                        <EncabezadoEmpresa
+                          key={`g-${grupo}-${i}`}
+                          empresa={grupo}
+                          filas={filas}
+                          plegada={plegadas.has(grupo)}
+                          seleccion={ids.length === 0 ? null : ids.every((id) => seleccion.has(id)) ? "todas" : ids.some((id) => seleccion.has(id)) ? "algunas" : "ninguna"}
+                          onSeleccionar={() =>
+                            setSeleccion((s) => {
+                              const n = new Set(s)
+                              const todasYa = ids.every((id) => n.has(id))
+                              ids.forEach((id) => (todasYa ? n.delete(id) : n.add(id)))
+                              return n
+                            })
+                          }
+                          onPlegar={() => plegar(grupo)}
+                          onEmpresa={() => setEmpresa(grupo)}
+                          onNuevoProyecto={puedeCrear ? () => setNuevoProyecto({ empresa: grupo }) : undefined}
+                        />,
+                        fila,
+                      ]
+                    })}
                   </tbody>
                 </table>
               </div>
 
               <ul className="divide-y divide-line-soft md:hidden">
-                {visibles.map((o) => (
-                  <TarjetaOportunidad
-                    key={o.id}
-                    o={o}
-                    editable={puedeEditarFila(o)}
-                    seleccionado={seleccion.has(o.id)}
-                    onAlternar={() => alternar(o.id)}
-                    onAbrir={() => setAbiertaId(o.id)}
-                  />
-                ))}
+                {renglonesPagina.map((r, i) => {
+                  const grupo = r.tipo === "plegado" ? r.empresa : abreGrupo(i) ? r.grupo : null
+                  return [
+                    grupo && (
+                      <li key={`g-${grupo}-${i}`}>
+                        <button
+                          type="button"
+                          onClick={() => plegar(grupo)}
+                          className="flex w-full items-center gap-2 bg-surface-subtle px-4 py-2 text-left text-[12.5px]"
+                        >
+                          <ChevronRight className={cn("h-3.5 w-3.5 text-ink-muted transition-transform", !plegadas.has(grupo) && "rotate-90")} />
+                          <span className="font-medium text-ink">{grupo}</span>
+                          <span className="text-ink-muted">· {plural(porEmpresa.get(grupo)?.length ?? 0, "proyecto", "proyectos")}</span>
+                        </button>
+                      </li>
+                    ),
+                    r.tipo === "fila" && (
+                      <TarjetaOportunidad
+                        key={r.o.id}
+                        o={r.o}
+                        editable={puedeEditarFila(r.o)}
+                        seleccionado={seleccion.has(r.o.id)}
+                        onAlternar={() => alternar(r.o.id)}
+                        onAbrir={() => setAbiertaId(r.o.id)}
+                      />
+                    ),
+                  ]
+                })}
               </ul>
 
               <PaginacionTabla
                 pagina={paginaReal}
                 porPagina={porPagina}
-                total={filtradas.length}
-                unidad={filtradas.length === 1 ? "oportunidad" : "oportunidades"}
+                total={renglones.length}
+                unidad={plegadas.size > 0 ? "renglones" : renglones.length === 1 ? "proyecto" : "proyectos"}
                 onIr={(p) => setPagina(Math.min(Math.max(1, p), totalPaginas))}
                 onPorPagina={setPorPagina}
               />
@@ -824,7 +972,10 @@ export function CrmClient() {
         <OportunidadPanel
           oportunidad={abierta}
           puedeEditar={abierta ? puedeEditarFila(abierta) : false}
-          productos={d.productos}
+          proyectos={abierta ? sugerencias(abierta.contacto.empresa) : d.proyectos}
+          hermanas={abierta ? todas.filter((o) => o.contacto.empresa === abierta.contacto.empresa && o.id !== abierta.id) : []}
+          onAbrir={setAbiertaId}
+          onNuevoProyecto={puedeCrear ? (o) => setNuevoProyecto({ empresa: o.contacto.empresa, contactoId: o.contacto.id }) : undefined}
           onCerrar={() => setAbiertaId(null)}
           onGuardar={guardar}
           onContacto={(id) => {
@@ -878,7 +1029,7 @@ export function CrmClient() {
         {presupuestando && (
           <DialogoNuevo
             clienteInicial={presupuestando.cliente}
-            referenciaInicial={[presupuestando.o.producto, presupuestando.o.contacto.empresa].filter(Boolean).join(" — ")}
+            referenciaInicial={[presupuestando.o.proyecto, presupuestando.o.contacto.empresa].filter(Boolean).join(" — ")}
             onCerrar={() => setPresupuestando(null)}
             onCreado={(id) => {
               const o = presupuestando.o
@@ -888,35 +1039,75 @@ export function CrmClient() {
               const avanza = ESTADOS_CRM.indexOf(o.estado) < ESTADOS_CRM.indexOf("propuesta")
               void guardar(o.id, {
                 presupuestoId: id,
-                ...(avanza ? { estado: "propuesta", probabilidad: PROBABILIDAD_SUGERIDA.propuesta } : {}),
+                ...(avanza ? { estado: "propuesta" as const } : {}),
               })
               router.push(`/comercial/presupuestos/${id}`)
             }}
           />
         )}
 
+        <ImportarProyectosDialog
+          abierto={importando}
+          ownerId={ownerNuevo}
+          destino={destino}
+          onCerrar={() => setImportando(false)}
+          onImportado={() => {
+            setImportando(false)
+            // Muchas filas nuevas, quizás en varios CRM: se piden de nuevo.
+            void qc.invalidateQueries({ queryKey: ["comercial"] })
+            void qc.invalidateQueries({ queryKey: ["marketing"], refetchType: "none" })
+          }}
+        />
+
+        <ProyectoDialog
+          base={nuevoProyecto}
+          ownerId={ownerNuevo}
+          destino={destino}
+          sugerencias={nuevoProyecto ? sugerencias(nuevoProyecto.empresa) : []}
+          onCerrar={() => setNuevoProyecto(null)}
+          onCreado={(o) => {
+            setNuevoProyecto(null)
+            // Entra a la caché del CRM que se mira (o al propio, si es el del
+            // equipo): sin volver a pedir todo.
+            const antes = qc.getQueryData<RespuestaCrm>(clave)
+            if (antes) qc.setQueryData<RespuestaCrm>(clave, { ...antes, oportunidades: [o, ...antes.oportunidades] })
+            confirmar([])
+            setPlegadas((p) => {
+              const n = new Set(p)
+              n.delete(o.contacto.empresa)
+              return n
+            })
+            setAbiertaId(o.id)
+            toast.success(`Proyecto “${o.proyecto}” creado en ${o.contacto.empresa}`)
+          }}
+          onPersonaNueva={(empresa, proyecto) => {
+            setNuevoProyecto(null)
+            setCreando({ empresa, proyecto })
+          }}
+        />
+
         <ContactoPanel
-          abierto={creando}
+          abierto={creando !== null}
           contacto={null}
           equipo={d.equipo}
           yoId={d.yo.id}
           opciones={opcionesQ.data ?? SIN_OPCIONES}
           alta={{
             url: "/api/comercial/crm/contactos",
-            cuerpo: { ownerId: esEquipo ? d.yo.id : d.owner.id },
+            cuerpo: { ownerId: ownerNuevo, proyecto: creando?.proyecto || undefined },
             boton: esMio || esEquipo ? "Crear y sumar a mi CRM" : `Crear y sumar al CRM de ${primerNombre}`,
-            subtitulo:
-              esMio || esEquipo
-                ? "Se guarda en Contactos y entra a tu CRM"
-                : `Se guarda en Contactos y entra al CRM de ${primerNombre}`,
+            subtitulo: creando?.proyecto
+              ? `Se guarda en Contactos y el proyecto “${creando.proyecto}” entra a ${destino}`
+              : `Se guarda en Contactos y entra a ${destino}`,
+            inicial: creando?.empresa ? { empresa: creando.empresa } : undefined,
           }}
-          onCerrar={() => setCreando(false)}
+          onCerrar={() => setCreando(null)}
           onGuardado={(c, r) => {
-            setCreando(false)
+            setCreando(null)
             const nombre = [c.nombre, c.apellido].filter(Boolean).join(" ") || c.empresa
             toast.success(
               r.yaEnCrm
-                ? `${nombre} ya estaba en este CRM`
+                ? `${nombre} ya tenía proyectos en este CRM`
                 : r.yaExistia
                   ? `${nombre} ya estaba en Contactos: se sumó al CRM`
                   : `${nombre} se cargó en Contactos y en el CRM`
@@ -988,7 +1179,7 @@ function Equipo({
             onMouseEnter={() => onPrecargar(u.id)}
             onFocus={() => onPrecargar(u.id)}
             aria-pressed={on}
-            title={`${u.id === yoId ? "Mi CRM" : `CRM de ${u.nombre}`} · ${plural(u.activas, "abierta", "abiertas")}`}
+            title={`${u.id === yoId ? "Mi CRM" : `CRM de ${u.nombre}`} · ${plural(u.activas, "proyecto abierto", "proyectos abiertos")}`}
             className={cn(
               "relative rounded-full transition-[box-shadow,opacity] duration-150",
               on ? "ring-2 ring-ink ring-offset-1 ring-offset-surface" : "hover:ring-1 hover:ring-line-strong"
@@ -1045,12 +1236,12 @@ function ResumenEquipo({
         <thead>
           <tr className="[&_th]:h-9 [&_th]:border-b [&_th]:border-line [&_th]:bg-surface-subtle [&_th]:px-3 [&_th]:text-right [&_th]:text-[12px] [&_th]:font-medium [&_th]:text-ink-muted">
             <th className="!text-left">Persona</th>
-            <th>Abiertas</th>
+            <th>Abiertos</th>
             <th>En negociación</th>
             <th>Vencidas</th>
             <th>Sin movimiento</th>
-            <th>Ganadas este mes</th>
-            <th>Perdidas este mes</th>
+            <th>Ganados este mes</th>
+            <th>Perdidos este mes</th>
           </tr>
         </thead>
         <tbody>
@@ -1120,6 +1311,131 @@ function SelectorEtapa({ estado, onCambio }: { estado: EstadoCrm; onCambio: (e: 
   )
 }
 
+/** El % de cierre como una barrita corta: se compara de un vistazo entre filas. */
+function BarraCierre({ valor }: { valor: number }) {
+  return (
+    <span className="h-1 w-6 shrink-0 overflow-hidden rounded-full bg-surface-muted">
+      <span
+        className={cn("block h-full rounded-full transition-[width] duration-300", valor === 100 ? "bg-success" : "bg-brand-500")}
+        style={{ width: `${valor}%` }}
+      />
+    </span>
+  )
+}
+
+/** El % de cierre, editable: un select nativo, igual que la etapa. */
+function SelectorCierre({ valor, onCambio }: { valor: number; onCambio: (n: number) => void }) {
+  return (
+    <label className="relative flex w-full min-w-0 cursor-pointer items-center gap-1.5 overflow-hidden rounded-md border border-line bg-surface py-[3px] pl-2 pr-1.5 transition-colors hover:border-line-strong focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-100">
+      <BarraCierre valor={valor} />
+      <span className="num min-w-0 flex-1 text-right text-[12.5px] text-ink">{valor}%</span>
+      <ChevronDown className="h-3 w-3 shrink-0 text-ink-muted" />
+      <select
+        value={valor}
+        onChange={(e) => onCambio(Number(e.target.value))}
+        aria-label="Porcentaje de cierre"
+        className="absolute inset-0 cursor-pointer appearance-none opacity-0"
+      >
+        {PORCENTAJES.map((p) => (
+          <option key={p} value={p}>
+            {p}%{p === 100 ? " · Cerrado/Ganado" : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function Cierre({ valor }: { valor: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <BarraCierre valor={valor} />
+      <span className="num text-ink-secondary">{valor}%</span>
+    </span>
+  )
+}
+
+/**
+ * El encabezado de una empresa con varios proyectos: cuántos son y cuántos
+ * siguen abiertos. Se pliega, elige todos los suyos y suma otro.
+ */
+function EncabezadoEmpresa({
+  empresa,
+  filas,
+  plegada,
+  seleccion,
+  onSeleccionar,
+  onPlegar,
+  onEmpresa,
+  onNuevoProyecto,
+}: {
+  empresa: string
+  filas: Oportunidad[]
+  plegada: boolean
+  /** `null`: no hay ninguno que se pueda elegir. */
+  seleccion: "todas" | "algunas" | "ninguna" | null
+  onSeleccionar: () => void
+  onPlegar: () => void
+  onEmpresa: () => void
+  onNuevoProyecto?: () => void
+}) {
+  const abiertos = filas.filter((o) => ESTA_ABIERTA(o.estado)).length
+  const personas = new Set(filas.map((o) => o.contacto.id)).size
+  return (
+    <tr
+      className={cn(
+        "bg-surface-subtle [&_td]:h-10 [&_td]:border-b [&_td]:border-t [&_td]:border-line [&_td]:border-b-line-soft",
+        !plegada && FILETE_GRUPO
+      )}
+    >
+      <td className="!pl-4">
+        <input
+          type="checkbox"
+          className="checkbox"
+          checked={seleccion === "todas"}
+          ref={(el) => {
+            if (el) el.indeterminate = seleccion === "algunas"
+          }}
+          onChange={onSeleccionar}
+          disabled={seleccion === null}
+          aria-label={`Seleccionar los proyectos de ${empresa}`}
+        />
+      </td>
+      <td colSpan={12} className="pr-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onPlegar}
+            aria-expanded={!plegada}
+            aria-label={plegada ? `Mostrar los proyectos de ${empresa}` : `Plegar ${empresa}`}
+            className="rounded p-0.5 text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
+          >
+            <ChevronRight className={cn("h-3.5 w-3.5 transition-transform duration-150", !plegada && "rotate-90")} />
+          </button>
+          <button
+            type="button"
+            onClick={onEmpresa}
+            className="truncate text-[13px] font-semibold text-ink underline-offset-2 hover:underline"
+          >
+            {empresa}
+          </button>
+          <span className="truncate text-[12.5px] text-ink-muted">
+            {plural(filas.length, "proyecto", "proyectos")}
+            {` · ${plural(abiertos, "abierto", "abiertos")}`}
+            {personas > 1 && ` · ${personas} personas`}
+          </span>
+          {onNuevoProyecto && (
+            <Button size="xs" variant="ghost" className="ml-auto text-ink-muted hover:text-ink" onClick={onNuevoProyecto}>
+              <Plus />
+              Proyecto
+            </Button>
+          )}
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 /** La etapa como punto y texto: se lee como dato, no como botón. */
 function Etapa({ estado }: { estado: EstadoCrm }) {
   return (
@@ -1145,8 +1461,13 @@ function FechaProxima({ o }: { o: Oportunidad }) {
   )
 }
 
+/** El filete de la izquierda que une el encabezado de una empresa con sus proyectos. */
+const FILETE_GRUPO = "[&>td:first-child]:shadow-[inset_3px_0_0_var(--color-brand-300)]"
+
 function FilaOportunidad({
   o,
+  enGrupo,
+  cierraGrupo,
   esEquipo,
   editable,
   seleccionado,
@@ -1154,13 +1475,18 @@ function FilaOportunidad({
   onAlternar,
   onAbrir,
   onEstado,
+  onCierre,
   onRegistrar,
   onEscribir,
   onEmpresa,
   onPresupuesto,
+  onNuevoProyecto,
   onQuitar,
 }: {
   o: Oportunidad
+  /** Va bajo el encabezado de su empresa: la empresa ya se lee arriba. */
+  enGrupo: boolean
+  cierraGrupo: boolean
   esEquipo: boolean
   editable: boolean
   seleccionado: boolean
@@ -1168,10 +1494,12 @@ function FilaOportunidad({
   onAlternar: () => void
   onAbrir: () => void
   onEstado: (e: EstadoCrm) => void
+  onCierre: (n: number) => void
   onRegistrar: (t: TipoActividad) => void
   onEscribir: () => void
   onEmpresa: () => void
   onPresupuesto: () => void
+  onNuevoProyecto?: () => void
   onQuitar: () => void
 }) {
   const c = o.contacto
@@ -1182,7 +1510,9 @@ function FilaOportunidad({
       onClick={onAbrir}
       className={cn(
         "group cursor-pointer [&_td]:h-11 [&_td]:border-b [&_td]:border-line-soft [&_td]:px-2 [&_td]:align-middle",
-        seleccionado || activa ? "bg-brand-50/50" : "hover:bg-surface-subtle",
+        enGrupo && FILETE_GRUPO,
+        cierraGrupo && "[&_td]:border-line",
+        seleccionado || activa ? "bg-brand-50/50" : enGrupo ? "bg-surface-subtle/40 hover:bg-surface-subtle" : "hover:bg-surface-subtle",
         o.estado === "perdida" && "text-ink-muted"
       )}
     >
@@ -1204,14 +1534,17 @@ function FilaOportunidad({
         )}
       </td>
       <td onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          onClick={onEmpresa}
-          title={`Ver ${c.empresa}`}
-          className="block max-w-full truncate font-medium text-ink underline-offset-2 hover:underline"
-        >
-          {c.empresa}
-        </button>
+        {/* Dentro de un grupo la empresa ya está en el encabezado. */}
+        {!enGrupo && (
+          <button
+            type="button"
+            onClick={onEmpresa}
+            title={`Ver ${c.empresa}`}
+            className="block max-w-full truncate font-medium text-ink underline-offset-2 hover:underline"
+          >
+            {c.empresa}
+          </button>
+        )}
       </td>
       <td>
         <p className="flex min-w-0 items-center gap-1.5" title={persona}>
@@ -1227,13 +1560,17 @@ function FilaOportunidad({
         <Texto valor={c.cargo} />
       </td>
       <td>
-        <Texto valor={o.producto} />
+        {o.proyecto ? (
+          <Texto valor={o.proyecto} className={cn("text-ink", enGrupo && "font-medium")} />
+        ) : (
+          <span className="text-[12px] italic text-ink-faint">Sin nombre</span>
+        )}
       </td>
       <td onClick={(e) => e.stopPropagation()}>
-        {editable ? (
-          <SelectorEtapa estado={o.estado} onCambio={onEstado} />        ) : (
-          <Etapa estado={o.estado} />
-        )}
+        {editable ? <SelectorEtapa estado={o.estado} onCambio={onEstado} /> : <Etapa estado={o.estado} />}
+      </td>
+      <td onClick={(e) => e.stopPropagation()}>
+        {editable ? <SelectorCierre valor={o.probabilidad} onCambio={onCierre} /> : <Cierre valor={o.probabilidad} />}
       </td>
       <td>
         <p className="flex min-w-0 items-center gap-1.5">
@@ -1305,6 +1642,12 @@ function FilaOportunidad({
                   <Building2 />
                   Ver {c.empresa}
                 </MenuItem>
+                {onNuevoProyecto && (
+                  <MenuItem onClick={y(onNuevoProyecto)}>
+                    <Plus />
+                    Otro proyecto en {c.empresa}…
+                  </MenuItem>
+                )}
                 {(o.presupuesto || editable) && (
                   <MenuItem onClick={y(onPresupuesto)}>
                     <FileText />
@@ -1363,6 +1706,10 @@ function TarjetaOportunidad({
           </span>
         </div>
         <p className="truncate text-[12.5px] text-ink-muted">{[c.cargo, c.empresa].filter(Boolean).join(" · ")}</p>
+        <p className="mt-1 flex items-center justify-between gap-3 text-[12.5px]">
+          <span className="truncate text-ink">{o.proyecto ?? <span className="text-ink-faint">Sin proyecto</span>}</span>
+          <Cierre valor={o.probabilidad} />
+        </p>
         {(o.proximaAccion || o.fechaProxima) && (
           <p className="mt-1 flex items-center gap-2 text-[12.5px] text-ink-secondary">
             {esEstancada(o) && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />}
