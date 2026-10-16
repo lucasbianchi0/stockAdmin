@@ -169,7 +169,7 @@ Ordenado como el árbol del contador, con sus números:
    - 5.1 \`/admin/contabilidad/mayor\` Mayores — todo lo que pasó por una cuenta, con el saldo corrido.
    - 5.2 \`/admin/contabilidad\` Libro diario — cada asiento, o resumido por mes para copiar al libro.
    - 5.3 Subdiarios — \`/admin/contabilidad/subdiarios/ventas\` IVA Ventas y \`/admin/contabilidad/subdiarios/compras\` IVA Compras: los comprobantes del mes en pesos, con neto e IVA por alícuota, totales, asiento resumen y exportación a Excel y PDF.
-   - 5.4 Asientos automáticos (ajuste por inflación, apertura y cierre) — todavía en construcción.
+   - 5.4 Asientos automáticos — \`/admin/contabilidad/asientos/apertura-cierre\` (apertura del estudio y cierre propuesto contra 410) y \`/admin/contabilidad/asientos/ajuste-inflacion\` (el ajuste que calcula el estudio). En prueba: quedan como borrador.
    - 5.5 \`/admin/contabilidad/sumas-y-saldos\` Sumas y saldos — el estado de todas las cuentas y si la partida doble cuadra.
 
 Los comprobantes en dólares llevan el tipo de cambio de su fecha; los totales se informan separados por moneda, nunca sumados.`

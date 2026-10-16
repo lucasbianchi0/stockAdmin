@@ -268,12 +268,12 @@ const GRUPOS: Grupo[] = [
               {
                 name: "Ajuste por inflación",
                 href: "/admin/contabilidad/asientos/ajuste-inflacion",
-                available: false,
+                available: true,
               },
               {
                 name: "Apertura y cierre",
                 href: "/admin/contabilidad/asientos/apertura-cierre",
-                available: false,
+                available: true,
               },
             ],
           },
