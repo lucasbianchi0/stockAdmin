@@ -60,6 +60,14 @@ export function ReportesComercialClient() {
   })
 
   const todos = useMemo(() => consulta.data?.presupuestos ?? [], [consulta.data])
+
+  // Qué factura tiene cada presupuesto facturado: el detalle de los Puntos.
+  const urlFacturas = "/api/comercial/presupuestos/facturas"
+  const facturas =
+    useQuery({
+      queryKey: claves.url(urlFacturas),
+      queryFn: ({ signal }) => pedirJson<{ facturas: Record<string, string[]> }>(urlFacturas, { signal }),
+    }).data?.facturas ?? {}
   const filas = useMemo(
     () => (estado ? todos.filter((p) => p.estado === estado) : todos),
     [todos, estado]
@@ -157,7 +165,7 @@ export function ReportesComercialClient() {
             onClick={() =>
               descargarCsv(
                 "presupuestos.csv",
-                ["N.º", "Cliente", "Referencia", "Fecha", "Vendedor", "Estado", "Moneda", "Venta", "Costo", "Renta", "% renta", "Puntos"],
+                ["N.º", "Cliente", "Referencia", "Fecha", "Vendedor", "Estado", "Moneda", "Venta", "Costo", "Renta", "% renta", "Puntos", "Factura"],
                 filas.map((p) => [
                   p.numero,
                   p.clienteNombre ?? "",
@@ -171,6 +179,7 @@ export function ReportesComercialClient() {
                   p.totales.rentabilidad,
                   p.totales.venta === 0 ? "" : Math.round(p.totales.rentaPct * 100),
                   puntosDe(p) ?? "",
+                  (facturas[p.id] ?? []).join(" · "),
                 ])
               )
             }
@@ -264,13 +273,25 @@ export function ReportesComercialClient() {
                 >
                   {p.totales.venta === 0 ? "—" : `${Math.round(p.totales.rentaPct * 100)}%`}
                 </TableCell>
+                {/* Los puntos con la factura abajo: es el detalle por factura
+                    que pidió el contador, sin otra columna que no entra. */}
                 <TableCell className="num whitespace-nowrap text-right font-medium text-ink">
                   {(() => {
                     const puntos = puntosDe(p)
-                    return puntos === null ? (
-                      <span className="text-ink-faint">—</span>
-                    ) : (
-                      formatearImporte(puntos, p.moneda)
+                    if (puntos === null) return <span className="text-ink-faint">—</span>
+                    return (
+                      <>
+                        {formatearImporte(puntos, p.moneda)}
+                        <span className="block font-mono text-[10.5px] font-normal text-ink-muted">
+                          {facturas[p.id]?.length ? (
+                            facturas[p.id].join(" · ")
+                          ) : (
+                            <span className="font-sans text-warning-text" title="Abrí el presupuesto y elegí la factura">
+                              sin factura vinculada
+                            </span>
+                          )}
+                        </span>
+                      </>
                     )
                   })()}
                 </TableCell>

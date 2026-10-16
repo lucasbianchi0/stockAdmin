@@ -7,6 +7,7 @@ import { Loader2, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { SelectorEntidad } from "@/components/admin/selector-entidad"
+import { FacturasPresupuesto } from "@/components/comercial/facturas-presupuesto"
 import { Legajo } from "@/components/comercial/legajo"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -689,6 +690,11 @@ export function PresupuestoEditor({ id }: { id: string }) {
       {/* El legajo va después de la planilla: primero se arma el presupuesto,
           después se le van colgando los papeles a medida que la operación
           avanza —la OC cuando llega, el remito cuando se entrega—. */}
+      {/* Facturado, se dice con qué factura: es el detalle de los Puntos. */}
+      {estado === "facturado" && (
+        <FacturasPresupuesto presupuestoId={id} totalConIva={desgloseIva.total} moneda={moneda} />
+      )}
+
       <Legajo presupuestoId={id} />
 
       <section className="panel p-5">
