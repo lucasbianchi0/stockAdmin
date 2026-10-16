@@ -39,9 +39,12 @@ export function AppShell({
   const abrirBuscador = useCallback(() => setBuscadorAbierto(true), [])
   useAtajoBusqueda(abrirBuscador)
 
-  // Las hojas de certificados se imprimen: la sidebar y el shell clavado al
-  // viewport, con su overflow, cortarían todo menos la primera hoja.
-  const esImpresion = /^\/marketing\/eventos\/[^/]+\/certificados$/.test(pathname)
+  // Las hojas que se imprimen —certificados, subdiarios para el libro—: la
+  // sidebar y el shell clavado al viewport, con su overflow, cortarían todo
+  // menos la primera hoja.
+  const esImpresion =
+    /^\/marketing\/eventos\/[^/]+\/certificados$/.test(pathname) ||
+    /^\/admin\/contabilidad\/subdiarios\/(ventas|compras)\/imprimir$/.test(pathname)
 
   if (pathname === "/login" || pathname === "/sin-acceso" || esImpresion) {
     return <>{children}</>

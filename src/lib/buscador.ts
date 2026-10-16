@@ -408,6 +408,20 @@ export const DESTINOS: Destino[] = [
     claves: ["balance", "sumas y saldos", "cuadra", "contabilidad"],
   },
   {
+    titulo: "Subdiario IVA Ventas",
+    href: "/admin/contabilidad/subdiarios/ventas",
+    seccion: "Administración",
+    descripcion: "Las facturas de venta del mes con su IVA débito por alícuota, para el libro",
+    claves: ["subdiario", "iva ventas", "libro iva", "debito fiscal", "alicuota"],
+  },
+  {
+    titulo: "Subdiario IVA Compras",
+    href: "/admin/contabilidad/subdiarios/compras",
+    seccion: "Administración",
+    descripcion: "Las facturas de compra del mes con su IVA crédito por alícuota, para el libro",
+    claves: ["subdiario", "iva compras", "libro iva", "credito fiscal", "alicuota"],
+  },
+  {
     titulo: "Pendientes de cobro",
     href: "/admin/clientes/pendientes",
     seccion: "Administración",

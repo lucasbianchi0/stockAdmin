@@ -252,12 +252,12 @@ const GRUPOS: Grupo[] = [
               {
                 name: "IVA Ventas",
                 href: "/admin/contabilidad/subdiarios/ventas",
-                available: false,
+                available: true,
               },
               {
                 name: "IVA Compras",
                 href: "/admin/contabilidad/subdiarios/compras",
-                available: false,
+                available: true,
               },
             ],
           },

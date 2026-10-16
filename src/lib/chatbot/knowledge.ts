@@ -168,7 +168,7 @@ Ordenado como el árbol del contador, con sus números:
 5. Contabilidad — los asientos que genera el sistema, en pesos.
    - 5.1 \`/admin/contabilidad/mayor\` Mayores — todo lo que pasó por una cuenta, con el saldo corrido.
    - 5.2 \`/admin/contabilidad\` Libro diario — cada asiento, o resumido por mes para copiar al libro.
-   - 5.3 Subdiarios IVA Ventas e IVA Compras — todavía en construcción.
+   - 5.3 Subdiarios — \`/admin/contabilidad/subdiarios/ventas\` IVA Ventas y \`/admin/contabilidad/subdiarios/compras\` IVA Compras: los comprobantes del mes en pesos, con neto e IVA por alícuota, totales, asiento resumen y exportación a Excel y PDF.
    - 5.4 Asientos automáticos (ajuste por inflación, apertura y cierre) — todavía en construcción.
    - 5.5 \`/admin/contabilidad/sumas-y-saldos\` Sumas y saldos — el estado de todas las cuentas y si la partida doble cuadra.
 
