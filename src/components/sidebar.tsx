@@ -230,7 +230,7 @@ const GRUPOS: Grupo[] = [
           },
         ],
       },
-      { name: "Stock", href: "/admin/stock", available: false, soloAdmin: true },
+      { name: "Stock", href: "/admin/stock", available: true, soloAdmin: true },
       {
         name: "Contabilidad",
         available: true,

@@ -164,7 +164,7 @@ Ordenado como el árbol del contador, con sus números:
    - 3.3 \`/admin/ventas\` Facturas de ventas — el comprobante ya emitido, a mano o desde el PDF. Listado en \`/admin/ventas/listado\`.
    - 3.4 \`/admin/cobros\` Cobro de facturas — qué facturas cancela el recibo, con retenciones y acreditación. Listado en \`/admin/cobros/listado\`.
    - 3.5 \`/admin/clientes/pendientes\` Pendientes de cobro — lo que falta cobrar, factura por factura, exportable.
-4. Stock — todavía en construcción.
+4. \`/admin/stock\` Stock (sólo administradores) — cuánto hay de cada ítem, en dólares a precio de compra; entradas por compra, salidas por venta y ajustes, con números de serie. No genera asientos.
 5. Contabilidad — los asientos que genera el sistema, en pesos.
    - 5.1 \`/admin/contabilidad/mayor\` Mayores — todo lo que pasó por una cuenta, con el saldo corrido.
    - 5.2 \`/admin/contabilidad\` Libro diario — cada asiento, o resumido por mes para copiar al libro.

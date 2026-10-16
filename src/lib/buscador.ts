@@ -408,6 +408,13 @@ export const DESTINOS: Destino[] = [
     claves: ["balance", "sumas y saldos", "cuadra", "contabilidad"],
   },
   {
+    titulo: "Stock",
+    href: "/admin/stock",
+    seccion: "Administración",
+    descripcion: "Cuánto hay de cada ítem, en dólares a precio de compra, con sus números de serie",
+    claves: ["stock", "inventario", "deposito", "series", "wacom", "existencias"],
+  },
+  {
     titulo: "Subdiario IVA Ventas",
     href: "/admin/contabilidad/subdiarios/ventas",
     seccion: "Administración",
