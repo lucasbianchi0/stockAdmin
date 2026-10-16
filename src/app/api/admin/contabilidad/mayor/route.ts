@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { numeracionPorEjercicio } from "@/lib/admin/ejercicios-server"
 import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
@@ -132,6 +133,15 @@ export const GET = ruta("mayor GET", async (req: Request) => {
       auxiliarNombre: l.auxiliar_id ? (nombres.get(l.auxiliar_id as string) ?? null) : null,
     }
   })
+
+  const numeracion = await numeracionPorEjercicio(filas.map((f) => f.asientoId))
+  for (const f of filas) {
+    const n = numeracion.get(f.asientoId)
+    if (n) {
+      f.numero = n.numero
+      f.ejercicioNombre = n.ejercicio
+    }
+  }
 
   const mayor: Mayor = {
     cuenta: {

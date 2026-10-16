@@ -69,6 +69,8 @@ export type Asiento = {
   fecha: string
   ejercicio: number
   numero: number
+  /** "2026/27": el ejercicio de 1/9 a 31/8 al que pertenece por su fecha. */
+  ejercicioNombre?: string
   origen: OrigenAsiento
   origenId: string | null
   descripcion: string
@@ -80,6 +82,7 @@ export type FilaMayor = {
   asientoId: string
   fecha: string
   numero: number
+  ejercicioNombre?: string
   origen: OrigenAsiento
   descripcion: string
   detalle: string | null

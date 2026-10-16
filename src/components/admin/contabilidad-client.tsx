@@ -409,6 +409,11 @@ function AsientoCard({ asiento }: { asiento: Asiento }) {
         <div className="flex items-baseline gap-2.5">
           <span className="num font-mono text-[12px] font-semibold text-brand-600">
             N° {asiento.numero}
+            {asiento.ejercicioNombre && (
+              <span className="ml-1 font-sans text-[10.5px] font-medium text-ink-faint">
+                · {asiento.ejercicioNombre}
+              </span>
+            )}
           </span>
           <span className="text-[12.5px] font-medium text-ink">{asiento.descripcion}</span>
           <Badge tone="neutral" size="sm">

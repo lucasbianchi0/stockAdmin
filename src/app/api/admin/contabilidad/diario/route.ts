@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
 import { redondear } from "@/lib/admin/moneda"
 import type { Asiento, LineaAsiento, OrigenAsiento } from "@/lib/admin/asientos"
+import { numeracionPorEjercicio } from "@/lib/admin/ejercicios-server"
 
 /**
  * Libro diario: los asientos del período, cada uno con sus líneas.
@@ -132,6 +133,16 @@ export const GET = ruta("diario GET", async (req: Request) => {
   }
 
   const asientos = [...porAsiento.values()]
+
+  // El número que se muestra es el del ejercicio 1/9–31/8 (ver ejercicios-server).
+  const numeracion = await numeracionPorEjercicio(asientos.map((a) => a.id))
+  for (const a of asientos) {
+    const n = numeracion.get(a.id)
+    if (n) {
+      a.numero = n.numero
+      a.ejercicioNombre = n.ejercicio
+    }
+  }
 
   return NextResponse.json({
     asientos,

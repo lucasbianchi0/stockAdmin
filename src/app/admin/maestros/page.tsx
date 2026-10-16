@@ -1,11 +1,12 @@
+import { EjerciciosPanel } from "@/components/admin/ejercicios-panel"
 import { PlanCuentasClient } from "@/components/admin/plan-cuentas-client"
 import { PageBody, PageHeader } from "@/components/ui/page-header"
 
 /**
  * Datos maestros — el primer ítem del menú del pliego.
  *
- * Hoy tiene una sola cosa adentro, el plan de cuentas, que es la que el
- * documento pide por nombre. Es la raíz de la que cuelga todo lo demás: cada
+ * Arriba, los ejercicios contables (de 1/9 a 31/8, cada uno con sus fechas).
+ * Abajo, el plan de cuentas, que es lo que el documento pide por nombre. Es la raíz de la que cuelga todo lo demás: cada
  * factura, cada recibo y cada movimiento terminan apuntando a una de estas
  * cuentas, y el balance es la suma de lo que pasó por cada una.
  */
@@ -16,10 +17,11 @@ export default function MaestrosPage() {
     <main className="flex min-h-full flex-col">
       <PageHeader
         title="Datos maestros"
-        description="El plan de cuentas del estudio contable, y el Excel con el que se actualiza"
+        description="Los ejercicios contables y el plan de cuentas del estudio, con el Excel con el que se actualiza"
         back={{ href: "/admin", label: "Administración" }}
       />
       <PageBody>
+        <EjerciciosPanel />
         <PlanCuentasClient />
       </PageBody>
     </main>
