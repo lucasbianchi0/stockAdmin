@@ -165,12 +165,16 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
 
   const dolarHoy = Number(cot?.venta) || 0
 
-  const totalArs = redondear(filas.reduce((a, f) => a + f.totalArs, 0))
+  /*
+   * Los totales suman el saldo, no el total facturado: una factura con un pago
+   * parcial debe lo que le falta, no lo que dice el comprobante. Sumando
+   * totales, el reporte daba por pendiente plata ya pagada.
+   */
+  const totalArs = redondear(filas.reduce((a, f) => a + f.saldoArs, 0))
 
   const totales = {
     cantidad: filas.length,
-    /** Todo en pesos: cada factura a su propio TC. Es la suma que la planilla
-     *  hacía a mano en la columna TOTAL $. */
+    /** Lo que falta pagar o cobrar, en pesos: cada saldo a su propio TC. */
     ars: totalArs,
     /** Esa misma suma, al dólar de hoy. `null` si no hay cotización cargada:
      *  mejor un guion que un número inventado. */
@@ -179,7 +183,7 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
     dolarActualizado: (cot?.created_at as string | null) ?? null,
     vencidas: filas.filter((f) => f.vencida).length,
     vencidoArs: redondear(
-      filas.filter((f) => f.vencida).reduce((a, f) => a + f.totalArs, 0)
+      filas.filter((f) => f.vencida).reduce((a, f) => a + f.saldoArs, 0)
     ),
     /** Se avisa cuando el reporte se cortó: un total truncado presentado como
      *  completo es peor que no tenerlo. */

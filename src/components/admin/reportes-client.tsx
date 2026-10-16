@@ -19,7 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { descargarCsv } from "@/lib/admin/csv"
-import { formatearImporte } from "@/lib/admin/moneda"
+import { formatearImporte, redondear } from "@/lib/admin/moneda"
 import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
@@ -70,6 +70,8 @@ type Pendiente = {
   total: number
   imputado: number
   saldo: number
+  /** El saldo en pesos, al TC del comprobante. Es lo que suman los totales. */
+  saldoArs: number
   detalle: string | null
   vencida: boolean
   /** Cuándo se calcula que se va a cobrar (o pagar). Se edita desde acá mismo. */
@@ -119,6 +121,8 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
         "Total USD",
         "TC",
         "Total $",
+        esVenta ? "Cobrado $" : "Pagado $",
+        "Saldo $",
         esVenta ? "Cobro estimado" : "Pago estimado",
         "Detalle",
       ],
@@ -134,6 +138,8 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
         f.totalUsd ?? "",
         f.tcEmision ?? "",
         f.totalArs,
+        redondear(f.totalArs - f.saldoArs),
+        f.saldoArs,
         f.fechaEstimadaPago ?? "",
         f.detalle ?? "",
       ])
@@ -217,6 +223,9 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
               <TableHead className="text-right">Total USD</TableHead>
               <TableHead className="text-right">TC</TableHead>
               <TableHead className="text-right">Total $</TableHead>
+              {/* Lo que de verdad falta: el total menos lo ya imputado. Debajo,
+                  cuánto se pagó, solo cuando hubo un pago parcial. */}
+              <TableHead className="text-right">Saldo $</TableHead>
               {/* Última porque es la única que se escribe: la vista se lee de
                   izquierda a derecha y termina en la decisión que hay que tomar. */}
               <TableHead>{esVenta ? "Cobro estimado" : "Pago estimado"}</TableHead>
@@ -253,8 +262,16 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
                     <span className="text-ink-faint">—</span>
                   )}
                 </TableCell>
-                <TableCell className="num whitespace-nowrap text-right font-semibold text-ink">
+                <TableCell className="num whitespace-nowrap text-right text-ink-secondary">
                   {formatearImporte(f.totalArs, "ARS")}
+                </TableCell>
+                <TableCell className="num whitespace-nowrap text-right">
+                  <span className="font-semibold text-ink">{formatearImporte(f.saldoArs, "ARS")}</span>
+                  {Math.abs(f.totalArs - f.saldoArs) >= 0.01 && (
+                    <span className="block text-[11px] text-ink-muted">
+                      {esVenta ? "cobrado" : "pagado"} {formatearImporte(f.totalArs - f.saldoArs, "ARS")}
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <CeldaPagoEstimado
