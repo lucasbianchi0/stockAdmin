@@ -30,7 +30,7 @@ export type FilaSubdiario = {
   id: string
   /** La fecha que define el período. */
   fecha: string
-  /** La fecha que dice el comprobante. Hoy es la misma que `fecha`. */
+  /** La fecha que dice el comprobante. Distinta de `fecha` sólo si se registró otro día. */
   fechaComprobante: string
   clase: string
   numero: string

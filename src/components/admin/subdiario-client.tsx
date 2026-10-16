@@ -367,7 +367,7 @@ export function TablaSubdiario({
     >
       <TableHeader>
         <TableRow>
-          <TableHead>Fecha</TableHead>
+          <TableHead title="La fecha de registro: define el período">Fecha</TableHead>
           <TableHead>Comprobante</TableHead>
           <TableHead>{esVenta ? "Cliente" : "Proveedor"}</TableHead>
           <TableHead>CUIT</TableHead>
@@ -394,6 +394,11 @@ export function TablaSubdiario({
           <TableRow key={f.id} className={cn(f.total < 0 && "bg-danger-soft/30")}>
             <TableCell className={cn("num whitespace-nowrap font-mono text-ink-muted", texto)}>
               {fechaCorta(f.fecha)}
+              {f.fechaComprobante !== f.fecha && (
+                <span className="block text-[9.5px] text-ink-faint" title="Fecha del comprobante">
+                  comp. {fechaCorta(f.fechaComprobante)}
+                </span>
+              )}
             </TableCell>
             <TableCell className={cn("whitespace-nowrap", texto)}>
               <span className="font-semibold text-ink">{f.clase}</span>{" "}

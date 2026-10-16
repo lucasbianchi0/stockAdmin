@@ -90,10 +90,28 @@ export const GET = ruta("subdiario GET", async (req: Request) => {
     return NextResponse.json({ error: "Falta el período" }, { status: 400 })
   }
 
+  /*
+   * El período se arma por la FECHA DE REGISTRO (pedido del contador): una
+   * factura de septiembre registrada en octubre va al subdiario de octubre. La
+   * vista `comprobantes_fecha_registro` la resuelve —la del comprobante salvo
+   * que se haya cargado otra—, y recién después se leen esas facturas.
+   */
   let comprobantes: Comprobante[]
+  const registroDe = new Map<string, string>()
   try {
-    comprobantes = await enPaginas<Comprobante>((i, j) =>
+    const registros = await enPaginas<{ comprobante_id: string; fecha_registro: string }>((i, j) =>
       supabase
+        .from("comprobantes_fecha_registro")
+        .select("comprobante_id, fecha_registro")
+        .gte("fecha_registro", desde)
+        .lte("fecha_registro", hasta)
+        .order("comprobante_id")
+        .range(i, j)
+    )
+    for (const r of registros) registroDe.set(r.comprobante_id, r.fecha_registro)
+
+    comprobantes = await enLotes([...registroDe.keys()], async (lote) => {
+      const { data, error } = await supabase
         .from("comprobantes")
         .select(
           `id, fecha, clase, punto_venta, numero, cliente_id, proveedor_id, moneda, tc, signo,
@@ -102,14 +120,13 @@ export const GET = ruta("subdiario GET", async (req: Request) => {
         )
         .eq("tipo", tipo)
         .eq("estado", "confirmado")
-        .gte("fecha", desde)
-        .lte("fecha", hasta)
-        .order("fecha", { ascending: true })
-        .order("punto_venta", { ascending: true })
-        .order("numero", { ascending: true })
-        .order("id", { ascending: true })
-        .range(i, j)
-    )
+        .in("id", lote)
+      if (error) throw error
+      return (data ?? []) as Comprobante[]
+    })
+    const clave = (c: Comprobante) =>
+      `${registroDe.get(c.id)}|${String(c.punto_venta ?? 0).padStart(5, "0")}|${String(c.numero ?? 0).padStart(12, "0")}|${c.id}`
+    comprobantes.sort((a, b) => clave(a).localeCompare(clave(b)))
   } catch (error) {
     console.error("[subdiario]", error)
     return NextResponse.json({ error: "No se pudo armar el subdiario" }, { status: 500 })
@@ -187,7 +204,7 @@ export const GET = ruta("subdiario GET", async (req: Request) => {
 
       return {
         id: c.id,
-        fecha: c.fecha,
+        fecha: registroDe.get(c.id) ?? c.fecha,
         fechaComprobante: c.fecha,
         clase: c.clase,
         numero: formatearNumero(c.punto_venta, c.numero),

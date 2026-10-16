@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, FileText, Loader2, Plus, Trash2, X } from "lucide-react"
+import { toast } from "sonner"
 
 import { CampoMoneda } from "@/components/admin/campo-moneda"
 import { MarcoFormulario } from "@/components/admin/marco-formulario"
@@ -69,6 +70,8 @@ type Borrador = {
   clienteNombre: string
   clase: string
   fecha: string
+  /** Vacía = la misma que `fecha`. Se guarda aparte (ver comprobantes-registro). */
+  fechaRegistro: string
   fechaVencimiento: string
   numeroCompleto: string
   detalle: string
@@ -102,6 +105,7 @@ const VACIO = (): Borrador => ({
   clienteNombre: "",
   clase: "FCA",
   fecha: hoyISO(),
+  fechaRegistro: "",
   fechaVencimiento: "",
   numeroCompleto: "",
   detalle: "",
@@ -169,6 +173,7 @@ function aBorrador(c: Comprobante): Borrador {
     clienteNombre: c.clienteNombre ?? c.proveedorNombre ?? "",
     clase: c.clase,
     fecha: c.fecha,
+    fechaRegistro: "",
     fechaVencimiento: c.fechaVencimiento ?? "",
     numeroCompleto: formatearNumero(c.puntoVenta, c.numero).replace("—", ""),
     detalle: c.detalle ?? "",
@@ -211,6 +216,8 @@ export function ComprobanteDialog({
   onGuardado: (c: Comprobante, esNuevo: boolean, impacto: Impacto | null) => void
 }) {
   const [f, setF] = useState<Borrador>(VACIO)
+  /** La fecha de registro que ya tenía, para saber si hay que borrarla. */
+  const [registroOriginal, setRegistroOriginal] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -226,6 +233,21 @@ export function ComprobanteDialog({
     if (!abierto) return
     setF(comprobante ? aBorrador(comprobante) : VACIO())
     setError(null)
+    setRegistroOriginal(null)
+    if (!comprobante) return
+    // La fecha de registro vive aparte: se pide al abrir una factura existente.
+    let vigente = true
+    fetch(`/api/admin/comprobantes-registro?id=${comprobante.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { fechaRegistro: string | null } | null) => {
+        if (!vigente || !d?.fechaRegistro) return
+        setRegistroOriginal(d.fechaRegistro)
+        setF((prev) => ({ ...prev, fechaRegistro: d.fechaRegistro ?? "" }))
+      })
+      .catch(() => {})
+    return () => {
+      vigente = false
+    }
   }, [abierto, comprobante])
 
   useEffect(() => {
@@ -384,6 +406,19 @@ export function ComprobanteDialog({
       )
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudo guardar")
+
+      // La fecha de registro va aparte y después: guardarla no toca la factura,
+      // así que no le regenera el asiento. Si falla, la factura ya quedó bien
+      // guardada y se avisa sin deshacer nada.
+      const idGuardado = (data.comprobante as Comprobante | undefined)?.id
+      if (idGuardado && (f.fechaRegistro || registroOriginal)) {
+        const r = await fetch("/api/admin/comprobantes-registro", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ comprobanteId: idGuardado, fechaRegistro: f.fechaRegistro || null }),
+        })
+        if (!r.ok) toast.error("La factura se guardó, pero no la fecha de registro. Volvé a abrirla para cargarla.")
+      }
       // Acá y no en cada pantalla que abre el formulario: una factura mueve la
       // cuenta corriente, los pendientes de cobro y el mayor.
       void invalidar()
@@ -545,6 +580,24 @@ export function ComprobanteDialog({
                 value={f.condicionPago}
                 onChange={(e) => set("condicionPago", e.target.value)}
                 placeholder="30 días"
+                disabled={guardando}
+              />
+            </Campo>
+            {/* La fecha en que se registra, cuando no es la del comprobante:
+                una factura de septiembre que llegó en octubre va al subdiario de
+                octubre. Vacía, es la misma fecha. */}
+            <Campo
+              id="fechaRegistro"
+              rotulo="Fecha de registro"
+              opcional
+              ayuda="Si se registra en otro mes. Define en qué subdiario de IVA entra."
+            >
+              <Input
+                id="fechaRegistro"
+                type="date"
+                value={f.fechaRegistro}
+                onChange={(e) => set("fechaRegistro", e.target.value)}
+                className="num"
                 disabled={guardando}
               />
             </Campo>
