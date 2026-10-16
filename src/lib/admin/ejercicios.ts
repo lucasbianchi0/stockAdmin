@@ -105,3 +105,22 @@ export function fechaLarga(iso: string): string {
   const [a, m, d] = iso.split("-")
   return `${Number(d)}/${Number(m)}/${a}`
 }
+
+export type EstadoAsientoEspecial = "falta" | "borrador" | "registrado"
+
+export type FichaEjercicio = {
+  ejercicio: Ejercicio
+  asientosPorOrigen: Record<string, number>
+  meses: { mes: string; asientos: number; importe: number }[]
+  debe: number
+  haber: number
+  ingresos: number
+  egresos: number
+  /** Ganancia (positivo) o pérdida (negativo): lo que el cierre lleva a 410. */
+  resultado: number
+  facturasVenta: number
+  facturasCompra: number
+  apertura: EstadoAsientoEspecial
+  ajuste: EstadoAsientoEspecial
+  cierre: EstadoAsientoEspecial
+}

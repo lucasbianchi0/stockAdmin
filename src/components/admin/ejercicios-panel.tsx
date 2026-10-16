@@ -1,8 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowRight, CalendarRange, Loader2 } from "lucide-react"
+import { ArrowRight, CalendarRange, Eye, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -39,7 +40,8 @@ export function EjerciciosPanel() {
         <div>
           <p className="text-[13.5px] font-semibold text-ink">Ejercicios contables</p>
           <p className="text-[12px] text-ink-muted">
-            Cada asiento pertenece al ejercicio de su fecha y se numera desde 1 dentro de él.
+            Cada asiento pertenece al ejercicio de su fecha y se numera desde 1 dentro de él. «Ver detalle» abre todo
+            lo de ese ejercicio.
           </p>
         </div>
         <Badge tone="warning" size="sm">
@@ -53,9 +55,12 @@ export function EjerciciosPanel() {
         <ul className="divide-y divide-line">
           {[...ejercicios].reverse().map((e) => (
             <li key={e.id} className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3.5">
-              <div className="flex w-[110px] items-center gap-2">
-                <span className="text-[15px] font-semibold text-ink">{e.nombre}</span>
-              </div>
+              <Link
+                href={`/admin/maestros/ejercicios/${e.id}`}
+                className="flex w-[110px] items-center gap-2 text-[15px] font-semibold text-ink hover:text-brand-700"
+              >
+                {e.nombre}
+              </Link>
               <p className="num min-w-[220px] flex-1 text-[12.5px] text-ink-secondary">
                 {fechaLarga(e.inicio)} <span className="text-ink-faint">al</span> {fechaLarga(e.fin)}
               </p>
@@ -74,6 +79,12 @@ export function EjerciciosPanel() {
                   </Badge>
                 )}
               </div>
+              <Button asChild size="sm">
+                <Link href={`/admin/maestros/ejercicios/${e.id}`}>
+                  <Eye className="h-3.5 w-3.5" />
+                  Ver detalle
+                </Link>
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { AlertTriangle, BookOpen, Check, Download, Layers, Scale } from "lucide-react"
@@ -33,6 +33,8 @@ import { formatearImporte } from "@/lib/admin/moneda"
 import { TIPO_CUENTA_LABEL } from "@/lib/admin/plan-cuentas"
 import { claves, pedirJson } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
+import type { Ejercicio } from "@/lib/admin/ejercicios"
+import { useRangoDeEjercicio } from "@/lib/admin/use-ejercicios"
 
 /**
  * La contabilidad, una pantalla por vista.
@@ -99,19 +101,58 @@ export function ContabilidadClient({ vista }: { vista: VistaContable }) {
 
 /* ── Rango de fechas, compartido ──────────────────────────────────────────── */
 
+/**
+ * El período de una vista: un ejercicio, o fechas a mano.
+ *
+ * Elegir un ejercicio llena las dos fechas; tocar una fecha a mano lo pasa a
+ * «Rango propio». Así se puede arrancar en el ejercicio y acotar a un mes sin
+ * perder de vista de cuál se trata.
+ */
 function RangoFechas({
   desde,
   hasta,
   onDesde,
   onHasta,
+  ejercicios,
 }: {
   desde: string
   hasta: string
   onDesde: (v: string) => void
   onHasta: (v: string) => void
+  ejercicios: Ejercicio[]
 }) {
+  const actual = ejercicios.find((e) => e.inicio === desde && e.fin === hasta)
+  const valor = actual ? String(actual.id) : !desde && !hasta ? "todos" : "rango"
+
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <select
+        aria-label="Ejercicio"
+        value={valor}
+        onChange={(e) => {
+          const v = e.target.value
+          if (v === "todos") {
+            onDesde("")
+            onHasta("")
+            return
+          }
+          const ej = ejercicios.find((x) => String(x.id) === v)
+          if (ej) {
+            onDesde(ej.inicio)
+            onHasta(ej.fin)
+          }
+        }}
+        className="h-9 rounded-md border border-line bg-surface px-2 text-[12.5px] font-medium text-ink"
+      >
+        {[...ejercicios].reverse().map((e) => (
+          <option key={e.id} value={e.id}>
+            Ejercicio {e.nombre}
+            {e.enCurso ? " (en curso)" : ""}
+          </option>
+        ))}
+        <option value="todos">Todos los ejercicios</option>
+        {valor === "rango" && <option value="rango">Rango propio</option>}
+      </select>
       <label className="text-[12px] text-ink-muted" htmlFor="desde">
         Desde
       </label>
@@ -141,8 +182,7 @@ function RangoFechas({
 type ModoDiario = "asientos" | "mes"
 
 function Diario() {
-  const [desde, setDesde] = useState("")
-  const [hasta, setHasta] = useState("")
+  const { desde, hasta, setDesde, setHasta, listo, ejercicios } = useRangoDeEjercicio()
   const [origen, setOrigen] = useState("")
   /**
    * "Resumido por mes" es el punto 5 del pedido: un asiento por mes con todas las
@@ -152,7 +192,11 @@ function Diario() {
    * siendo los que están en la base —el contador lo pidió así— y registrar
    * además un resumen duplicaría cada importe del mes.
    */
+  // `?modo=mes` abre directo el resumen (el enlace de la ficha del ejercicio).
   const [modo, setModo] = useState<ModoDiario>("asientos")
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("modo") === "mes") setModo("mes")
+  }, [])
 
   return (
     <div className="space-y-4">
@@ -179,7 +223,7 @@ function Diario() {
             </button>
           ))}
         </div>
-        <RangoFechas desde={desde} hasta={hasta} onDesde={setDesde} onHasta={setHasta} />
+        <RangoFechas desde={desde} hasta={hasta} onDesde={setDesde} onHasta={setHasta} ejercicios={ejercicios} />
         {modo === "asientos" && (
           <select
             aria-label="Origen"
@@ -197,7 +241,9 @@ function Diario() {
         )}
       </div>
 
-      {modo === "asientos" ? (
+      {!listo ? (
+        <LoadingState label="Cargando el libro diario…" />
+      ) : modo === "asientos" ? (
         <DiarioPorAsiento desde={desde} hasta={hasta} origen={origen} />
       ) : (
         <DiarioMensual desde={desde} hasta={hasta} />
@@ -474,8 +520,7 @@ function AsientoCard({ asiento }: { asiento: Asiento }) {
 
 function MayorDeCuenta() {
   const [cuenta, setCuenta] = useState("")
-  const [desde, setDesde] = useState("")
-  const [hasta, setHasta] = useState("")
+  const { desde, hasta, setDesde, setHasta, listo, ejercicios } = useRangoDeEjercicio()
 
   const p = new URLSearchParams({ cuenta })
   if (desde) p.set("desde", desde)
@@ -485,7 +530,7 @@ function MayorDeCuenta() {
   const query = useQuery({
     queryKey: claves.url(url),
     queryFn: ({ signal }) => pedirJson<Partial<Mayor>>(url, { signal }),
-    enabled: Boolean(cuenta),
+    enabled: Boolean(cuenta) && listo,
     placeholderData: keepPreviousData,
   })
   const datos = query.data
@@ -535,7 +580,7 @@ function MayorDeCuenta() {
             </label>
             <SelectorCuenta id="cuenta-mayor" valor={cuenta} onElegir={setCuenta} />
           </div>
-          <RangoFechas desde={desde} hasta={hasta} onDesde={setDesde} onHasta={setHasta} />
+          <RangoFechas desde={desde} hasta={hasta} onDesde={setDesde} onHasta={setHasta} ejercicios={ejercicios} />
         </div>
         <Button variant="outline" size="sm" onClick={exportar} disabled={!mayor?.filas.length}>
           <Download className="h-3.5 w-3.5" />
@@ -645,8 +690,7 @@ function MayorDeCuenta() {
 /* ── 3 · Sumas y saldos ───────────────────────────────────────────────────── */
 
 function Saldos() {
-  const [desde, setDesde] = useState("")
-  const [hasta, setHasta] = useState("")
+  const { desde, hasta, setDesde, setHasta, listo, ejercicios } = useRangoDeEjercicio()
 
   const p = new URLSearchParams()
   if (desde) p.set("desde", desde)
@@ -657,6 +701,7 @@ function Saldos() {
     queryKey: claves.url(url),
     queryFn: ({ signal }) =>
       pedirJson<Partial<SumasYSaldos> & { truncado?: boolean }>(url, { signal }),
+    enabled: listo,
     placeholderData: keepPreviousData,
   })
   const cargando = query.isPending
@@ -684,7 +729,7 @@ function Saldos() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <RangoFechas desde={desde} hasta={hasta} onDesde={setDesde} onHasta={setHasta} />
+        <RangoFechas desde={desde} hasta={hasta} onDesde={setDesde} onHasta={setHasta} ejercicios={ejercicios} />
         <Button variant="outline" size="sm" onClick={exportar} disabled={!datos.filas.length}>
           <Download className="h-3.5 w-3.5" />
           Exportar

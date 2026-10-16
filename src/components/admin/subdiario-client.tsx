@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { AlertTriangle, BookMarked, Download, Printer } from "lucide-react"
@@ -56,6 +56,16 @@ const importe = (v: number) => (v === 0 ? "" : formatearImporte(v, "ARS", { simb
 export function SubdiarioClient({ tipo }: { tipo: TipoComprobante }) {
   const esVenta = tipo === "venta"
   const [periodo, setPeriodo] = useState<Periodo>({ modo: "mes", mes: mesActual() })
+  // `?desde=…&hasta=…` (o `?mes=2026-09`) abre en ese período: es el enlace
+  // desde la ficha de un ejercicio.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    const mes = p.get("mes")
+    const d = p.get("desde")
+    const h = p.get("hasta")
+    if (mes && /^\d{4}-\d{2}$/.test(mes)) setPeriodo({ modo: "mes", mes })
+    else if (d && h) setPeriodo({ modo: "rango", desde: d, hasta: h })
+  }, [])
   const [entidad, setEntidad] = useState("")
   const [clase, setClase] = useState("")
 
