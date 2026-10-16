@@ -48,8 +48,6 @@ type NavItem = {
   hijos?: NavItem[]
   /** Un número al lado del nombre, que se pide aparte (ver `Contador`). */
   contador?: "crm"
-  /** El número del árbol del contador —"2.3", "5.3.1"—, a la vista y tenue. */
-  numero?: string
   /** Sólo para administradores. El ítem ni se dibuja para el resto. */
   soloAdmin?: boolean
 }
@@ -156,10 +154,11 @@ const GRUPOS: Grupo[] = [
     titulo: "Administración",
     icon: SlidersHorizontal,
     /*
-     * El árbol del contador, en su orden, con sus nombres y sus números.
+     * El árbol del contador, en su orden y con sus nombres.
      *
-     * Es el que mandó el 14/10/2026 («así queda el árbol»). Cuando alguien dice
-     * "el 2.3", tiene que haber un 2.3, y por eso el número está a la vista.
+     * Es el que mandó el 14/10/2026 («así queda el árbol»). Los números del
+     * árbol (0 a 5) son para ubicarse en el documento y no van en pantalla:
+     * el orden ya los dice.
      *
      *   0 Datos maestros
      *   1 Tesorería     → caja y bancos · otros movimientos
@@ -174,38 +173,33 @@ const GRUPOS: Grupo[] = [
      * compartían pantalla se separaron, cada uno en su módulo.
      */
     items: [
-      { numero: "0", name: "Datos maestros", href: "/admin/maestros", available: true },
+      { name: "Datos maestros", href: "/admin/maestros", available: true },
       {
-        numero: "1",
         name: "Tesorería",
         available: true,
         hijos: [
-          { numero: "1.1", name: "Caja y bancos", href: "/admin/cuentas", available: true },
-          { numero: "1.2", name: "Otros movimientos", href: "/admin/movimientos", available: true },
+          { name: "Caja y bancos", href: "/admin/cuentas", available: true },
+          { name: "Otros movimientos", href: "/admin/movimientos", available: true },
         ],
       },
       {
-        numero: "2",
         name: "Proveedores",
         available: true,
         hijos: [
           {
-            numero: "2.1",
             name: "Proveedores",
             href: "/admin/proveedores",
             available: true,
             salvo: ["/admin/proveedores/cuenta-corriente", "/admin/proveedores/pendientes"],
           },
           {
-            numero: "2.2",
             name: "Cuenta corriente",
             href: "/admin/proveedores/cuenta-corriente",
             available: true,
           },
-          { numero: "2.3", name: "Facturas de compras", href: "/admin/compras", available: true },
-          { numero: "2.4", name: "Pago de facturas", href: "/admin/pagos", available: true },
+          { name: "Facturas de compras", href: "/admin/compras", available: true },
+          { name: "Pago de facturas", href: "/admin/pagos", available: true },
           {
-            numero: "2.5",
             name: "Pendientes de pago",
             href: "/admin/proveedores/pendientes",
             available: true,
@@ -213,44 +207,38 @@ const GRUPOS: Grupo[] = [
         ],
       },
       {
-        numero: "3",
         name: "Clientes",
         available: true,
         hijos: [
           {
-            numero: "3.1",
             name: "Clientes",
             href: "/admin/clientes",
             available: true,
             salvo: ["/admin/clientes/cuenta-corriente", "/admin/clientes/pendientes"],
           },
           {
-            numero: "3.2",
             name: "Cuenta corriente",
             href: "/admin/clientes/cuenta-corriente",
             available: true,
           },
-          { numero: "3.3", name: "Facturas de ventas", href: "/admin/ventas", available: true },
-          { numero: "3.4", name: "Cobro de facturas", href: "/admin/cobros", available: true },
+          { name: "Facturas de ventas", href: "/admin/ventas", available: true },
+          { name: "Cobro de facturas", href: "/admin/cobros", available: true },
           {
-            numero: "3.5",
             name: "Pendientes de cobro",
             href: "/admin/clientes/pendientes",
             available: true,
           },
         ],
       },
-      { numero: "4", name: "Stock", href: "/admin/stock", available: false, soloAdmin: true },
+      { name: "Stock", href: "/admin/stock", available: false, soloAdmin: true },
       {
-        numero: "5",
         name: "Contabilidad",
         available: true,
         hijos: [
-          { numero: "5.1", name: "Mayores", href: "/admin/contabilidad/mayor", available: true },
+          { name: "Mayores", href: "/admin/contabilidad/mayor", available: true },
           /* Exacto: es la ruta madre de las otras vistas y si no se quedaría
              encendido en todas. */
           {
-            numero: "5.2",
             name: "Libro diario",
             href: "/admin/contabilidad",
             available: true,
@@ -258,18 +246,15 @@ const GRUPOS: Grupo[] = [
             also: ["/admin/contabilidad/sin-asentar"],
           },
           {
-            numero: "5.3",
             name: "Subdiarios",
             available: true,
             hijos: [
               {
-                numero: "5.3.1",
                 name: "IVA Ventas",
                 href: "/admin/contabilidad/subdiarios/ventas",
                 available: false,
               },
               {
-                numero: "5.3.2",
                 name: "IVA Compras",
                 href: "/admin/contabilidad/subdiarios/compras",
                 available: false,
@@ -277,18 +262,15 @@ const GRUPOS: Grupo[] = [
             ],
           },
           {
-            numero: "5.4",
             name: "Asientos automáticos",
             available: true,
             hijos: [
               {
-                numero: "5.4.1",
                 name: "Ajuste por inflación",
                 href: "/admin/contabilidad/asientos/ajuste-inflacion",
                 available: false,
               },
               {
-                numero: "5.4.2",
                 name: "Apertura y cierre",
                 href: "/admin/contabilidad/asientos/apertura-cierre",
                 available: false,
@@ -296,7 +278,6 @@ const GRUPOS: Grupo[] = [
             ],
           },
           {
-            numero: "5.5",
             name: "Sumas y saldos",
             href: "/admin/contabilidad/sumas-y-saldos",
             available: true,
@@ -669,7 +650,7 @@ function SubGrupoNav({
     if (activo) setAbierto(true)
   }, [activo])
 
-  const id = `nav-sub-${(item.numero ?? item.name).toLowerCase().replace(/[\s.]+/g, "-")}`
+  const id = `nav-sub-${item.name.toLowerCase().replace(/\s+/g, "-")}`
 
   return (
     <div className="pt-1 first:pt-0">
@@ -692,7 +673,6 @@ function SubGrupoNav({
           "hover:bg-white/[0.05] hover:text-white/80"
         )}
       >
-        <Numero numero={item.numero} />
         <span className="flex-1 truncate text-left">{item.name}</span>
 
         {/* Plegado y con la pantalla activa adentro, un punto lo dice. Es el
@@ -729,8 +709,8 @@ function SubGrupoNav({
               18px): el tramo encendido del hilo es la propia guía, no un punto
               aparte flotando al lado. */}
           {/* En el tercer nivel la sangría es menor (12px, guía en 3px): con
-              18 más el número "5.3.1", "IVA Ventas" ya no entra en los 268px
-              de la barra. Sigue alineado con la marca de ItemNav (-9px). */}
+              18 los nombres largos no entran en los 268px de la barra. Sigue
+              alineado con la marca de ItemNav (-9px). */}
           <div className="relative pt-0.5">
             <span
               aria-hidden
@@ -761,7 +741,6 @@ function ItemNav({ item, pathname }: { item: NavItem; pathname: string }) {
   if (!item.available) {
     return (
       <div className="flex cursor-not-allowed select-none items-center gap-2 rounded-md px-2.5 py-2">
-        <Numero numero={item.numero} />
         <span className="flex-1 truncate text-[13px] text-white/35">{item.name}</span>
         <span className="shrink-0 rounded-full bg-white/[0.07] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-white/40">
           Pronto
@@ -791,23 +770,9 @@ function ItemNav({ item, pathname }: { item: NavItem; pathname: string }) {
           activo ? "opacity-100" : "opacity-0"
         )}
       />
-      <Numero numero={item.numero} />
       <span className="flex-1 truncate">{item.name}</span>
       {item.contador === "crm" && <ContadorCrm />}
     </Link>
-  )
-}
-
-/**
- * El número del árbol del contador, delante del nombre. Tenue y en cifras de
- * ancho fijo: sirve para ubicarse ("el 2.3"), no para leerse primero.
- */
-function Numero({ numero }: { numero?: string }) {
-  if (!numero) return null
-  return (
-    <span className="mr-1 shrink-0 font-mono text-[10.5px] font-medium tabular-nums tracking-normal text-white/30">
-      {numero}
-    </span>
   )
 }
 
