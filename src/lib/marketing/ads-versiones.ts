@@ -56,3 +56,12 @@ export async function versionesDeAds(): Promise<{ ok: true; versiones: Version[]
   if (error) return { ok: false, error: error.message }
   return { ok: true, versiones: (data ?? []) as Version[] }
 }
+
+export async function versionDeAds(numero: string): Promise<Version | null> {
+  const { data } = await supabase
+    .from("ads_versiones")
+    .select("id, numero, fecha, titulo, resumen, autor, cambios, esperado, revisar_el, estado, resultado")
+    .eq("numero", numero)
+    .maybeSingle()
+  return (data as Version | null) ?? null
+}
