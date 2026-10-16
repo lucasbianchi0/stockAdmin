@@ -147,22 +147,30 @@ export function leerMarca(parte: unknown): string {
 }
 
 export const ADMINISTRACION = `# Módulo Administración
-Ordenado como el organigrama del contador:
-1. \`/admin/maestros\` Datos maestros — el plan de cuentas del estudio contable y el Excel con el que se actualiza.
+Ordenado como el árbol del contador, con sus números:
+0. \`/admin/maestros\` Datos maestros — el plan de cuentas del estudio contable y el Excel con el que se actualiza.
+1. Tesorería
+   - 1.1 \`/admin/cuentas\` Caja y bancos — saldos y movimientos de cada cuenta, con gastos, transferencias y conciliación.
+   - 1.2 \`/admin/movimientos\` Otros movimientos — todo movimiento de dinero que no pasa por una factura. Listado en \`/admin/movimientos/listado\`.
 2. Proveedores
-   - \`/admin/proveedores\` Proveedores — la ficha de cada proveedor, nacional o del exterior.
-   - \`/admin/proveedores/cuenta-corriente\` Cuenta corriente — cada comprobante y cada pago del proveedor, con el saldo corrido.
-   - \`/admin/compras\` Facturas de compras — el comprobante recibido, a mano o desde el PDF. El listado está en \`/admin/compras/listado\`.
-   - \`/admin/pagos\` Pagos de facturas — qué comprobantes cancela el pago, con retenciones y medio de pago. Listado en \`/admin/pagos/listado\`.
-   - \`/admin/movimientos\` Otros movimientos — todo movimiento de dinero que no pasa por una factura. Listado en \`/admin/movimientos/listado\`.
+   - 2.1 \`/admin/proveedores\` Proveedores — la ficha de cada proveedor, nacional o del exterior.
+   - 2.2 \`/admin/proveedores/cuenta-corriente\` Cuenta corriente — cada comprobante y cada pago del proveedor, con el saldo corrido.
+   - 2.3 \`/admin/compras\` Facturas de compras — el comprobante recibido, a mano o desde el PDF. El listado está en \`/admin/compras/listado\`.
+   - 2.4 \`/admin/pagos\` Pago de facturas — qué comprobantes cancela el pago, con retenciones y medio de pago. Listado en \`/admin/pagos/listado\`.
+   - 2.5 \`/admin/proveedores/pendientes\` Pendientes de pago — lo que falta pagar, factura por factura, exportable.
 3. Clientes
-   - \`/admin/clientes\` Clientes — la ficha de cada cliente; sólo la razón social es obligatoria.
-   - \`/admin/clientes/cuenta-corriente\` Cuenta corriente — cada factura y cada cobro del cliente, con el saldo corrido.
-   - \`/admin/ventas\` Facturas de ventas — el comprobante ya emitido, a mano o desde el PDF. Listado en \`/admin/ventas/listado\`.
-   - \`/admin/cobros\` Cobros de facturas — qué facturas cancela el recibo, con retenciones y acreditación. Listado en \`/admin/cobros/listado\`.
-4. \`/admin/cuentas\` Caja y bancos — saldos y movimientos de cada cuenta, con gastos, transferencias y conciliación.
-5. \`/admin/contabilidad\` Contabilidad — los asientos que genera el sistema: diario, mayor y sumas y saldos, en pesos.
-6. \`/admin/reportes\` Reportes — pendientes, saldos y estados de cuenta, en pesos y en dólares, exportables.
+   - 3.1 \`/admin/clientes\` Clientes — la ficha de cada cliente; sólo la razón social es obligatoria.
+   - 3.2 \`/admin/clientes/cuenta-corriente\` Cuenta corriente — cada factura y cada cobro del cliente, con el saldo corrido.
+   - 3.3 \`/admin/ventas\` Facturas de ventas — el comprobante ya emitido, a mano o desde el PDF. Listado en \`/admin/ventas/listado\`.
+   - 3.4 \`/admin/cobros\` Cobro de facturas — qué facturas cancela el recibo, con retenciones y acreditación. Listado en \`/admin/cobros/listado\`.
+   - 3.5 \`/admin/clientes/pendientes\` Pendientes de cobro — lo que falta cobrar, factura por factura, exportable.
+4. Stock — todavía en construcción.
+5. Contabilidad — los asientos que genera el sistema, en pesos.
+   - 5.1 \`/admin/contabilidad/mayor\` Mayores — todo lo que pasó por una cuenta, con el saldo corrido.
+   - 5.2 \`/admin/contabilidad\` Libro diario — cada asiento, o resumido por mes para copiar al libro.
+   - 5.3 Subdiarios IVA Ventas e IVA Compras — todavía en construcción.
+   - 5.4 Asientos automáticos (ajuste por inflación, apertura y cierre) — todavía en construcción.
+   - 5.5 \`/admin/contabilidad/sumas-y-saldos\` Sumas y saldos — el estado de todas las cuentas y si la partida doble cuadra.
 
 Los comprobantes en dólares llevan el tipo de cambio de su fecha; los totales se informan separados por moneda, nunca sumados.`
 

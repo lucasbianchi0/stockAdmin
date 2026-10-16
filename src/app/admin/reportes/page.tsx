@@ -1,23 +1,16 @@
-import { ReportesClient } from "@/components/admin/reportes-client"
-import { PageBody, PageHeader } from "@/components/ui/page-header"
+import { redirect } from "next/navigation"
 
 /**
- * Los cuatro reportes operativos del pliego, en una pantalla con pestañas:
- * pendientes de cobro, pendientes de pago, saldos por cuenta y estado de cuenta.
+ * Reportes ya no es una pantalla: sus dos pestañas pasaron a su módulo —2.5
+ * Pendientes de pago en Proveedores y 3.5 Pendientes de cobro en Clientes—, como
+ * pide el árbol del contador. La ruta queda como redirección porque la usan el
+ * asistente y algún enlace guardado, incluido el `?solapa=` de antes.
  */
-export const metadata = { title: "Reportes · Accedra" }
-
-export default function ReportesPage() {
-  return (
-    <main className="flex min-h-full flex-col">
-      <PageHeader
-        title="Reportes"
-        description="Pendientes, saldos y estados de cuenta — en pesos y en dólares, exportables"
-        back={{ href: "/admin", label: "Administración" }}
-      />
-      <PageBody>
-        <ReportesClient />
-      </PageBody>
-    </main>
-  )
+export default async function ReportesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ solapa?: string }>
+}) {
+  const { solapa } = await searchParams
+  redirect(solapa === "pagar" ? "/admin/proveedores/pendientes" : "/admin/clientes/pendientes")
 }

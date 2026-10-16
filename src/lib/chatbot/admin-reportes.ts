@@ -878,8 +878,8 @@ const LEER: Record<Concreta, () => Promise<string>> = {
 }
 
 const PANTALLA: Record<Concreta, string> = {
-  por_cobrar: "/admin/reportes",
-  por_pagar: "/admin/reportes",
+  por_cobrar: "/admin/clientes/pendientes",
+  por_pagar: "/admin/proveedores/pendientes",
   facturacion_mes: "/admin/ventas/listado",
   antiguedad_saldos: "/admin/reportes",
   evolucion_12_meses: "/admin/ventas/listado",

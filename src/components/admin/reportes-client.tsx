@@ -7,6 +7,7 @@ import { Download, PieChart } from "lucide-react"
 import { SemaforoVencimiento } from "@/components/admin/semaforo-vencimiento"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { FranjaFija } from "@/components/ui/franja-fija"
 import { Input } from "@/components/ui/input"
 import { EmptyState, LoadingState } from "@/components/ui/states"
 import {
@@ -23,7 +24,12 @@ import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
- * Los reportes operativos del pliego, en una sola pantalla con pestañas.
+ * Los reportes operativos del pliego.
+ *
+ * Eran dos pestañas en `/admin/reportes`. El árbol del contador los separa: el
+ * de pago es el 2.5 de Proveedores y el de cobro el 3.5 de Clientes, así que
+ * cada uno vive en su módulo —`/admin/proveedores/pendientes` y
+ * `/admin/clientes/pendientes`— y comparten este mismo componente.
  *
  * El estado de cuenta era la cuarta y se fue: ahora es «cuenta corriente» y
  * vive adentro de cada módulo —`/admin/proveedores/cuenta-corriente` y
@@ -83,66 +89,9 @@ type Totales = {
   truncado: boolean
 }
 
-type Solapa = "cobrar" | "pagar"
-
-/**
- * Había una tercera, «Saldos por cuenta», y se fue.
- *
- * Mostraba el saldo de cada caja y cada banco, que es exactamente lo que ya
- * muestra Caja y Bancos en el tablero —ahí y con más datos: entradas y salidas
- * del mes, lo que falta conciliar, y el link al extracto de cada una—. Tener el
- * mismo número en dos pantallas no es redundancia inofensiva: el día que una de
- * las dos se calcula distinto, nadie sabe cuál creer.
- */
-const SOLAPAS: { valor: Solapa; etiqueta: string }[] = [
-  { valor: "cobrar", etiqueta: "Pendientes de cobro" },
-  { valor: "pagar", etiqueta: "Pendientes de pago" },
-]
-
-export function ReportesClient() {
-  const [solapa, setSolapa] = useState<Solapa>("cobrar")
-
-  /**
-   * La solapa puede venir en la URL, para poder linkear a un reporte concreto.
-   *
-   * Se lee de `window` dentro de un efecto y no con `useSearchParams` para no
-   * arrastrar toda la pantalla a un límite de Suspense por un parámetro
-   * opcional que solo se usa al entrar.
-   */
-  useEffect(() => {
-    const pedida = new URLSearchParams(window.location.search).get("solapa")
-    if (pedida && SOLAPAS.some((s) => s.valor === pedida)) setSolapa(pedida as Solapa)
-  }, [])
-
-  return (
-    <>
-      <div className="mb-4 flex flex-wrap items-center gap-1 rounded-lg border border-line bg-surface p-1">
-        {SOLAPAS.map((s) => (
-          <button
-            key={s.valor}
-            onClick={() => setSolapa(s.valor)}
-            aria-pressed={solapa === s.valor}
-            className={cn(
-              "rounded-md px-3 py-2 text-[12.5px] font-medium transition-colors",
-              solapa === s.valor
-                ? "bg-brand-50 text-brand-700"
-                : "text-ink-muted hover:bg-surface-muted hover:text-ink"
-            )}
-          >
-            {s.etiqueta}
-          </button>
-        ))}
-      </div>
-
-      {solapa === "cobrar" && <Pendientes tipo="venta" />}
-      {solapa === "pagar" && <Pendientes tipo="compra" />}
-    </>
-  )
-}
-
 /* ── Pendientes de cobro / de pago ────────────────────────────────────────── */
 
-function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
+export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
   const esVenta = tipo === "venta"
 
   const url = `/api/admin/reportes/pendientes?tipo=${tipo}`
@@ -193,10 +142,11 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
   if (cargando) return <LoadingState label="Armando el reporte…" />
 
   return (
-    <div className="panel overflow-hidden">
-      {/* Los totales arriba: son el producto del reporte, no un pie de página. */}
+    <div className="panel overflow-clip">
+      {/* Los totales arriba y fijos al bajar: son el producto del reporte, no un
+          pie de página, y la lista de facturas es larga. */}
       {totales && (
-        <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-line bg-surface-subtle px-5 py-4">
+        <FranjaFija className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-line bg-surface-subtle px-5 py-4">
           <Total rotulo="Comprobantes" valor={String(totales.cantidad)} />
           {/* Un solo total, en pesos: cada factura valuada al dólar de su fecha
               de emisión. Antes eran dos números por moneda que no se podían
@@ -235,7 +185,7 @@ function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
             <Download className="h-3.5 w-3.5" />
             Exportar CSV
           </Button>
-        </div>
+        </FranjaFija>
       )}
 
       {totales?.truncado && (

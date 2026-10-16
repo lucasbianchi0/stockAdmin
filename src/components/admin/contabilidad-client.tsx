@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { AlertTriangle, BookOpen, Check, Download, Layers, Scale } from "lucide-react"
 
@@ -34,26 +35,29 @@ import { claves, pedirJson } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 /**
- * La contabilidad, en una pantalla con cuatro solapas.
+ * La contabilidad, una pantalla por vista.
  *
- * El orden no es casual: va de lo particular a lo general. **Diario** es cada
- * asiento como se escribió, **Mayor** es una cuenta a lo largo del tiempo,
- * **Sumas y saldos** es el estado de todas, y **Pendientes** es lo que todavía
- * no entró. Un contador recorre las cuatro en ese orden cuando revisa un mes.
+ * Eran cuatro solapas en una sola pantalla. Ahora cada una es un ítem del menú
+ * —5.1 Mayores, 5.2 Libro diario, 5.5 Sumas y saldos—, que es como las nombra el
+ * árbol del contador. Las piezas son las mismas; lo que cambia es la puerta.
+ *
+ * El orden sigue sin ser casual: **Diario** es cada asiento como se escribió,
+ * **Mayor** es una cuenta a lo largo del tiempo, **Sumas y saldos** es el estado
+ * de todas, y **Sin asentar** es lo que todavía no entró.
  *
  * Todo se lee en pesos. La moneda original de cada línea está a la vista como
  * dato, pero las columnas suman una sola moneda: mezclarlas es el error que el
  * punto 6 del documento del contador pedía arreglar.
  */
 
-type Solapa = "diario" | "mayor" | "saldos" | "pendientes"
+export type VistaContable = "diario" | "mayor" | "saldos" | "pendientes"
 
 /** Sin filtro: el mismo URL que el aviso de cada módulo, así comparten caché. */
 const URL_PENDIENTES = "/api/admin/contabilidad/pendientes"
 
 type RespuestaPendientes = { documentos?: DocumentoSinAsiento[]; cantidad?: number }
 
-/** Una sola query para el contador de la solapa y para la lista: se invalidan juntas. */
+/** Una sola query para el aviso y para la lista: se invalidan juntas. */
 function usePendientes() {
   return useQuery({
     queryKey: claves.url(URL_PENDIENTES),
@@ -61,65 +65,34 @@ function usePendientes() {
   })
 }
 
-const SOLAPAS: { valor: Solapa; etiqueta: string; icono: typeof BookOpen }[] = [
-  { valor: "diario", etiqueta: "Libro diario", icono: BookOpen },
-  { valor: "mayor", etiqueta: "Mayor", icono: Layers },
-  { valor: "saldos", etiqueta: "Sumas y saldos", icono: Scale },
-  { valor: "pendientes", etiqueta: "Sin asentar", icono: AlertTriangle },
-]
-
-export function ContabilidadClient() {
-  const [solapa, setSolapa] = useState<Solapa>("diario")
-  // El contador de pendientes vive acá y no adentro de su solapa: es una alerta,
-  // y una alerta que solo se ve entrando a la pantalla donde está el problema no
-  // sirve de nada.
+export function ContabilidadClient({ vista }: { vista: VistaContable }) {
+  // El aviso de pendientes va arriba de todas las vistas y no solo de la suya:
+  // una alerta que solo se ve entrando a la pantalla donde está el problema no
+  // sirve de nada. Sin pendientes no se dibuja: un cartel permanente entrena a
+  // no mirarlo.
   const pendientes = usePendientes().data?.cantidad ?? 0
-
-  /**
-   * "Sin asentar" solo existe cuando hay algo sin asentar.
-   *
-   * Es la misma regla que el cartel de cada módulo: una solapa permanente que
-   * casi siempre está vacía entrena a no mirarla, y el día que tiene algo pasa
-   * desapercibida. Que aparezca es, en sí mismo, el aviso.
-   *
-   * La excepción es estar parado encima: si el último pendiente se corrige
-   * desde ahí, la solapa se queda hasta que alguien se va a otra —si no, la
-   * pantalla desaparecería abajo del cursor justo cuando se terminó de arreglar
-   * todo, que es el momento en que uno quiere ver que no quedó nada.
-   */
-  const mostrarPendientes = pendientes > 0 || solapa === "pendientes"
-  const solapas = SOLAPAS.filter((s) => s.valor !== "pendientes" || mostrarPendientes)
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center gap-1 rounded-lg border border-line bg-surface p-1">
-        {solapas.map((s) => (
-          <button
-            key={s.valor}
-            onClick={() => setSolapa(s.valor)}
-            aria-pressed={solapa === s.valor}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md px-3 py-2 text-[12.5px] font-medium transition-colors",
-              solapa === s.valor
-                ? "bg-brand-50 text-brand-700"
-                : "text-ink-muted hover:bg-surface-muted hover:text-ink"
-            )}
-          >
-            <s.icono className="h-3.5 w-3.5" />
-            {s.etiqueta}
-            {s.valor === "pendientes" && pendientes > 0 && (
-              <Badge tone="warning" size="sm">
-                {pendientes}
-              </Badge>
-            )}
-          </button>
-        ))}
-      </div>
+      {vista !== "pendientes" && pendientes > 0 && (
+        <Link
+          href="/admin/contabilidad/sin-asentar"
+          className="mb-4 flex items-center gap-2.5 rounded-lg border border-warning-line bg-warning-soft px-3 py-2.5 text-[12.5px] text-warning-text transition-colors hover:bg-warning-soft/70"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span className="flex-1">
+            {pendientes === 1
+              ? "Hay 1 documento sin asentar: está en los saldos pero no en el mayor."
+              : `Hay ${pendientes} documentos sin asentar: están en los saldos pero no en el mayor.`}
+          </span>
+          <span className="shrink-0 font-semibold">Revisar →</span>
+        </Link>
+      )}
 
-      {solapa === "diario" && <Diario />}
-      {solapa === "mayor" && <MayorDeCuenta />}
-      {solapa === "saldos" && <Saldos />}
-      {solapa === "pendientes" && <Pendientes />}
+      {vista === "diario" && <Diario />}
+      {vista === "mayor" && <MayorDeCuenta />}
+      {vista === "saldos" && <Saldos />}
+      {vista === "pendientes" && <Pendientes />}
     </>
   )
 }
@@ -165,11 +138,75 @@ function RangoFechas({
 
 /* ── 1 · Libro diario ─────────────────────────────────────────────────────── */
 
+type ModoDiario = "asientos" | "mes"
+
 function Diario() {
   const [desde, setDesde] = useState("")
   const [hasta, setHasta] = useState("")
   const [origen, setOrigen] = useState("")
+  /**
+   * "Resumido por mes" es el punto 5 del pedido: un asiento por mes con todas las
+   * cuentas agrupadas, para copiar al libro rubricado.
+   *
+   * Es una LECTURA, no un asiento nuevo. Los asientos de cada factura siguen
+   * siendo los que están en la base —el contador lo pidió así— y registrar
+   * además un resumen duplicaría cada importe del mes.
+   */
+  const [modo, setModo] = useState<ModoDiario>("asientos")
 
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-0.5 rounded-lg border border-line bg-surface p-0.5">
+          {(
+            [
+              ["asientos", "Por asiento"],
+              ["mes", "Resumido por mes"],
+            ] as const
+          ).map(([valor, etiqueta]) => (
+            <button
+              key={valor}
+              onClick={() => setModo(valor)}
+              aria-pressed={modo === valor}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-[12.5px] font-medium transition-colors",
+                modo === valor
+                  ? "bg-brand-50 text-brand-700"
+                  : "text-ink-muted hover:bg-surface-muted hover:text-ink"
+              )}
+            >
+              {etiqueta}
+            </button>
+          ))}
+        </div>
+        <RangoFechas desde={desde} hasta={hasta} onDesde={setDesde} onHasta={setHasta} />
+        {modo === "asientos" && (
+          <select
+            aria-label="Origen"
+            value={origen}
+            onChange={(e) => setOrigen(e.target.value)}
+            className="h-9 rounded-md border border-line bg-surface px-2 text-[12.5px] text-ink"
+          >
+            <option value="">Todos los orígenes</option>
+            {(Object.keys(ORIGEN_ASIENTO_LABEL) as OrigenAsiento[]).map((o) => (
+              <option key={o} value={o}>
+                {ORIGEN_ASIENTO_LABEL[o]}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {modo === "asientos" ? (
+        <DiarioPorAsiento desde={desde} hasta={hasta} origen={origen} />
+      ) : (
+        <DiarioMensual desde={desde} hasta={hasta} />
+      )}
+    </div>
+  )
+}
+
+function DiarioPorAsiento({ desde, hasta, origen }: { desde: string; hasta: string; origen: string }) {
   const p = new URLSearchParams()
   if (desde) p.set("desde", desde)
   if (hasta) p.set("hasta", hasta)
@@ -185,7 +222,6 @@ function Diario() {
   })
   const asientos = query.data?.asientos ?? []
   const truncado = Boolean(query.data?.truncado)
-  const cargando = query.isPending
 
   const exportar = () =>
     descargarCsv(
@@ -205,27 +241,14 @@ function Diario() {
       )
     )
 
-  if (cargando) return <LoadingState label="Cargando el libro diario…" />
+  if (query.isPending) return <LoadingState label="Cargando el libro diario…" />
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <RangoFechas desde={desde} hasta={hasta} onDesde={setDesde} onHasta={setHasta} />
-          <select
-            aria-label="Origen"
-            value={origen}
-            onChange={(e) => setOrigen(e.target.value)}
-            className="h-9 rounded-md border border-line bg-surface px-2 text-[12.5px] text-ink"
-          >
-            <option value="">Todos los orígenes</option>
-            {(Object.keys(ORIGEN_ASIENTO_LABEL) as OrigenAsiento[]).map((o) => (
-              <option key={o} value={o}>
-                {ORIGEN_ASIENTO_LABEL[o]}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[12px] text-ink-muted">
+          {asientos.length} asiento{asientos.length === 1 ? "" : "s"}
+        </p>
         <Button variant="outline" size="sm" onClick={exportar} disabled={!asientos.length}>
           <Download className="h-3.5 w-3.5" />
           Exportar
@@ -249,6 +272,128 @@ function Diario() {
         <div className="space-y-3">
           {asientos.map((a) => (
             <AsientoCard key={a.id} asiento={a} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type LineaMensual = { cuentaId: string; codigo: string; nombre: string; debe: number; haber: number }
+type AsientoMensual = {
+  mes: string
+  asientos: number
+  lineas: LineaMensual[]
+  debe: number
+  haber: number
+}
+
+const MESES = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+]
+
+/** `2026-09` → `Septiembre 2026`. */
+function nombreMes(mes: string): string {
+  const [a, m] = mes.split("-")
+  const nombre = MESES[Number(m) - 1] ?? m
+  return `${nombre[0].toUpperCase()}${nombre.slice(1)} ${a}`
+}
+
+function DiarioMensual({ desde, hasta }: { desde: string; hasta: string }) {
+  const p = new URLSearchParams()
+  if (desde) p.set("desde", desde)
+  if (hasta) p.set("hasta", hasta)
+  const url = `/api/admin/contabilidad/diario-mensual?${p}`
+
+  const query = useQuery({
+    queryKey: claves.url(url),
+    queryFn: ({ signal }) =>
+      pedirJson<{ meses?: AsientoMensual[]; truncado?: boolean }>(url, { signal }),
+    placeholderData: keepPreviousData,
+  })
+  const meses = query.data?.meses ?? []
+
+  const exportar = () =>
+    descargarCsv(
+      "libro-diario-mensual.csv",
+      ["Mes", "Cuenta", "Debe", "Haber"],
+      meses.flatMap((m) =>
+        m.lineas.map((l) => [nombreMes(m.mes), `${l.codigo} · ${l.nombre}`, l.debe || "", l.haber || ""])
+      )
+    )
+
+  if (query.isPending) return <LoadingState label="Agrupando el libro diario por mes…" />
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[12px] text-ink-muted">
+          Un asiento por mes con cada cuenta neteada. Es una vista: los asientos de cada documento
+          siguen siendo los registrados.
+        </p>
+        <Button variant="outline" size="sm" onClick={exportar} disabled={!meses.length}>
+          <Download className="h-3.5 w-3.5" />
+          Exportar
+        </Button>
+      </div>
+
+      {query.data?.truncado && (
+        <p className="rounded-lg border border-warning-line bg-warning-soft px-3 py-2 text-[12px] text-warning-text">
+          El período tiene demasiados movimientos para agruparlos de una vez. Acotá el rango de
+          fechas: los totales de abajo están incompletos.
+        </p>
+      )}
+
+      {!meses.length ? (
+        <EmptyState icon={BookOpen} title="No hay asientos en el período" />
+      ) : (
+        <div className="space-y-3">
+          {meses.map((m) => (
+            <div key={m.mes} className="overflow-hidden rounded-xl border border-line bg-surface shadow-e1">
+              <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-4 py-2.5">
+                <div className="flex items-baseline gap-2.5">
+                  <span className="text-[12.5px] font-semibold text-ink">{nombreMes(m.mes)}</span>
+                  <span className="text-[11.5px] text-ink-muted">
+                    resume {m.asientos} asiento{m.asientos === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <span className="num font-mono text-[12px] font-semibold text-ink">
+                  {formatearImporte(m.debe)}
+                </span>
+              </div>
+              <Table>
+                <TableBody>
+                  {m.lineas.map((l) => (
+                    <TableRow key={l.cuentaId}>
+                      <TableCell className="w-[60%]">
+                        <p className={cn("text-[12.5px] text-ink", l.haber > 0 && "pl-6")}>
+                          <span className="font-mono text-[11px] text-ink-faint">{l.codigo}</span>{" "}
+                          {l.nombre}
+                        </p>
+                      </TableCell>
+                      <TableCell className="num w-[20%] text-right font-mono text-[12px] text-ink">
+                        {l.debe > 0 ? formatearImporte(l.debe, "ARS", { simbolo: false }) : ""}
+                      </TableCell>
+                      <TableCell className="num w-[20%] text-right font-mono text-[12px] text-ink">
+                        {l.haber > 0 ? formatearImporte(l.haber, "ARS", { simbolo: false }) : ""}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="bg-surface-subtle">
+                    <TableCell className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
+                      Totales
+                    </TableCell>
+                    <TableCell className="num text-right font-mono text-[12px] font-semibold text-ink">
+                      {formatearImporte(m.debe, "ARS", { simbolo: false })}
+                    </TableCell>
+                    <TableCell className="num text-right font-mono text-[12px] font-semibold text-ink">
+                      {formatearImporte(m.haber, "ARS", { simbolo: false })}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
           ))}
         </div>
       )}

@@ -143,6 +143,22 @@ export type Presupuesto = {
  *  sin bajar los renglones de doscientos presupuestos para mostrar una tabla. */
 export type PresupuestoFila = Omit<Presupuesto, "items">
 
+/**
+ * Puntos: la base de la comisión del vendedor.
+ *
+ * El 8% de la renta, y sólo de lo facturado —lo confirmó el contador el
+ * 15/10/2026—. Un presupuesto enviado o aceptado todavía puede no venderse, y
+ * pagarle comisión a algo que no se facturó es pagarla dos veces el día que se
+ * cae.
+ */
+export const PUNTOS_SOBRE_RENTA = 0.08
+
+/** Los puntos de un presupuesto, o `null` si no corresponden todavía. */
+export function puntosDe(p: Pick<PresupuestoFila, "estado" | "totales">): number | null {
+  if (p.estado !== "facturado") return null
+  return Math.round(p.totales.rentabilidad * PUNTOS_SOBRE_RENTA * 100) / 100
+}
+
 /* ── El legajo ────────────────────────────────────────────────────────────── */
 
 /**

@@ -7,6 +7,7 @@ import { Download, PieChart } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { FranjaFija } from "@/components/ui/franja-fija"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
 import {
   Table,
@@ -25,6 +26,8 @@ import {
   ESTADO_LABEL,
   ESTADO_TONO,
   type EstadoPresupuesto,
+  PUNTOS_SOBRE_RENTA,
+  puntosDe,
   type PresupuestoFila,
 } from "@/lib/comercial/presupuestos"
 import { cn } from "@/lib/utils"
@@ -41,6 +44,10 @@ import { cn } from "@/lib/utils"
  * Lo que sí sale de los presupuestos cargados está completo, y es la mayoría de
  * lo que el reporte tiene que contestar: quién, cuándo, cuánto se vendió, cuánto
  * costó y cuánto quedó.
+ *
+ * Los **Puntos** (8% de la renta de lo facturado) son la base de la comisión.
+ * El resumen de arriba queda fijo al bajar: la tabla es larga y lo que se quiere
+ * tener a la vista mientras se la recorre son los totales.
  */
 export function ReportesComercialClient() {
   const router = useRouter()
@@ -66,13 +73,18 @@ export function ReportesComercialClient() {
    * que el resto del sistema.
    */
   const totales = useMemo(() => {
-    const vacio = () => ({ venta: 0, costo: 0, renta: 0, n: 0 })
+    const vacio = () => ({ venta: 0, costo: 0, renta: 0, puntos: 0, facturados: 0, n: 0 })
     const acc = { ARS: vacio(), USD: vacio() }
     for (const p of filas) {
       const m = acc[p.moneda]
       m.venta += p.totales.venta
       m.costo += p.totales.costo
       m.renta += p.totales.rentabilidad
+      const puntos = puntosDe(p)
+      if (puntos !== null) {
+        m.puntos += puntos
+        m.facturados++
+      }
       m.n++
     }
     return acc
@@ -89,8 +101,8 @@ export function ReportesComercialClient() {
   }
 
   return (
-    <div className="panel overflow-hidden">
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-line bg-surface-subtle px-5 py-4">
+    <div className="panel overflow-clip">
+      <FranjaFija className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-line bg-surface-subtle px-5 py-4">
         {(["ARS", "USD"] as const).map((m) =>
           totales[m].n === 0 ? null : (
             <div key={m} className="flex flex-wrap items-center gap-x-6 gap-y-2">
@@ -108,6 +120,10 @@ export function ReportesComercialClient() {
                     ? "—"
                     : `${Math.round((totales[m].renta / totales[m].venta) * 100)} %`
                 }
+              />
+              <Total
+                rotulo="Puntos"
+                valor={totales[m].facturados === 0 ? "—" : formatearImporte(totales[m].puntos, m)}
               />
             </div>
           )
@@ -141,7 +157,7 @@ export function ReportesComercialClient() {
             onClick={() =>
               descargarCsv(
                 "presupuestos.csv",
-                ["N.º", "Cliente", "Referencia", "Fecha", "Vendedor", "Estado", "Moneda", "Venta", "Costo", "Renta", "% renta"],
+                ["N.º", "Cliente", "Referencia", "Fecha", "Vendedor", "Estado", "Moneda", "Venta", "Costo", "Renta", "% renta", "Puntos"],
                 filas.map((p) => [
                   p.numero,
                   p.clienteNombre ?? "",
@@ -154,6 +170,7 @@ export function ReportesComercialClient() {
                   p.totales.costo,
                   p.totales.rentabilidad,
                   p.totales.venta === 0 ? "" : Math.round(p.totales.rentaPct * 100),
+                  puntosDe(p) ?? "",
                 ])
               )
             }
@@ -162,7 +179,7 @@ export function ReportesComercialClient() {
             Exportar CSV
           </Button>
         </div>
-      </div>
+      </FranjaFija>
 
       {filas.length === 0 ? (
         <EmptyState
@@ -184,6 +201,12 @@ export function ReportesComercialClient() {
               <TableHead className="text-right">Costo</TableHead>
               <TableHead className="text-right">Renta</TableHead>
               <TableHead className="text-right">%</TableHead>
+              <TableHead
+                className="text-right"
+                title={`${PUNTOS_SOBRE_RENTA * 100}% de la renta, sólo en lo facturado`}
+              >
+                Puntos
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -194,10 +217,18 @@ export function ReportesComercialClient() {
                 className="cursor-pointer"
               >
                 <TableCell className="num font-semibold text-ink">{p.numero}</TableCell>
-                <TableCell className="max-w-[200px] truncate text-[12.5px] text-ink">
+                {/* Angostas para que entre Puntos sin scroll lateral en una
+                    notebook; el texto entero queda en el tooltip. */}
+                <TableCell
+                  className="max-w-[170px] truncate text-[12.5px] text-ink"
+                  title={p.clienteNombre ?? undefined}
+                >
                   {p.clienteNombre ?? "—"}
                 </TableCell>
-                <TableCell className="max-w-[240px] truncate text-[12px] text-ink-secondary">
+                <TableCell
+                  className="max-w-[190px] truncate text-[12px] text-ink-secondary"
+                  title={p.referencia}
+                >
                   {p.referencia}
                 </TableCell>
                 <TableCell className="num whitespace-nowrap text-ink-secondary">
@@ -232,6 +263,16 @@ export function ReportesComercialClient() {
                   )}
                 >
                   {p.totales.venta === 0 ? "—" : `${Math.round(p.totales.rentaPct * 100)}%`}
+                </TableCell>
+                <TableCell className="num whitespace-nowrap text-right font-medium text-ink">
+                  {(() => {
+                    const puntos = puntosDe(p)
+                    return puntos === null ? (
+                      <span className="text-ink-faint">—</span>
+                    ) : (
+                      formatearImporte(puntos, p.moneda)
+                    )
+                  })()}
                 </TableCell>
               </TableRow>
             ))}

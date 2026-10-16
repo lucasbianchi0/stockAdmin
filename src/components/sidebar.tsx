@@ -48,6 +48,10 @@ type NavItem = {
   hijos?: NavItem[]
   /** Un número al lado del nombre, que se pide aparte (ver `Contador`). */
   contador?: "crm"
+  /** El número del árbol del contador —"2.3", "5.3.1"—, a la vista y tenue. */
+  numero?: string
+  /** Sólo para administradores. El ítem ni se dibuja para el resto. */
+  soloAdmin?: boolean
 }
 
 type Grupo = {
@@ -152,71 +156,163 @@ const GRUPOS: Grupo[] = [
     titulo: "Administración",
     icon: SlidersHorizontal,
     /*
-     * El menú del pliego, en su orden y con sus nombres.
+     * El árbol del contador, en su orden, con sus nombres y sus números.
      *
-     * Antes eran nueve entradas planas ordenadas por frecuencia de uso —primero
-     * las facturas, después los maestros—, que se lee bien pero no se parece a
-     * nada: el documento del contador organiza el sistema en seis módulos y esa
-     * es la estructura con la que él y administración lo piensan y lo piden.
-     * Cuando alguien dice "el 2.3", tiene que haber un 2.3.
+     * Es el que mandó el 14/10/2026 («así queda el árbol»). Cuando alguien dice
+     * "el 2.3", tiene que haber un 2.3, y por eso el número está a la vista.
      *
-     *   1 Datos maestros
-     *   2 Proveedores → maestro · cuenta corriente · compras · pagos · movimientos
-     *   3 Clientes    → maestro · cuenta corriente · ventas · cobros
-     *   4 Caja y bancos · 5 Contabilidad · 6 Reportes
+     *   0 Datos maestros
+     *   1 Tesorería     → caja y bancos · otros movimientos
+     *   2 Proveedores   → maestro · cuenta corriente · compras · pagos · pendientes de pago
+     *   3 Clientes      → maestro · cuenta corriente · ventas · cobros · pendientes de cobro
+     *   4 Stock
+     *   5 Contabilidad  → mayores · diario · subdiarios · asientos automáticos · sumas y saldos
      *
-     * La única libertad que se tomó: el 2.3 "Pagos" del organigrama agrupa dos
-     * hojas —pagos de facturas y otros movimientos— y acá van sueltas y
-     * contiguas dentro de Proveedores, en vez de abrir un cuarto nivel de
-     * sangría para colgarles un rótulo. Se llega a lo mismo con un click menos.
+     * Dos cosas que no dice el árbol y se decidieron con el contador: «Otros
+     * movimientos» va dentro de Tesorería (es plata que entra y sale de las
+     * cuentas, no de un proveedor), y los dos reportes de pendientes que antes
+     * compartían pantalla se separaron, cada uno en su módulo.
      */
     items: [
-      { name: "Datos maestros", href: "/admin/maestros", available: true },
+      { numero: "0", name: "Datos maestros", href: "/admin/maestros", available: true },
       {
+        numero: "1",
+        name: "Tesorería",
+        available: true,
+        hijos: [
+          { numero: "1.1", name: "Caja y bancos", href: "/admin/cuentas", available: true },
+          { numero: "1.2", name: "Otros movimientos", href: "/admin/movimientos", available: true },
+        ],
+      },
+      {
+        numero: "2",
         name: "Proveedores",
         available: true,
         hijos: [
           {
+            numero: "2.1",
             name: "Proveedores",
             href: "/admin/proveedores",
             available: true,
-            salvo: ["/admin/proveedores/cuenta-corriente"],
+            salvo: ["/admin/proveedores/cuenta-corriente", "/admin/proveedores/pendientes"],
           },
           {
+            numero: "2.2",
             name: "Cuenta corriente",
             href: "/admin/proveedores/cuenta-corriente",
             available: true,
           },
-          { name: "Facturas de compras", href: "/admin/compras", available: true },
-          { name: "Pagos de facturas", href: "/admin/pagos", available: true },
-          { name: "Otros movimientos", href: "/admin/movimientos", available: true },
+          { numero: "2.3", name: "Facturas de compras", href: "/admin/compras", available: true },
+          { numero: "2.4", name: "Pago de facturas", href: "/admin/pagos", available: true },
+          {
+            numero: "2.5",
+            name: "Pendientes de pago",
+            href: "/admin/proveedores/pendientes",
+            available: true,
+          },
         ],
       },
       {
+        numero: "3",
         name: "Clientes",
         available: true,
         hijos: [
           {
+            numero: "3.1",
             name: "Clientes",
             href: "/admin/clientes",
             available: true,
-            salvo: ["/admin/clientes/cuenta-corriente"],
+            salvo: ["/admin/clientes/cuenta-corriente", "/admin/clientes/pendientes"],
           },
           {
+            numero: "3.2",
             name: "Cuenta corriente",
             href: "/admin/clientes/cuenta-corriente",
             available: true,
           },
-          { name: "Facturas de ventas", href: "/admin/ventas", available: true },
-          { name: "Cobros de facturas", href: "/admin/cobros", available: true },
+          { numero: "3.3", name: "Facturas de ventas", href: "/admin/ventas", available: true },
+          { numero: "3.4", name: "Cobro de facturas", href: "/admin/cobros", available: true },
+          {
+            numero: "3.5",
+            name: "Pendientes de cobro",
+            href: "/admin/clientes/pendientes",
+            available: true,
+          },
         ],
       },
-      { name: "Caja y bancos", href: "/admin/cuentas", available: true },
-      { name: "Contabilidad", href: "/admin/contabilidad", available: true },
-      { name: "Reportes", href: "/admin/reportes", available: true },
+      { numero: "4", name: "Stock", href: "/admin/stock", available: false, soloAdmin: true },
+      {
+        numero: "5",
+        name: "Contabilidad",
+        available: true,
+        hijos: [
+          { numero: "5.1", name: "Mayores", href: "/admin/contabilidad/mayor", available: true },
+          /* Exacto: es la ruta madre de las otras vistas y si no se quedaría
+             encendido en todas. */
+          {
+            numero: "5.2",
+            name: "Libro diario",
+            href: "/admin/contabilidad",
+            available: true,
+            exact: true,
+            also: ["/admin/contabilidad/sin-asentar"],
+          },
+          {
+            numero: "5.3",
+            name: "Subdiarios",
+            available: true,
+            hijos: [
+              {
+                numero: "5.3.1",
+                name: "IVA Ventas",
+                href: "/admin/contabilidad/subdiarios/ventas",
+                available: false,
+              },
+              {
+                numero: "5.3.2",
+                name: "IVA Compras",
+                href: "/admin/contabilidad/subdiarios/compras",
+                available: false,
+              },
+            ],
+          },
+          {
+            numero: "5.4",
+            name: "Asientos automáticos",
+            available: true,
+            hijos: [
+              {
+                numero: "5.4.1",
+                name: "Ajuste por inflación",
+                href: "/admin/contabilidad/asientos/ajuste-inflacion",
+                available: false,
+              },
+              {
+                numero: "5.4.2",
+                name: "Apertura y cierre",
+                href: "/admin/contabilidad/asientos/apertura-cierre",
+                available: false,
+              },
+            ],
+          },
+          {
+            numero: "5.5",
+            name: "Sumas y saldos",
+            href: "/admin/contabilidad/sumas-y-saldos",
+            available: true,
+          },
+        ],
+      },
     ],
   },
 ]
+
+/** Saca lo que es sólo para administradores, en todos los niveles. */
+function paraUsuario(items: NavItem[], admin: boolean): NavItem[] {
+  return items
+    .filter((i) => admin || !i.soloAdmin)
+    .map((i) => (i.hijos ? { ...i, hijos: paraUsuario(i.hijos, admin) } : i))
+}
 
 function esActivo(item: NavItem, pathname: string): boolean {
   if (!item.available) return false
@@ -266,8 +362,12 @@ export function Sidebar({ mobile, modulos, usuario, admin, onAbrirAgentes, onAbr
   // useMemo para que la identidad del array no cambie en cada render: sin eso
   // el efecto de abajo se dispara siempre y el linter tiene razón en quejarse.
   const grupos = useMemo(
-    () => GRUPOS.filter((g) => modulos.includes(g.modulo)),
-    [modulos]
+    () =>
+      GRUPOS.filter((g) => modulos.includes(g.modulo)).map((g) => ({
+        ...g,
+        items: paraUsuario(g.items, Boolean(admin)),
+      })),
+    [modulos, admin]
   )
 
   const [abiertos, setAbiertos] = useState<Record<string, boolean>>(() =>
@@ -547,7 +647,18 @@ function GrupoNav({
  * nombre —el maestro— cuelga adentro. Así que el click abre y cierra en vez de
  * ir a ningún lado.
  */
-function SubGrupoNav({ item, pathname }: { item: NavItem; pathname: string }) {
+function SubGrupoNav({
+  item,
+  pathname,
+  nivel = 1,
+}: {
+  item: NavItem
+  pathname: string
+  /** 2 es un submódulo dentro de otro —5.3 Subdiarios dentro de Contabilidad—.
+   *  Se dibuja como una pantalla más que se despliega, no como otro rótulo en
+   *  mayúsculas: dos rótulos iguales apilados no dicen cuál cuelga de cuál. */
+  nivel?: 1 | 2
+}) {
   const activo = esActivo(item, pathname)
   const [abierto, setAbierto] = useState(activo)
 
@@ -558,7 +669,7 @@ function SubGrupoNav({ item, pathname }: { item: NavItem; pathname: string }) {
     if (activo) setAbierto(true)
   }, [activo])
 
-  const id = `nav-sub-${item.name.toLowerCase().replace(/\s+/g, "-")}`
+  const id = `nav-sub-${(item.numero ?? item.name).toLowerCase().replace(/[\s.]+/g, "-")}`
 
   return (
     <div className="pt-1 first:pt-0">
@@ -567,11 +678,21 @@ function SubGrupoNav({ item, pathname }: { item: NavItem; pathname: string }) {
         aria-expanded={abierto}
         aria-controls={id}
         className={cn(
-          "flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.11em] transition-colors",
-          activo ? "text-white/60" : "text-white/40",
+          "flex w-full items-center gap-1.5 rounded-md px-2.5 transition-colors",
+          nivel === 1
+            ? "py-1.5 text-[10px] font-bold uppercase tracking-[0.11em]"
+            : "py-2 text-[12.5px] font-medium",
+          nivel === 1
+            ? activo
+              ? "text-white/60"
+              : "text-white/40"
+            : activo
+              ? "text-white/85"
+              : "text-white/60",
           "hover:bg-white/[0.05] hover:text-white/80"
         )}
       >
+        <Numero numero={item.numero} />
         <span className="flex-1 truncate text-left">{item.name}</span>
 
         {/* Plegado y con la pantalla activa adentro, un punto lo dice. Es el
@@ -607,15 +728,25 @@ function SubGrupoNav({ item, pathname }: { item: NavItem; pathname: string }) {
               marca de posición (-9px desde el borde del link, que arranca en
               18px): el tramo encendido del hilo es la propia guía, no un punto
               aparte flotando al lado. */}
+          {/* En el tercer nivel la sangría es menor (12px, guía en 3px): con
+              18 más el número "5.3.1", "IVA Ventas" ya no entra en los 268px
+              de la barra. Sigue alineado con la marca de ItemNav (-9px). */}
           <div className="relative pt-0.5">
             <span
               aria-hidden
-              className="absolute bottom-1 left-[9px] top-1.5 w-px bg-white/[0.07]"
+              className={cn(
+                "absolute bottom-1 top-1.5 w-px bg-white/[0.07]",
+                nivel === 1 ? "left-[9px]" : "left-[3px]"
+              )}
             />
-            <div className="space-y-0.5 pl-[18px]">
-              {item.hijos?.map((hijo) => (
-                <ItemNav key={hijo.name} item={hijo} pathname={pathname} />
-              ))}
+            <div className={cn("space-y-0.5", nivel === 1 ? "pl-[18px]" : "pl-[12px]")}>
+              {item.hijos?.map((hijo) =>
+                hijo.hijos ? (
+                  <SubGrupoNav key={hijo.name} item={hijo} pathname={pathname} nivel={2} />
+                ) : (
+                  <ItemNav key={hijo.name} item={hijo} pathname={pathname} />
+                )
+              )}
             </div>
           </div>
         </div>
@@ -630,6 +761,7 @@ function ItemNav({ item, pathname }: { item: NavItem; pathname: string }) {
   if (!item.available) {
     return (
       <div className="flex cursor-not-allowed select-none items-center gap-2 rounded-md px-2.5 py-2">
+        <Numero numero={item.numero} />
         <span className="flex-1 truncate text-[13px] text-white/35">{item.name}</span>
         <span className="shrink-0 rounded-full bg-white/[0.07] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-white/40">
           Pronto
@@ -659,9 +791,23 @@ function ItemNav({ item, pathname }: { item: NavItem; pathname: string }) {
           activo ? "opacity-100" : "opacity-0"
         )}
       />
+      <Numero numero={item.numero} />
       <span className="flex-1 truncate">{item.name}</span>
       {item.contador === "crm" && <ContadorCrm />}
     </Link>
+  )
+}
+
+/**
+ * El número del árbol del contador, delante del nombre. Tenue y en cifras de
+ * ancho fijo: sirve para ubicarse ("el 2.3"), no para leerse primero.
+ */
+function Numero({ numero }: { numero?: string }) {
+  if (!numero) return null
+  return (
+    <span className="mr-1 shrink-0 font-mono text-[10.5px] font-medium tabular-nums tracking-normal text-white/30">
+      {numero}
+    </span>
   )
 }
 
