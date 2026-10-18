@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { FileCheck2, Loader2, X } from "lucide-react"
+import { FileCheck2, FileWarning, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -35,10 +35,11 @@ export function FacturasPresupuesto({
   const query = useQuery({
     queryKey: claves.url(url),
     queryFn: ({ signal }) =>
-      pedirJson<{ vinculadas: FacturaVinculable[]; candidatas: FacturaVinculable[] }>(url, { signal }),
+      pedirJson<{ vinculadas: FacturaVinculable[]; candidatas: FacturaVinculable[]; faltan?: { etiqueta: string; motivo: "sin_cargar" | "otro_cliente" }[] }>(url, { signal }),
   })
   const vinculadas = query.data?.vinculadas ?? []
   const candidatas = query.data?.candidatas ?? []
+  const faltan = query.data?.faltan ?? []
   const coincide = (f: FacturaVinculable) => f.moneda === moneda && Math.abs(f.total - totalConIva) < 0.5
 
   // Si una factura del cliente tiene exactamente el total del presupuesto y
@@ -84,7 +85,7 @@ export function FacturasPresupuesto({
         <div>
           <p className="text-[13.5px] font-semibold text-ink">Factura de venta</p>
           <p className="text-[12px] text-ink-muted">
-            Con qué factura se facturó. Es lo que muestra el reporte de Comercial en el detalle de los Puntos.
+            Con qué factura se facturó. Se vincula sola al subir el PDF de la factura al legajo; si no, elegila acá.
           </p>
         </div>
       </div>
@@ -107,6 +108,22 @@ export function FacturasPresupuesto({
             </li>
           ))}
         </ul>
+      )}
+
+      {faltan.length > 0 && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-warning-line bg-warning-soft px-3 py-2 text-[12px] text-warning-text">
+          <FileWarning className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="space-y-0.5">
+            {faltan.map((f) => (
+              <span key={f.etiqueta} className="block">
+                En el legajo está el PDF de <span className="font-mono font-semibold">{f.etiqueta}</span>,{" "}
+                {f.motivo === "sin_cargar"
+                  ? "pero esa factura no está cargada (o confirmada) en Administración. Cuando se cargue, se vincula sola."
+                  : "pero en Administración esa factura está cargada a otro cliente. Revisá cuál de los dos está mal."}
+              </span>
+            ))}
+          </span>
+        </div>
       )}
 
       {query.isPending ? (

@@ -535,7 +535,16 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
         abierto={verId !== null}
         tipo={tipo}
         comprobanteId={verId}
-        onCerrar={() => setVerId(null)}
+        onCerrar={() => {
+          setVerId(null)
+          // Si se abrió desde un enlace (`?ver=`), se saca: si no, al recargar
+          // la página se volvería a abrir sola.
+          const u = new URL(window.location.href)
+          if (u.searchParams.has("ver")) {
+            u.searchParams.delete("ver")
+            window.history.replaceState(null, "", u)
+          }
+        }}
         onEditar={(c) => {
           setVerId(null)
           setDialogo({ abierto: true, comprobante: c })

@@ -101,9 +101,13 @@ export function Menu({
               "z-[80] max-h-[min(420px,calc(100dvh-24px))] min-w-[220px] overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-e4",
               // Solo un fundido corto: con escala, al abrir y cerrar rápido se
               // veía un parpadeo.
+              // `[animation-duration]` y no `duration-*`: en Tailwind 4 esa clase
+              // también pone una transición a todo y la lista volaba desde
+              // donde nace (-9999) hasta el botón.
+              "transition-none",
               saliendo
-                ? "pointer-events-none animate-out fade-out-0 fill-mode-forwards duration-75"
-                : pos && "animate-in fade-in-0 duration-100",
+                ? "pointer-events-none animate-out fade-out-0 fill-mode-forwards [animation-duration:75ms]"
+                : pos && "animate-in fade-in-0 [animation-duration:100ms]",
               className
             )}
           >

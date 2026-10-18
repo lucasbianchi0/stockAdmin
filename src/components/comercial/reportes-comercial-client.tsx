@@ -1,16 +1,18 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowRight, CalendarRange, Download, FileText, PieChart, X } from "lucide-react"
+import { Download, FileQuestion, FileText, FileWarning, PieChart, Users } from "lucide-react"
 
+import { Avatar } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { FiltroFecha } from "@/components/ui/filtro-fecha"
 import { FiltroPill } from "@/components/ui/filtro-pill"
+import { Menu, MenuItem } from "@/components/ui/menu"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { FranjaFija } from "@/components/ui/franja-fija"
-import { Input } from "@/components/ui/input"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
 import {
   Table,
@@ -33,7 +35,7 @@ import {
   puntosDe,
   type PresupuestoFila,
 } from "@/lib/comercial/presupuestos"
-import type { FacturaDeReporte } from "@/lib/comercial/presupuesto-facturas-server"
+import type { FacturaDeReporte, FacturaFaltante } from "@/lib/comercial/presupuesto-facturas-server"
 import { cn } from "@/lib/utils"
 
 /**
@@ -72,18 +74,24 @@ export function ReportesComercialClient({ veFacturas }: { veFacturas: boolean })
 
   // Qué facturas tiene cada presupuesto facturado: el detalle de los Puntos.
   const urlFacturas = "/api/comercial/presupuestos/facturas"
-  const facturas =
-    useQuery({
-      queryKey: claves.url(urlFacturas),
-      queryFn: ({ signal }) => pedirJson<{ facturas: Record<string, FacturaDeReporte[]> }>(urlFacturas, { signal }),
-    }).data?.facturas ?? {}
+  const consultaFacturas = useQuery({
+    queryKey: claves.url(urlFacturas),
+    queryFn: ({ signal }) =>
+      pedirJson<{ facturas: Record<string, FacturaDeReporte[]>; faltan?: Record<string, FacturaFaltante[]> }>(
+        urlFacturas,
+        { signal }
+      ),
+  })
+  const datosFacturas = consultaFacturas.data
+  const facturas = datosFacturas?.facturas ?? {}
+  const faltan = datosFacturas?.faltan ?? {}
   const filas = useMemo(
     () =>
       todos.filter((p) => {
         const f = p.fecha.slice(0, 10)
         return (
           (!estado || p.estado === estado) &&
-          (!vendedor || (vendedor === "sin" ? !p.vendedorId : p.vendedorId === vendedor)) &&
+          (!vendedor || p.vendedorId === vendedor) &&
           (!desde || f >= desde) &&
           (!hasta || f <= hasta)
         )
@@ -92,16 +100,11 @@ export function ReportesComercialClient({ veFacturas }: { veFacturas: boolean })
   )
   const hayFiltro = Boolean(estado || vendedor || desde || hasta)
 
-  // Los vendedores que tienen presupuestos, como el filtro de AM del CRM.
+  // Los vendedores que tienen presupuestos, en burbujas como el equipo del CRM.
   const vendedores = useMemo(() => {
     const m = new Map<string, string>()
-    let sinVendedor = false
-    for (const p of todos) {
-      if (p.vendedorId) m.set(p.vendedorId, p.vendedorNombre ?? "Sin nombre")
-      else sinVendedor = true
-    }
-    const lista = [...m].map(([valor, etiqueta]) => ({ valor, etiqueta })).sort((a, b) => a.etiqueta.localeCompare(b.etiqueta, "es"))
-    return sinVendedor ? [...lista, { valor: "sin", etiqueta: "Sin vendedor" }] : lista
+    for (const p of todos) if (p.vendedorId) m.set(p.vendedorId, p.vendedorNombre ?? "Sin nombre")
+    return [...m].map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
   }, [todos])
 
   /*
@@ -196,20 +199,14 @@ export function ReportesComercialClient({ veFacturas }: { veFacturas: boolean })
         {/* Los filtros en una fila, con el mismo estilo que el CRM. Los
             totales de arriba suman sólo lo filtrado. */}
         <div className="flex flex-wrap items-center gap-1.5 px-5 pb-3.5">
-          <RangoFechas
+          <Vendedores vendedores={vendedores} elegido={vendedor} onElegir={setVendedor} />
+          <FiltroFecha
             desde={desde}
             hasta={hasta}
             onCambio={(d, h) => {
               setDesde(d)
               setHasta(h)
             }}
-          />
-          <span className="mx-1 h-5 w-px bg-line" aria-hidden />
-          <FiltroPill
-            rotulo="Vendedor"
-            valor={vendedor}
-            onCambio={setVendedor}
-            opciones={vendedores}
           />
           <FiltroPill
             rotulo="Estado"
@@ -247,283 +244,296 @@ export function ReportesComercialClient({ veFacturas }: { veFacturas: boolean })
           }
         />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>N.º</TableHead>
-              <TableHead>Cliente</TableHead>
-              <TableHead>Referencia</TableHead>
-              <TableHead>Fecha</TableHead>
-              <TableHead>Vendedor</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>Facturas</TableHead>
-              <TableHead className="text-right">Venta</TableHead>
-              <TableHead className="text-right">Costo</TableHead>
-              <TableHead className="text-right">Renta</TableHead>
-              <TableHead className="text-right">%</TableHead>
-              <TableHead
-                className="text-right"
-                title={`${PUNTOS_SOBRE_RENTA * 100}% de la renta, sólo en lo facturado`}
-              >
-                Puntos
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filas.map((p) => (
-              <TableRow
-                key={p.id}
-                onClick={() => router.push(`/comercial/presupuestos/${p.id}`)}
-                className="cursor-pointer"
-              >
-                <TableCell className="num font-semibold text-ink">{p.numero}</TableCell>
-                {/* Angostas para que entren todas sin scroll lateral en una
-                    notebook; el texto entero queda en el tooltip. */}
-                <TableCell
-                  className="max-w-[160px] truncate text-[12.5px] text-ink"
-                  title={p.clienteNombre ?? undefined}
+        <TooltipProvider delayDuration={150}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>N.º</TableHead>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Referencia</TableHead>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Vendedor</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead>Facturas</TableHead>
+                <TableHead className="text-right">Venta</TableHead>
+                <TableHead className="text-right">Costo</TableHead>
+                <TableHead className="text-right">Renta</TableHead>
+                <TableHead className="text-right" title="Renta sobre venta">% renta</TableHead>
+                <TableHead
+                  className="text-right"
+                  title={`${PUNTOS_SOBRE_RENTA * 100}% de la renta, sólo en lo facturado`}
                 >
-                  {p.clienteNombre ?? "—"}
-                </TableCell>
-                <TableCell
-                  className="max-w-[170px] truncate text-[12px] text-ink-secondary"
-                  title={p.referencia}
-                >
-                  {p.referencia}
-                </TableCell>
-                <TableCell className="num whitespace-nowrap text-ink-secondary">
-                  {formatearFecha(p.fecha)}
-                </TableCell>
-                <TableCell className="max-w-[120px] truncate text-[12px] text-ink-secondary">
-                  {p.vendedorNombre ?? <span className="text-ink-faint">—</span>}
-                </TableCell>
-                <TableCell>
-                  <Badge tone={ESTADO_TONO[p.estado]} size="sm">
-                    {ESTADO_LABEL[p.estado]}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <FacturasVinculadas
-                    facturas={facturas[p.id] ?? []}
-                    facturado={puntosDe(p) !== null}
-                    enlazar={veFacturas}
-                  />
-                </TableCell>
-                <TableCell className="num whitespace-nowrap text-right font-semibold text-ink">
-                  {formatearImporte(p.totales.venta, p.moneda)}
-                </TableCell>
-                <TableCell className="num whitespace-nowrap text-right text-ink-secondary">
-                  {formatearImporte(p.totales.costo, p.moneda)}
-                </TableCell>
-                <TableCell
-                  className={cn(
-                    "num whitespace-nowrap text-right font-medium",
-                    p.totales.rentabilidad < 0 ? "text-danger-text" : "text-ink-secondary"
-                  )}
-                >
-                  {formatearImporte(p.totales.rentabilidad, p.moneda)}
-                </TableCell>
-                <TableCell
-                  className={cn(
-                    "num text-right",
-                    p.totales.rentabilidad < 0 ? "text-danger-text" : "text-ink-muted"
-                  )}
-                >
-                  {p.totales.venta === 0 ? "—" : `${Math.round(p.totales.rentaPct * 100)}%`}
-                </TableCell>
-                <TableCell className="num whitespace-nowrap text-right font-medium text-ink">
-                  {(() => {
-                    const puntos = puntosDe(p)
-                    return puntos === null ? (
-                      <span className="text-ink-faint">—</span>
-                    ) : (
-                      formatearImporte(puntos, p.moneda)
-                    )
-                  })()}
-                </TableCell>
+                  Puntos
+                </TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {filas.map((p) => (
+                <TableRow
+                  key={p.id}
+                  onClick={() => router.push(`/comercial/presupuestos/${p.id}`)}
+                  className="cursor-pointer"
+                >
+                  <TableCell className="num font-semibold text-ink">{p.numero}</TableCell>
+                  {/* Angostas para que entren todas sin scroll lateral en una
+                      notebook; el texto entero queda en el tooltip. */}
+                  <TableCell
+                    className="max-w-[160px] truncate text-[12.5px] text-ink"
+                    title={p.clienteNombre ?? undefined}
+                  >
+                    {p.clienteNombre ?? "—"}
+                  </TableCell>
+                  <TableCell
+                    className="max-w-[170px] truncate text-[12px] text-ink-secondary"
+                    title={p.referencia}
+                  >
+                    {p.referencia}
+                  </TableCell>
+                  <TableCell className="num whitespace-nowrap text-ink-secondary">
+                    {formatearFecha(p.fecha)}
+                  </TableCell>
+                  <TableCell className="max-w-[120px] truncate text-[12px] text-ink-secondary">
+                    {p.vendedorNombre ?? <span className="text-ink-faint">—</span>}
+                  </TableCell>
+                  <TableCell>
+                    <Badge tone={ESTADO_TONO[p.estado]} size="sm">
+                      {ESTADO_LABEL[p.estado]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <FacturasVinculadas
+                      facturas={facturas[p.id] ?? []}
+                      faltan={faltan[p.id] ?? []}
+                      facturado={puntosDe(p) !== null}
+                      cargando={consultaFacturas.isPending}
+                      enlazar={veFacturas}
+                    />
+                  </TableCell>
+                  <TableCell className="num whitespace-nowrap text-right font-semibold text-ink">
+                    {formatearImporte(p.totales.venta, p.moneda)}
+                  </TableCell>
+                  <TableCell className="num whitespace-nowrap text-right text-ink-secondary">
+                    {formatearImporte(p.totales.costo, p.moneda)}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      "num whitespace-nowrap text-right font-medium",
+                      p.totales.rentabilidad < 0 ? "text-danger-text" : "text-ink-secondary"
+                    )}
+                  >
+                    {formatearImporte(p.totales.rentabilidad, p.moneda)}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      "num text-right",
+                      p.totales.rentabilidad < 0 ? "text-danger-text" : "text-ink-muted"
+                    )}
+                  >
+                    {p.totales.venta === 0 ? "—" : `${Math.round(p.totales.rentaPct * 100)}%`}
+                  </TableCell>
+                  <TableCell className="num whitespace-nowrap text-right font-medium text-ink">
+                    {(() => {
+                      const puntos = puntosDe(p)
+                      return puntos === null ? (
+                        <span className="text-ink-faint">—</span>
+                      ) : (
+                        formatearImporte(puntos, p.moneda)
+                      )
+                    })()}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TooltipProvider>
       )}
     </div>
   )
 }
 
 /**
- * Las facturas de un presupuesto, una píldora cada una. La píldora entera es
- * el enlace: abre esa factura en Administración. Sin permiso para verlas, se
- * muestran igual pero sin enlace, para no mandar a nadie a una pantalla que no
- * puede abrir.
+ * Las facturas de un presupuesto como un archivo: el ícono y cuántas son.
+ * Al pasar por arriba, el tooltip dice cuáles (número, fecha, total); al
+ * tocarlo, con una sola abre esa factura y con varias deja elegir cuál.
+ *
+ * Sin permiso para ver Administración se ve igual, sin abrir nada: un enlace
+ * ahí mandaría a una pantalla sin acceso.
  */
 function FacturasVinculadas({
   facturas,
+  faltan,
   facturado,
   enlazar,
+  cargando,
 }: {
   facturas: FacturaDeReporte[]
+  /** PDF en el legajo que no se pudo vincular: sin cargar o de otro cliente. */
+  faltan: FacturaFaltante[]
   facturado: boolean
   enlazar: boolean
+  /** Mientras llegan, un lugar gris: no un «sin factura» que todavía no se sabe. */
+  cargando: boolean
 }) {
-  if (facturas.length === 0) {
-    return facturado ? (
-      <span className="whitespace-nowrap text-[11.5px] text-warning-text" title="Abrí el presupuesto y elegí la factura">
-        Sin vincular
-      </span>
-    ) : (
-      <span className="text-ink-faint">—</span>
+  const router = useRouter()
+  if (cargando) return facturado ? <span className="block h-7 w-9 animate-pulse rounded-md bg-surface-muted" /> : <span className="text-ink-faint">—</span>
+  const abrir = (id: string) => router.push(`/admin/ventas/listado?ver=${id}`)
+
+  if (facturas.length === 0 && faltan.length === 0) {
+    if (!facturado) return <span className="text-ink-faint">—</span>
+    return (
+      <ConTooltip texto="Facturado, pero sin factura vinculada. Subí el PDF de la factura al legajo del presupuesto.">
+        <span className="inline-flex h-7 items-center gap-1 rounded-md border border-warning-line bg-warning-soft px-1.5 text-warning-text">
+          <FileQuestion className="h-3.5 w-3.5" />
+        </span>
+      </ConTooltip>
     )
   }
-  const pildora =
-    "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 font-mono text-[11px] transition-colors"
-  return (
-    <div className="flex flex-col items-start gap-1">
-      {facturas.map((f) =>
-        enlazar ? (
-          <Link
-            key={f.id}
-            href={`/admin/ventas/listado?ver=${f.id}`}
-            onClick={(e) => e.stopPropagation()}
-            title="Abrir la factura"
-            className={cn(
-              pildora,
-              "group border-brand-200 bg-brand-50 text-brand-700 hover:border-brand-300 hover:bg-brand-100"
-            )}
-          >
-            <FileText className="h-3 w-3 shrink-0" />
-            {f.etiqueta}
-            <ArrowRight className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
-          </Link>
-        ) : (
-          <span key={f.id} className={cn(pildora, "border-line bg-surface-subtle text-ink-secondary")}>
-            <FileText className="h-3 w-3 shrink-0" />
-            {f.etiqueta}
-          </span>
-        )
-      )}
+
+  const detalle = (
+    <div className="space-y-1">
+      {facturas.map((f) => (
+        <p key={f.id} className="flex items-baseline gap-3">
+          <span className="font-mono font-semibold text-white">{f.etiqueta}</span>
+          <span className="num text-n-300">{formatearFecha(f.fecha)}</span>
+          <span className="num ml-auto pl-2 text-white">{formatearImporte(f.total, f.moneda)}</span>
+        </p>
+      ))}
+      {faltan.map((f) => (
+        <p key={f.etiqueta} className="text-[#f5d27a]">
+          <span className="font-mono">{f.etiqueta}</span>
+          {f.motivo === "sin_cargar"
+            ? ": está el PDF en el legajo, falta cargarla en Administración"
+            : ": está el PDF en el legajo, pero la factura está cargada a otro cliente"}
+        </p>
+      ))}
     </div>
+  )
+
+  const icono = (
+    <span
+      className={cn(
+        "inline-flex h-7 items-center gap-1 rounded-md border px-1.5 text-[11.5px] font-semibold transition-colors",
+        faltan.length > 0
+          ? "border-warning-line bg-warning-soft text-warning-text"
+          : "border-brand-200 bg-brand-50 text-brand-700",
+        enlazar && facturas.length > 0 && "hover:border-brand-300 hover:bg-brand-100"
+      )}
+    >
+      {faltan.length > 0 ? <FileWarning className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+      <span className="num">{facturas.length}</span>
+    </span>
+  )
+
+  if (!enlazar || facturas.length === 0) return <ConTooltip texto={detalle}>{icono}</ConTooltip>
+
+  if (facturas.length === 1) {
+    return (
+      <ConTooltip texto={detalle}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            abrir(facturas[0].id)
+          }}
+          aria-label={`Abrir ${facturas[0].etiqueta}`}
+        >
+          {icono}
+        </button>
+      </ConTooltip>
+    )
+  }
+
+  return (
+    <span onClick={(e) => e.stopPropagation()}>
+      <Menu
+        alinear="inicio"
+        disparador={(abrirMenu) => (
+          <ConTooltip texto={detalle}>
+            <button type="button" onClick={abrirMenu} aria-label={`${facturas.length} facturas`}>
+              {icono}
+            </button>
+          </ConTooltip>
+        )}
+      >
+        {(cerrar) =>
+          facturas.map((f) => (
+            <MenuItem
+              key={f.id}
+              onClick={() => {
+                cerrar()
+                abrir(f.id)
+              }}
+            >
+              <FileText />
+              <span className="font-mono text-[12px] font-semibold">{f.etiqueta}</span>
+              <span className="num ml-auto pl-3 text-[12px] text-ink-muted">{formatearImporte(f.total, f.moneda)}</span>
+            </MenuItem>
+          ))
+        }
+      </Menu>
+    </span>
   )
 }
 
-/* ── Rango de fechas ─────────────────────────────────────────────────────── */
-
-const iso = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-
-/** Los atajos de siempre. Se calculan al usarlos, en hora local: la fecha de
- *  hoy en UTC ya es mañana a partir de las 21. */
-const ATAJOS: { valor: string; etiqueta: string; rango: () => [string, string] }[] = [
-  {
-    valor: "mes",
-    etiqueta: "Este mes",
-    rango: () => {
-      const h = new Date()
-      return [iso(new Date(h.getFullYear(), h.getMonth(), 1)), iso(new Date(h.getFullYear(), h.getMonth() + 1, 0))]
-    },
-  },
-  {
-    valor: "mes-pasado",
-    etiqueta: "Mes pasado",
-    rango: () => {
-      const h = new Date()
-      return [iso(new Date(h.getFullYear(), h.getMonth() - 1, 1)), iso(new Date(h.getFullYear(), h.getMonth(), 0))]
-    },
-  },
-  {
-    valor: "3-meses",
-    etiqueta: "Últimos 3 meses",
-    rango: () => {
-      const h = new Date()
-      return [iso(new Date(h.getFullYear(), h.getMonth() - 2, 1)), iso(h)]
-    },
-  },
-  {
-    valor: "anio",
-    etiqueta: "Este año",
-    rango: () => {
-      const a = new Date().getFullYear()
-      return [`${a}-01-01`, `${a}-12-31`]
-    },
-  },
-]
+function ConTooltip({ texto, children }: { texto: React.ReactNode; children: React.ReactElement }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="top" className="max-w-sm">
+        {texto}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 /**
- * Desde–hasta en una sola píldora, con los atajos al lado. Elegir un atajo
- * completa las dos fechas, que se pueden seguir ajustando a mano; la píldora
- * se marca cuando hay un rango puesto, como los filtros del CRM.
+ * Los vendedores como en el CRM: «Todos» y una burbuja por persona. Tocar la
+ * elegida otra vez vuelve a todos.
  */
-function RangoFechas({
-  desde,
-  hasta,
-  onCambio,
+function Vendedores({
+  vendedores,
+  elegido,
+  onElegir,
 }: {
-  desde: string
-  hasta: string
-  onCambio: (desde: string, hasta: string) => void
+  vendedores: { id: string; nombre: string }[]
+  elegido: string
+  onElegir: (id: string) => void
 }) {
-  const activo = Boolean(desde || hasta)
-  const atajo = ATAJOS.find((a) => {
-    const [d, h] = a.rango()
-    return d === desde && h === hasta
-  })
-
+  if (vendedores.length === 0) return null
   return (
-    <>
-      <div className="flex items-center gap-1 rounded-full border border-line bg-surface p-0.5">
-        {ATAJOS.map((a) => (
-          <button
-            key={a.valor}
-            onClick={() => (atajo?.valor === a.valor ? onCambio("", "") : onCambio(...a.rango()))}
-            aria-pressed={atajo?.valor === a.valor}
-            className={cn(
-              "rounded-full px-2.5 py-1 text-[11.5px] font-medium transition-colors",
-              atajo?.valor === a.valor
-                ? "bg-brand-50 text-brand-700"
-                : "text-ink-muted hover:bg-surface-muted hover:text-ink"
-            )}
-          >
-            {a.etiqueta}
-          </button>
-        ))}
-      </div>
-      <div
+    <div className="mr-1 flex items-center gap-1 rounded-full border border-line bg-surface p-1">
+      <button
+        type="button"
+        onClick={() => onElegir("")}
+        aria-pressed={!elegido}
+        title="Todos los vendedores"
         className={cn(
-          "inline-flex h-8 items-center gap-1 rounded-full border pl-3 pr-1 text-[12.5px] transition-colors",
-          activo ? "border-brand-200 bg-brand-50" : "border-line bg-surface hover:border-line-strong"
+          "flex h-6 items-center gap-1 rounded-full px-2 text-[11.5px] font-medium transition-[box-shadow,background-color] duration-150",
+          !elegido ? "bg-ink text-n-25" : "text-ink-muted hover:bg-surface-muted hover:text-ink"
         )}
       >
-        <CalendarRange className={cn("h-3.5 w-3.5 shrink-0", activo ? "text-brand-600" : "text-ink-faint")} />
-        <Input
-          type="date"
-          aria-label="Desde"
-          value={desde}
-          max={hasta || undefined}
-          onChange={(e) => onCambio(e.target.value, hasta)}
-          className="h-6 w-[118px] border-0 bg-transparent px-1 text-[12px] shadow-none focus-visible:ring-0"
-        />
-        <ArrowRight className="h-3 w-3 shrink-0 text-ink-faint" />
-        <Input
-          type="date"
-          aria-label="Hasta"
-          value={hasta}
-          min={desde || undefined}
-          onChange={(e) => onCambio(desde, e.target.value)}
-          className="h-6 w-[118px] border-0 bg-transparent px-1 text-[12px] shadow-none focus-visible:ring-0"
-        />
-        {activo ? (
+        <Users className="h-3 w-3" />
+        Todos
+      </button>
+      {vendedores.map((v) => {
+        const on = v.id === elegido
+        return (
           <button
+            key={v.id}
             type="button"
-            onClick={() => onCambio("", "")}
-            aria-label="Quitar el rango de fechas"
-            className="rounded-full p-1 text-brand-700/60 transition-colors hover:bg-brand-100 hover:text-brand-700"
+            onClick={() => onElegir(on ? "" : v.id)}
+            aria-pressed={on}
+            title={v.nombre}
+            className={cn(
+              "relative rounded-full transition-[box-shadow,opacity] duration-150",
+              on ? "ring-2 ring-ink ring-offset-1 ring-offset-surface" : "hover:ring-1 hover:ring-line-strong"
+            )}
           >
-            <X className="h-3 w-3" />
+            <Avatar id={v.id} nombre={v.nombre} size="sm" />
           </button>
-        ) : (
-          <span className="w-2" />
-        )}
-      </div>
-    </>
+        )
+      })}
+    </div>
   )
 }
 

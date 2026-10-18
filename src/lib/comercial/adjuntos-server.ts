@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase"
 import { createSupabaseServer } from "@/lib/supabase-server"
 import { TAMANO_MAX, tipoAceptado } from "@/lib/admin/adjuntos"
 import { CLASES_ADJUNTO, type AdjuntoPresupuesto, type ClaseAdjunto } from "@/lib/comercial/presupuestos"
+import { conciliarSinFallar } from "@/lib/comercial/presupuesto-facturas-server"
 
 /**
  * El legajo de un presupuesto: los papeles que lo respaldan.
@@ -149,6 +150,9 @@ export async function subirAdjunto(req: Request, presupuestoId: string) {
     console.error("[presupuesto adjunto insert]", error)
     return NextResponse.json({ error: "No se pudo registrar el archivo" }, { status: 500 })
   }
+
+  // Si es el PDF de una factura propia, la vincula al presupuesto.
+  await conciliarSinFallar(presupuestoId)
 
   const [adjunto] = await conUrls([data as Fila])
   return NextResponse.json({ adjunto }, { status: 201 })
