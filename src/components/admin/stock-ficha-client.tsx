@@ -2,10 +2,32 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Loader2, Scale, Search, Trash2 } from "lucide-react"
+import {
+  AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Check,
+  Hammer,
+  Loader2,
+  Pencil,
+  Scale,
+  Search,
+  Trash2,
+} from "lucide-react"
 import { toast } from "sonner"
 
-import { Campo, useDolarDe } from "@/components/admin/stock-client"
+import {
+  Campo,
+  CargarSeries,
+  EditarItem,
+  Opciones,
+  PrecioConMoneda,
+  faltaEnSeries,
+  useAplicarStock,
+  useDolarDe,
+  usePrefetchStock,
+  useTcPropuesto,
+} from "@/components/admin/stock-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConfirmarDialog } from "@/components/ui/confirmar-dialog"
@@ -20,18 +42,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Textarea } from "@/components/ui/textarea"
 import { formatearFecha, hoyArgentina } from "@/lib/admin/fecha"
 import { formatearImporte, parsearImporte } from "@/lib/admin/moneda"
-import { claves, mensajeError, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
+import { claves, mensajeError, pedirJson } from "@/lib/admin/query"
 import {
   TIPO_MOVIMIENTO_LABEL,
+  UNIDAD_INFO,
+  aDolares,
+  decimalesUsd,
+  dolaresDe,
   formatearCantidad,
-  parsearSeries,
   pesosDe,
+  type MonedaStock,
   type ComprobanteParaStock,
   type FichaStock,
   type MovimientoStock,
+  type SerieStock,
 } from "@/lib/admin/stock"
 import { cn } from "@/lib/utils"
 
@@ -40,12 +66,13 @@ import { cn } from "@/lib/utils"
  * las mismas columnas que la planilla que mandó el contador —fecha, proveedor o
  * cliente, factura, cantidad, dólares— más el tipo de cambio y los pesos.
  *
- * Las tres cosas que se hacen acá arriba de todo: entra por una compra, sale por
- * una venta, o se ajusta (rotura, muestra, conteo). Cada una es un paso a paso
+ * Las tres cosas que se hacen acá arriba de todo: entra por una compra; sale
+ * por una venta (si es para vender) o porque se usó en un trabajo (si es
+ * material); o se ajusta (rotura, muestra, conteo). Cada una es un paso a paso
  * que termina mostrando el saldo antes y después.
  */
 
-type Accion = "compra" | "venta" | "ajuste"
+type Accion = "compra" | "venta" | "consumo" | "ajuste"
 
 export function StockFichaClient({ id }: { id: string }) {
   const url = `/api/admin/stock/${id}`
@@ -54,9 +81,17 @@ export function StockFichaClient({ id }: { id: string }) {
     queryFn: ({ signal }) => pedirJson<FichaStock>(url, { signal }),
   })
   const [accion, setAccion] = useState<Accion | null>(null)
+  const [editando, setEditando] = useState(false)
   const [borrando, setBorrando] = useState<MovimientoStock | null>(null)
   const [trabajando, setTrabajando] = useState(false)
-  const invalidar = useInvalidarAdmin()
+  const aplicar = useAplicarStock()
+  // Lo que piden los diálogos de acá, traído mientras se mira la ficha: las
+  // facturas para colgar una compra o una venta, y el dólar de hoy.
+  usePrefetchStock([
+    "/api/admin/stock/comprobantes?tipo=compra",
+    ...(query.data?.item.destino === "venta" ? ["/api/admin/stock/comprobantes?tipo=venta"] : []),
+    `/api/admin/stock/comprobantes?dolar=${hoyArgentina()}`,
+  ])
 
   if (query.isPending) return <LoadingState label="Cargando la ficha…" />
   if (query.isError || !query.data) {
@@ -64,13 +99,16 @@ export function StockFichaClient({ id }: { id: string }) {
   }
   const { item, movimientos, series } = query.data
   const disponibles = series.filter((s) => !s.salida)
+  const cant = (x: number) => formatearCantidad(x, item.unidad)
 
   const borrar = async () => {
     if (!borrando) return
     setTrabajando(true)
     try {
-      await pedirJson(`/api/admin/stock/movimientos/${borrando.id}`, { method: "DELETE" })
-      await invalidar()
+      const r = await pedirJson<{ ficha: FichaStock | null }>(`/api/admin/stock/movimientos/${borrando.id}`, {
+        method: "DELETE",
+      })
+      aplicar(r.ficha)
       toast.success("Movimiento borrado")
       setBorrando(null)
     } catch (e) {
@@ -87,23 +125,40 @@ export function StockFichaClient({ id }: { id: string }) {
           <ArrowDownToLine className="h-4 w-4" />
           Entrada por compra
         </Button>
-        <Button variant="outline" onClick={() => setAccion("venta")}>
-          <ArrowUpFromLine className="h-4 w-4" />
-          Salida por venta
-        </Button>
+        {item.destino === "venta" ? (
+          <Button variant="outline" onClick={() => setAccion("venta")}>
+            <ArrowUpFromLine className="h-4 w-4" />
+            Salida por venta
+          </Button>
+        ) : (
+          <Button variant="outline" onClick={() => setAccion("consumo")}>
+            <Hammer className="h-4 w-4" />
+            Uso en un trabajo
+          </Button>
+        )}
         <Button variant="outline" onClick={() => setAccion("ajuste")}>
           <Scale className="h-4 w-4" />
           Ajuste
         </Button>
+        <Button variant="ghost" className="ml-auto" onClick={() => setEditando(true)}>
+          <Pencil className="h-3.5 w-3.5" />
+          Editar ítem
+        </Button>
       </div>
 
+      {item.notas && <p className="max-w-3xl text-[12.5px] text-ink-secondary">{item.notas}</p>}
+
       <div className="grid gap-3 sm:grid-cols-4">
-        <Tarjeta rotulo="Saldo" valor={formatearCantidad(item.saldo)} peligro={item.saldo < 0} destacado />
-        <Tarjeta rotulo="Entradas" valor={formatearCantidad(item.entradas)} />
-        <Tarjeta rotulo="Salidas" valor={formatearCantidad(item.salidas)} />
+        <Tarjeta rotulo="Hay" valor={cant(item.saldo)} peligro={item.saldo < 0} destacado />
+        <Tarjeta rotulo="Entraron" valor={cant(item.entradas)} />
+        <Tarjeta rotulo={item.destino === "venta" ? "Salieron" : "Se usaron / salieron"} valor={cant(item.salidas)} />
         <Tarjeta
-          rotulo="Costo promedio"
-          valor={item.costoPromedioUsd === null ? "—" : formatearImporte(item.costoPromedioUsd, "USD")}
+          rotulo={`Costo promedio por ${UNIDAD_INFO[item.unidad].uno}`}
+          valor={
+            item.costoPromedioUsd === null
+              ? "—"
+              : formatearImporte(item.costoPromedioUsd, "USD", { decimales: decimalesUsd(item.costoPromedioUsd) })
+          }
         />
       </div>
 
@@ -119,7 +174,7 @@ export function StockFichaClient({ id }: { id: string }) {
           <EmptyState
             icon={ArrowDownToLine}
             title="Sin movimientos todavía"
-            description="Registrá la primera entrada con la factura de compra, o un ajuste si ya hay unidades sin factura."
+            description="Registrá la primera entrada con la factura de compra, o un ajuste si ya hay stock sin factura."
           />
         ) : (
           <Table>
@@ -130,9 +185,10 @@ export function StockFichaClient({ id }: { id: string }) {
                 <TableHead>Proveedor / Cliente</TableHead>
                 <TableHead>Factura</TableHead>
                 <TableHead className="text-right">Cantidad</TableHead>
-                <TableHead className="text-right">USD</TableHead>
+                <TableHead className="text-right">Precio unit.</TableHead>
                 <TableHead className="text-right">TC</TableHead>
-                <TableHead className="text-right">Pesos</TableHead>
+                <TableHead className="text-right">Total USD</TableHead>
+                <TableHead className="text-right">Total pesos</TableHead>
                 <TableHead className="text-right">Saldo</TableHead>
                 <TableHead className="w-10" />
               </TableRow>
@@ -140,6 +196,7 @@ export function StockFichaClient({ id }: { id: string }) {
             <TableBody>
               {movimientos.map((m) => {
                 const pesos = pesosDe(m)
+                const dolares = dolaresDe(m)
                 return (
                   <TableRow key={m.id}>
                     <TableCell className="num whitespace-nowrap text-ink-secondary">{formatearFecha(m.fecha)}</TableCell>
@@ -169,21 +226,24 @@ export function StockFichaClient({ id }: { id: string }) {
                       )}
                     >
                       {m.cantidad > 0 ? "+" : ""}
-                      {formatearCantidad(m.cantidad)}
+                      {cant(m.cantidad)}
                     </TableCell>
-                    <TableCell className="num text-right text-ink-secondary">
-                      {m.precioUsd === null ? "—" : formatearImporte(m.precioUsd, "USD")}
+                    <TableCell className="num whitespace-nowrap text-right text-ink-secondary">
+                      {m.precio === null ? "—" : formatearImporte(m.precio, m.moneda)}
                     </TableCell>
                     <TableCell className="num text-right text-ink-muted">
                       {m.tc === null ? "—" : formatearImporte(m.tc, "ARS", { simbolo: false })}
                     </TableCell>
-                    <TableCell className="num text-right text-ink-secondary">
+                    <TableCell className="num whitespace-nowrap text-right text-ink-secondary">
+                      {dolares === null ? "—" : formatearImporte(dolares, "USD")}
+                    </TableCell>
+                    <TableCell className="num whitespace-nowrap text-right text-ink-secondary">
                       {pesos === null ? "—" : formatearImporte(pesos)}
                     </TableCell>
                     <TableCell
-                      className={cn("num text-right font-semibold", m.saldo < 0 ? "text-danger-text" : "text-ink")}
+                      className={cn("num whitespace-nowrap text-right font-semibold", m.saldo < 0 ? "text-danger-text" : "text-ink")}
                     >
-                      {formatearCantidad(m.saldo)}
+                      {cant(m.saldo)}
                     </TableCell>
                     <TableCell>
                       <button
@@ -208,7 +268,7 @@ export function StockFichaClient({ id }: { id: string }) {
           <div className="panel-header">
             <p className="text-[13px] font-semibold text-ink">Números de serie</p>
             <p className="text-[12px] text-ink-muted">
-              {disponibles.length} en stock · {series.length - disponibles.length} vendidos
+              {disponibles.length} en stock · {series.length - disponibles.length} {item.destino === "venta" ? "vendidos" : "usados"}
             </p>
           </div>
           <div className="flex flex-wrap gap-1.5 px-5 py-4">
@@ -229,6 +289,7 @@ export function StockFichaClient({ id }: { id: string }) {
       )}
 
       {accion && <RegistrarMovimiento ficha={query.data} accion={accion} onCerrar={() => setAccion(null)} />}
+      {editando && <EditarItem id={item.id} onCerrar={() => setEditando(false)} />}
 
       <ConfirmarDialog
         abierto={Boolean(borrando)}
@@ -236,7 +297,7 @@ export function StockFichaClient({ id }: { id: string }) {
         descripcion={
           borrando && (
             <>
-              {TIPO_MOVIMIENTO_LABEL[borrando.tipo]} de {formatearCantidad(Math.abs(borrando.cantidad))} del{" "}
+              {TIPO_MOVIMIENTO_LABEL[borrando.tipo]} de {cant(Math.abs(borrando.cantidad))} del{" "}
               {formatearFecha(borrando.fecha)}. El saldo se recalcula solo. La factura, si tenía, no se toca.
             </>
           )
@@ -252,6 +313,13 @@ export function StockFichaClient({ id }: { id: string }) {
 
 /* ── Registrar un movimiento ──────────────────────────────────────────────── */
 
+const TITULO_ACCION: Record<Accion, string> = {
+  compra: "Entrada por compra",
+  venta: "Salida por venta",
+  consumo: "Uso en un trabajo",
+  ajuste: "Ajuste",
+}
+
 function RegistrarMovimiento({
   ficha,
   accion,
@@ -262,58 +330,61 @@ function RegistrarMovimiento({
   onCerrar: () => void
 }) {
   const { item, series } = ficha
-  const invalidar = useInvalidarAdmin()
-  const conFactura = accion !== "ajuste"
+  const u = UNIDAD_INFO[item.unidad]
+  const aplicar = useAplicarStock()
+  const conFactura = accion === "compra" || accion === "venta"
   const [paso, setPaso] = useState(0)
   const [comprobante, setComprobante] = useState<ComprobanteParaStock | null>(null)
   const [sentido, setSentido] = useState<"entrada" | "salida">("entrada")
   const [detalle, setDetalle] = useState("")
   const [fecha, setFecha] = useState(hoyArgentina())
   const [cantidad, setCantidad] = useState("")
+  const [moneda, setMoneda] = useState<MonedaStock>("USD")
   const [precio, setPrecio] = useState("")
-  const [tc, setTc] = useState("")
-  const [tcTocado, setTcTocado] = useState(false)
-  const [textoSeries, setTextoSeries] = useState("")
+  const [seriesNuevas, setSeriesNuevas] = useState<string[]>([])
   const [elegidas, setElegidas] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
 
   const entra = accion === "compra" || (accion === "ajuste" && sentido === "entrada")
+  const conPrecio = accion !== "consumo"
   const fechaEfectiva = comprobante?.fecha ?? fecha
   const dolar = useDolarDe(fechaEfectiva)
-
   // El tipo de cambio propuesto: el de la factura si es en dólares, si no el
-  // dólar del día de la factura (o de la fecha del ajuste).
+  // dólar del día de la factura (o de la fecha del movimiento).
+  const { tc, setTc } = useTcPropuesto(
+    comprobante?.moneda === "USD" && comprobante.tc ? comprobante.tc : dolar.data?.tc
+  )
+  // La moneda propuesta: la de la factura.
   useEffect(() => {
-    if (tcTocado) return
-    const propuesto = comprobante?.moneda === "USD" && comprobante.tc ? comprobante.tc : dolar.data?.tc
-    if (propuesto) setTc(formatearImporte(propuesto, "ARS", { simbolo: false }))
-  }, [comprobante, dolar.data, tcTocado])
+    if (comprobante) setMoneda(comprobante.moneda)
+  }, [comprobante])
 
   const nCantidad = parsearImporte(cantidad)
-  const nPrecio = parsearImporte(precio)
+  const nPrecio = conPrecio ? parsearImporte(precio) : null
   const nTc = parsearImporte(tc)
-  const nuevas = parsearSeries(textoSeries)
   const disponibles = series.filter((s) => !s.salida)
+  const cantidadSeries = nCantidad && Number.isInteger(nCantidad) && nCantidad <= 500 ? nCantidad : 0
   const saldoDespues = item.saldo + (entra ? 1 : -1) * (nCantidad ?? 0)
+  const usd = nPrecio !== null && nTc ? aDolares(nPrecio, moneda, nTc) : null
 
   const falta = (() => {
     if (paso === 0) {
       if (conFactura) return comprobante ? null : "Elegí la factura"
-      if (!detalle.trim()) return "Contá el motivo del ajuste"
+      if (!detalle.trim()) return accion === "consumo" ? "Contá en qué trabajo se usó" : "Contá el motivo del ajuste"
       return null
     }
     if (paso === 1) {
       if (!nCantidad || nCantidad <= 0) return "Poné la cantidad"
-      if (item.llevaSerie && !Number.isInteger(nCantidad)) return "Con número de serie va en unidades enteras"
-      if (accion === "compra" && nPrecio === null) return "Poné el costo unitario en dólares"
-      if (entra && nPrecio !== null && !nTc) return "Poné el tipo de cambio"
+      if (!u.fraccion && !Number.isInteger(nCantidad)) return `En ${u.varios} va sin decimales`
+      if (accion === "compra" && nPrecio === null) return `Poné lo que costó cada ${u.uno}`
+      if (nPrecio !== null && !nTc) return "Poné el tipo de cambio"
       if (item.llevaSerie && entra) {
-        if (nuevas.repetidas.length) return `La serie ${nuevas.repetidas[0]} está repetida`
-        if (nuevas.series.length !== nCantidad) return `Faltan números de serie (${nuevas.series.length} de ${nCantidad})`
+        if (nCantidad > 500) return "Con número de serie, de a 500 unidades como máximo"
+        return faltaEnSeries(seriesNuevas, nCantidad, series.map((s) => s.serie))
       }
       if (item.llevaSerie && !entra && elegidas.length !== nCantidad) {
-        return `Elegí ${nCantidad} número${nCantidad === 1 ? "" : "s"} de serie (${elegidas.length} elegidos)`
+        return `Marcá ${formatearCantidad(nCantidad)} número${nCantidad === 1 ? "" : "s"} de serie (llevás ${elegidas.length})`
       }
     }
     return null
@@ -323,7 +394,7 @@ function RegistrarMovimiento({
     setGuardando(true)
     setError(null)
     try {
-      const r = await pedirJson<{ aviso: string | null }>(`/api/admin/stock/${item.id}/movimientos`, {
+      const r = await pedirJson<{ aviso: string | null; ficha: FichaStock | null }>(`/api/admin/stock/${item.id}/movimientos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -331,15 +402,16 @@ function RegistrarMovimiento({
           sentido,
           fecha: fechaEfectiva,
           cantidad: nCantidad,
-          precioUsd: nPrecio,
+          moneda,
+          precio: nPrecio,
           tc: nPrecio === null ? null : nTc,
           comprobanteId: comprobante?.id ?? null,
           detalle: detalle || null,
-          seriesNuevas: entra ? nuevas.series : undefined,
+          seriesNuevas: entra ? seriesNuevas.slice(0, cantidadSeries).map((s) => s.trim()) : undefined,
           seriesSalida: entra ? undefined : elegidas,
         }),
       })
-      await invalidar()
+      aplicar(r.ficha)
       if (r.aviso) toast.warning(r.aviso)
       else toast.success("Movimiento registrado")
       onCerrar()
@@ -349,15 +421,12 @@ function RegistrarMovimiento({
     }
   }
 
-  const titulo =
-    accion === "compra" ? `Entrada por compra · ${item.nombre}` : accion === "venta" ? `Salida por venta · ${item.nombre}` : `Ajuste · ${item.nombre}`
-
   return (
     <DialogoPasos
       abierto
       ancho="lg"
-      titulo={titulo}
-      pasos={[conFactura ? "Factura" : "Motivo", "Cantidad", "Revisar"]}
+      titulo={`${TITULO_ACCION[accion]} · ${item.nombre}`}
+      pasos={[conFactura ? "Factura" : accion === "consumo" ? "Trabajo" : "Motivo", "Cantidad", "Revisar"]}
       paso={paso}
       onCerrar={onCerrar}
       bloqueado={guardando}
@@ -386,120 +455,89 @@ function RegistrarMovimiento({
         </>
       }
     >
-      {paso === 0 &&
-        (conFactura ? (
-          <ElegirFactura tipo={accion === "venta" ? "venta" : "compra"} elegida={comprobante} onElegir={setComprobante} />
-        ) : (
-          <div className="space-y-4">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {(
-                [
-                  ["entrada", "Suma unidades", "Apareció mercadería sin factura, o el conteo dio más."],
-                  ["salida", "Resta unidades", "Rotura, muestra, uso interno, o el conteo dio menos."],
-                ] as const
-              ).map(([valor, rotulo, ayuda]) => (
-                <label
-                  key={valor}
-                  className={cn(
-                    "flex cursor-pointer gap-2.5 rounded-xl border px-3.5 py-3 transition-colors",
-                    sentido === valor ? "border-brand-400 bg-brand-50/60" : "border-line hover:bg-surface-muted"
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="sentido"
-                    checked={sentido === valor}
-                    onChange={() => setSentido(valor)}
-                    className="mt-1 accent-brand-600"
-                  />
-                  <span>
-                    <span className="block text-[13px] font-medium text-ink">{rotulo}</span>
-                    <span className="block text-[11.5px] text-ink-muted">{ayuda}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-            <Campo id="motivo" rotulo="Motivo" ayuda="Queda en el extracto: dentro de seis meses alguien va a preguntar por qué.">
-              <Input id="motivo" value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Conteo de fin de mes" autoFocus />
-            </Campo>
-            <Campo id="fecha-ajuste" rotulo="Fecha">
-              <Input id="fecha-ajuste" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="max-w-[200px]" />
-            </Campo>
-          </div>
-        ))}
+      {paso === 0 && conFactura && (
+        <ElegirFactura tipo={accion === "venta" ? "venta" : "compra"} elegida={comprobante} onElegir={setComprobante} />
+      )}
+
+      {paso === 0 && accion === "consumo" && (
+        <div className="space-y-4">
+          <Campo
+            id="trabajo"
+            rotulo="¿En qué trabajo se usó?"
+            ayuda="El cliente, la obra o el número de proyecto: queda en el extracto."
+          >
+            <Input id="trabajo" value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Instalación en Colegio San Martín" autoFocus />
+          </Campo>
+          <Campo id="fecha-consumo" rotulo="Fecha">
+            <Input id="fecha-consumo" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="max-w-[200px]" />
+          </Campo>
+        </div>
+      )}
+
+      {paso === 0 && accion === "ajuste" && (
+        <div className="space-y-4">
+          <Opciones<"entrada" | "salida">
+            nombre="sentido"
+            valor={sentido}
+            onCambio={setSentido}
+            opciones={[
+              ["entrada", "Suma", "Apareció mercadería sin factura, o el conteo dio más."],
+              ["salida", "Resta", "Rotura, muestra, uso interno, o el conteo dio menos."],
+            ]}
+          />
+          <Campo id="motivo" rotulo="Motivo" ayuda="Queda en el extracto: dentro de seis meses alguien va a preguntar por qué.">
+            <Input id="motivo" value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Conteo de fin de mes" autoFocus />
+          </Campo>
+          <Campo id="fecha-ajuste" rotulo="Fecha">
+            <Input id="fecha-ajuste" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="max-w-[200px]" />
+          </Campo>
+        </div>
+      )}
 
       {paso === 1 && (
         <div className="space-y-4">
           {comprobante && (
             <p className="rounded-lg bg-surface-subtle px-3 py-2 text-[12.5px] text-ink-secondary">
-              {comprobante.etiqueta} · {comprobante.entidad} · {formatearFecha(comprobante.fecha)}
+              {comprobante.etiqueta} · {comprobante.entidad} · {formatearFecha(comprobante.fecha)} ·{" "}
+              {formatearImporte(comprobante.total, comprobante.moneda)}
             </p>
           )}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Campo id="cantidad-mov" rotulo={entra ? "Unidades que entran" : "Unidades que salen"}>
-              <Input id="cantidad-mov" inputMode="decimal" value={cantidad} onChange={(e) => setCantidad(e.target.value)} autoFocus />
-            </Campo>
-            <Campo
+          <Campo id="cantidad-mov" rotulo={`${entra ? "Cuántos entran" : "Cuántos salen"} (${u.varios})`}>
+            <Input id="cantidad-mov" inputMode="decimal" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="max-w-[200px]" autoFocus />
+            <p className="mt-1 text-[11.5px] text-ink-muted">Hay {formatearCantidad(item.saldo, item.unidad, true)} hoy.</p>
+          </Campo>
+          {conPrecio && (
+            <PrecioConMoneda
               id="precio-mov"
-              rotulo={entra ? "Costo unitario (USD)" : "Precio unitario (USD)"}
+              rotulo={entra ? "Costo" : "Precio de venta"}
+              unidad={item.unidad}
+              moneda={moneda}
+              onMoneda={setMoneda}
+              precio={precio}
+              onPrecio={setPrecio}
+              tc={tc}
+              onTc={setTc}
               opcional={accion !== "compra"}
-            >
-              <Input id="precio-mov" inputMode="decimal" value={precio} onChange={(e) => setPrecio(e.target.value)} />
-            </Campo>
-            <Campo
-              id="tc-mov"
-              rotulo="Tipo de cambio"
-              opcional={accion !== "compra"}
-              ayuda={comprobante?.moneda === "USD" ? "El de la factura." : "El dólar de esa fecha."}
-            >
-              <Input
-                id="tc-mov"
-                inputMode="decimal"
-                value={tc}
-                onChange={(e) => {
-                  setTc(e.target.value)
-                  setTcTocado(true)
-                }}
-              />
-            </Campo>
-          </div>
+              ayudaTc={comprobante?.moneda === "USD" ? "El de la factura." : "El dólar de esa fecha. Cambialo si fue otro."}
+            />
+          )}
 
           {item.llevaSerie && entra && (
-            <Campo id="series-mov" rotulo="Números de serie que entran" ayuda="Uno por renglón. Podés pegarlos de un Excel.">
-              <Textarea id="series-mov" rows={4} value={textoSeries} onChange={(e) => setTextoSeries(e.target.value)} className="font-mono text-[12.5px]" />
-              <p className="mt-1 text-[11.5px] text-ink-muted">
-                {nuevas.series.length} de {nCantidad ? formatearCantidad(nCantidad) : "—"} cargados
-              </p>
-            </Campo>
+            <CargarSeries
+              cantidad={cantidadSeries}
+              series={seriesNuevas}
+              onCambio={setSeriesNuevas}
+              yaCargadas={series.map((s) => s.serie)}
+            />
           )}
 
           {item.llevaSerie && !entra && (
-            <div>
-              <p className="mb-1.5 text-[13px] font-medium text-ink">¿Cuáles salen?</p>
-              {disponibles.length === 0 ? (
-                <p className="text-[12.5px] text-danger-text">No hay unidades con número de serie en stock.</p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {disponibles.map((s) => {
-                    const sel = elegidas.includes(s.id)
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        aria-pressed={sel}
-                        onClick={() => setElegidas(sel ? elegidas.filter((x) => x !== s.id) : [...elegidas, s.id])}
-                        className={cn(
-                          "rounded-md border px-2 py-1 font-mono text-[11.5px] transition-colors",
-                          sel ? "border-brand-500 bg-brand-50 text-brand-700" : "border-line text-ink-secondary hover:bg-surface-muted"
-                        )}
-                      >
-                        {s.serie}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+            <ElegirSeries
+              disponibles={disponibles}
+              cuantas={cantidadSeries}
+              elegidas={elegidas}
+              onCambio={setElegidas}
+            />
           )}
         </div>
       )}
@@ -508,14 +546,14 @@ function RegistrarMovimiento({
         <div className="space-y-4">
           <div className="grid gap-4 rounded-xl border border-line p-4 sm:grid-cols-2">
             <DatoRevision rotulo="Movimiento">
-              {TIPO_MOVIMIENTO_LABEL[accion]} · {entra ? "entra" : "sale"}
-              {nCantidad === 1 ? "" : "n"} {formatearCantidad(nCantidad)} unidad{nCantidad === 1 ? "" : "es"}
+              {TITULO_ACCION[accion]} · {entra ? "entra" : "sale"}
+              {nCantidad === 1 ? "" : "n"} {formatearCantidad(nCantidad, item.unidad, true)}
             </DatoRevision>
             {item.llevaSerie && (
               <DatoRevision rotulo="Números de serie">
                 <span className="font-mono text-[12px]">
                   {(entra
-                    ? nuevas.series
+                    ? seriesNuevas.slice(0, cantidadSeries).map((s) => s.trim())
                     : disponibles.filter((s) => elegidas.includes(s.id)).map((s) => s.serie)
                   ).join(" · ")}
                 </span>
@@ -527,15 +565,22 @@ function RegistrarMovimiento({
                 {comprobante.etiqueta} · {comprobante.entidad}
               </DatoRevision>
             )}
-            {!conFactura && <DatoRevision rotulo="Motivo">{detalle}</DatoRevision>}
-            {nPrecio !== null && nTc && (
-              <DatoRevision rotulo="Valor">
-                {formatearImporte(nCantidad * nPrecio, "USD")} · {formatearImporte(nCantidad * nPrecio * nTc)}
-              </DatoRevision>
+            {!conFactura && <DatoRevision rotulo={accion === "consumo" ? "Trabajo" : "Motivo"}>{detalle}</DatoRevision>}
+            {nPrecio !== null && nTc && usd !== null && (
+              <>
+                <DatoRevision rotulo={entra ? "Costo" : "Precio"}>
+                  {formatearImporte(nPrecio, moneda)} por {u.uno} · TC {formatearImporte(nTc, "ARS", { simbolo: false })}
+                </DatoRevision>
+                <DatoRevision rotulo="Total">
+                  {formatearImporte(nCantidad * usd, "USD")} ·{" "}
+                  {formatearImporte(moneda === "ARS" ? nCantidad * nPrecio : nCantidad * nPrecio * nTc)}
+                </DatoRevision>
+              </>
             )}
-            <DatoRevision rotulo="Saldo">
+            <DatoRevision rotulo="Hay">
               <span className="num">
-                {formatearCantidad(item.saldo)} → <b className={cn(saldoDespues < 0 && "text-danger-text")}>{formatearCantidad(saldoDespues)}</b>
+                {formatearCantidad(item.saldo, item.unidad)} →{" "}
+                <b className={cn(saldoDespues < 0 && "text-danger-text")}>{formatearCantidad(saldoDespues, item.unidad)}</b>
               </span>
             </DatoRevision>
           </div>
@@ -553,7 +598,7 @@ function RegistrarMovimiento({
           {saldoDespues < 0 && (
             <p className="flex items-start gap-2 rounded-lg border border-warning-line bg-warning-soft px-3 py-2 text-[12.5px] text-warning-text">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              El saldo queda negativo. Se registra igual —así lo definió el contador—, pero seguramente falta cargar una compra.
+              Queda negativo. Se registra igual —así lo definió el contador—, pero seguramente falta cargar una compra.
             </p>
           )}
           {error && (
@@ -562,6 +607,86 @@ function RegistrarMovimiento({
         </div>
       )}
     </DialogoPasos>
+  )
+}
+
+/**
+ * Cuáles unidades salen: la lista de las que hay, con un buscador para cuando
+ * son muchas, y un contador de cuántas faltan marcar.
+ */
+function ElegirSeries({
+  disponibles,
+  cuantas,
+  elegidas,
+  onCambio,
+}: {
+  disponibles: SerieStock[]
+  cuantas: number
+  elegidas: string[]
+  onCambio: (ids: string[]) => void
+}) {
+  const [q, setQ] = useState("")
+  const visibles = disponibles.filter((s) => s.serie.toLowerCase().includes(q.trim().toLowerCase()))
+
+  if (disponibles.length === 0) {
+    return (
+      <p className="rounded-lg border border-danger-line bg-danger-soft px-3 py-2 text-[12.5px] text-danger-text">
+        No hay unidades con número de serie en stock. Cargá primero la compra.
+      </p>
+    )
+  }
+  return (
+    <div className="rounded-xl border border-line">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface-subtle px-3.5 py-2.5">
+        <div>
+          <p className="text-[13px] font-medium text-ink">¿Cuáles salen?</p>
+          <p className="text-[11.5px] text-ink-muted">Tocá cada número de serie que sale. Está en la etiqueta del equipo.</p>
+        </div>
+        <p
+          className={cn(
+            "num text-[12px] font-medium",
+            cuantas && elegidas.length === cuantas ? "text-success-text" : "text-ink-muted"
+          )}
+        >
+          {elegidas.length} de {cuantas || "—"} marcadas
+        </p>
+      </div>
+      {disponibles.length > 8 && (
+        <div className="relative border-b border-line px-3.5 py-2">
+          <Search className="pointer-events-none absolute left-6 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar número de serie…" className="h-8 pl-8" />
+        </div>
+      )}
+      <ul className="grid max-h-[240px] gap-1.5 overflow-y-auto p-3.5 sm:grid-cols-3">
+        {visibles.map((s) => {
+          const sel = elegidas.includes(s.id)
+          return (
+            <li key={s.id}>
+              <button
+                type="button"
+                aria-pressed={sel}
+                onClick={() => onCambio(sel ? elegidas.filter((x) => x !== s.id) : [...elegidas, s.id])}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left font-mono text-[12px] transition-colors",
+                  sel ? "border-brand-500 bg-brand-50 text-brand-700" : "border-line text-ink-secondary hover:bg-surface-muted"
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+                    sel ? "border-brand-500 bg-brand-500 text-white" : "border-line-strong"
+                  )}
+                >
+                  {sel && <Check className="h-3 w-3" />}
+                </span>
+                <span className="truncate">{s.serie}</span>
+              </button>
+            </li>
+          )
+        })}
+        {visibles.length === 0 && <li className="col-span-full text-[12.5px] text-ink-muted">Ninguna con esa búsqueda.</li>}
+      </ul>
+    </div>
   )
 }
 
@@ -575,17 +700,22 @@ function ElegirFactura({
   onElegir: (c: ComprobanteParaStock) => void
 }) {
   const [q, setQ] = useState("")
-  const [diferido, setDiferido] = useState("")
-  useEffect(() => {
-    const t = setTimeout(() => setDiferido(q), 250)
-    return () => clearTimeout(t)
-  }, [q])
-  const url = `/api/admin/stock/comprobantes?${new URLSearchParams({ tipo, q: diferido })}`
+  // Se traen una vez las últimas facturas confirmadas y se buscan acá: cada
+  // letra filtra al instante, sin ir al servidor.
+  const url = `/api/admin/stock/comprobantes?tipo=${tipo}`
   const query = useQuery({
     queryKey: claves.url(url),
     queryFn: ({ signal }) => pedirJson<{ comprobantes: ComprobanteParaStock[] }>(url, { signal }),
+    staleTime: 5 * 60_000,
   })
-  const lista = useMemo(() => query.data?.comprobantes ?? [], [query.data])
+  const lista = useMemo(() => {
+    const t = q.trim().toLowerCase()
+    const todas = query.data?.comprobantes ?? []
+    const filtradas = t
+      ? todas.filter((c) => c.entidad.toLowerCase().includes(t) || c.etiqueta.toLowerCase().includes(t))
+      : todas
+    return filtradas.slice(0, 50)
+  }, [query.data, q])
 
   return (
     <div className="space-y-3">

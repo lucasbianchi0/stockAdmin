@@ -1,37 +1,59 @@
+import { cache } from "react"
+import { HydrationBoundary, QueryClient, dehydrate } from "@tanstack/react-query"
+
 import { StockFichaClient } from "@/components/admin/stock-ficha-client"
 import { PageBody, PageHeader } from "@/components/ui/page-header"
 import { SoloAdministradores, esAdmin } from "@/lib/admin/solo-admin"
-import { supabase } from "@/lib/supabase"
+import { DESTINO_LABEL, UNIDAD_INFO } from "@/lib/admin/stock"
+import { leerFicha } from "@/lib/admin/stock-server"
 
 type Props = { params: Promise<{ id: string }> }
 
+/**
+ * La ficha se lee una sola vez por pedido —el título de la pestaña y la página
+ * comparten esta lectura— y viaja con el HTML a la caché del navegador.
+ */
+const ficha = cache((id: string) => leerFicha(id).catch(() => null))
+
 export async function generateMetadata({ params }: Props) {
   const { id } = await params
-  const { data } = await supabase.from("stock_items").select("nombre").eq("id", id).maybeSingle()
-  return { title: `${data?.nombre ?? "Ítem"} · Stock · Accedra` }
+  return { title: `${(await ficha(id))?.item.nombre ?? "Ítem"} · Stock · Accedra` }
 }
 
 export default async function FichaStockPage({ params }: Props) {
   const { id } = await params
-  const admin = await esAdmin()
-  const { data } = admin
-    ? await supabase.from("stock_items").select("nombre, codigo, lleva_serie").eq("id", id).maybeSingle()
-    : { data: null }
+  const [admin, datos] = await Promise.all([esAdmin(), ficha(id)])
+  const item = admin ? datos?.item : null
+  const cacheCliente = new QueryClient()
+  // La misma clave que `claves.url(...)` en StockFichaClient.
+  if (admin && datos) cacheCliente.setQueryData(["admin", "url", `/api/admin/stock/${id}`], datos)
 
   return (
     <main className="flex min-h-full flex-col">
       <PageHeader
-        title={data?.nombre ?? "Stock"}
+        title={item?.nombre ?? "Stock"}
         description={
-          data
-            ? [data.codigo, data.lleva_serie ? "Con número de serie por unidad" : "Se controla por cantidad"]
+          item
+            ? [
+                item.codigo,
+                DESTINO_LABEL[item.destino],
+                item.llevaSerie ? "Con número de serie por unidad" : `Se mide en ${UNIDAD_INFO[item.unidad].varios}`,
+              ]
                 .filter(Boolean)
                 .join(" · ")
             : undefined
         }
         back={{ href: "/admin/stock", label: "Stock" }}
       />
-      <PageBody>{admin ? <StockFichaClient id={id} /> : <SoloAdministradores />}</PageBody>
+      <PageBody>
+        {admin ? (
+          <HydrationBoundary state={dehydrate(cacheCliente)}>
+            <StockFichaClient id={id} />
+          </HydrationBoundary>
+        ) : (
+          <SoloAdministradores />
+        )}
+      </PageBody>
     </main>
   )
 }
