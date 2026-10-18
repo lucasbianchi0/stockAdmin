@@ -44,7 +44,8 @@ export function AppShell({
   // menos la primera hoja.
   const esImpresion =
     /^\/marketing\/eventos\/[^/]+\/certificados$/.test(pathname) ||
-    /^\/admin\/contabilidad\/subdiarios\/(ventas|compras)\/imprimir$/.test(pathname)
+    /^\/admin\/contabilidad\/subdiarios\/(ventas|compras)\/imprimir$/.test(pathname) ||
+    pathname === "/admin/contabilidad/imprimir"
 
   if (pathname === "/login" || pathname === "/sin-acceso" || esImpresion) {
     return <>{children}</>

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
-import { AlertTriangle, BookOpen, Check, Download, Layers, Scale } from "lucide-react"
+import { AlertTriangle, BookOpen, Check, Download, Layers, Loader2, Printer, Scale } from "lucide-react"
+import { toast } from "sonner"
 
 import { SelectorCuenta } from "@/components/admin/selector-cuenta"
 import { CorregirImputacionDialog } from "@/components/admin/corregir-imputacion-dialog"
@@ -31,7 +32,7 @@ import {
 import { descargarCsv } from "@/lib/admin/csv"
 import { formatearImporte } from "@/lib/admin/moneda"
 import { TIPO_CUENTA_LABEL } from "@/lib/admin/plan-cuentas"
-import { claves, pedirJson } from "@/lib/admin/query"
+import { claves, mensajeError, pedirJson } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 import type { Ejercicio } from "@/lib/admin/ejercicios"
 import { useRangoDeEjercicio } from "@/lib/admin/use-ejercicios"
@@ -269,23 +270,36 @@ function DiarioPorAsiento({ desde, hasta, origen }: { desde: string; hasta: stri
   const asientos = query.data?.asientos ?? []
   const truncado = Boolean(query.data?.truncado)
 
-  const exportar = () =>
-    descargarCsv(
-      "libro-diario.csv",
-      ["Fecha", "Asiento", "Origen", "Descripción", "Cuenta", "Detalle", "Debe", "Haber"],
-      asientos.flatMap((a) =>
-        a.lineas.map((l) => [
-          a.fecha,
-          a.numero,
+  // El Excel lleva el período entero, no los asientos que entran en pantalla:
+  // es lo que se copia al libro.
+  const [exportando, setExportando] = useState(false)
+  const exportar = async () => {
+    setExportando(true)
+    try {
+      const todo = await pedirJson<{ asientos: Asiento[] }>(`${url}&completo=1`)
+      descargarCsv(
+        "libro-diario.csv",
+        ["Fecha", "Ejercicio", "Asiento", "Origen", "Descripción", "Cuenta", "Detalle", "Debe", "Haber"],
+        todo.asientos.flatMap((a) =>
+          a.lineas.map((l) => [
+            a.fecha,
+            a.ejercicioNombre ?? "",
+            a.numero,
           ORIGEN_ASIENTO_LABEL[a.origen],
           a.descripcion,
           `${l.cuentaCodigo} · ${l.cuentaNombre}`,
           l.auxiliarNombre ?? l.detalle ?? "",
-          l.debeArs || "",
-          l.haberArs || "",
-        ])
+            l.debeArs || "",
+            l.haberArs || "",
+          ])
+        )
       )
-    )
+    } catch (e) {
+      toast.error(mensajeError(e, "No se pudo bajar el libro diario"))
+    } finally {
+      setExportando(false)
+    }
+  }
 
   if (query.isPending) return <LoadingState label="Cargando el libro diario…" />
 
@@ -295,16 +309,27 @@ function DiarioPorAsiento({ desde, hasta, origen }: { desde: string; hasta: stri
         <p className="text-[12px] text-ink-muted">
           {asientos.length} asiento{asientos.length === 1 ? "" : "s"}
         </p>
-        <Button variant="outline" size="sm" onClick={exportar} disabled={!asientos.length}>
-          <Download className="h-3.5 w-3.5" />
-          Exportar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!asientos.length}
+            onClick={() => window.open(`/admin/contabilidad/imprimir?${p}`, "_blank", "noopener")}
+          >
+            <Printer className="h-3.5 w-3.5" />
+            PDF
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportar} disabled={!asientos.length || exportando}>
+            {exportando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            Excel
+          </Button>
+        </div>
       </div>
 
       {truncado && (
         <p className="rounded-lg border border-warning-line bg-warning-soft px-3 py-2 text-[12px] text-warning-text">
-          Se muestran los asientos más recientes del período. Acotá el rango de fechas para verlos
-          todos.
+          En pantalla se ven los asientos más recientes del período. El PDF y el Excel llevan el
+          período completo.
         </p>
       )}
 
@@ -378,10 +403,21 @@ function DiarioMensual({ desde, hasta }: { desde: string; hasta: string }) {
           Un asiento por mes con cada cuenta neteada. Es una vista: los asientos de cada documento
           siguen siendo los registrados.
         </p>
-        <Button variant="outline" size="sm" onClick={exportar} disabled={!meses.length}>
-          <Download className="h-3.5 w-3.5" />
-          Exportar
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!meses.length}
+            onClick={() => window.open(`/admin/contabilidad/imprimir?${p}&modo=mes`, "_blank", "noopener")}
+          >
+            <Printer className="h-3.5 w-3.5" />
+            PDF
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportar} disabled={!meses.length}>
+            <Download className="h-3.5 w-3.5" />
+            Excel
+          </Button>
+        </div>
       </div>
 
       {query.data?.truncado && (
