@@ -96,16 +96,26 @@ export async function desvincularFactura(presupuestoId: string, comprobanteId: s
 }
 
 /** Para el reporte: presupuesto → las etiquetas de sus facturas. */
-export async function facturasPorPresupuesto(): Promise<Record<string, string[]>> {
+export type FacturaDeReporte = { id: string; etiqueta: string }
+
+export async function facturasPorPresupuesto(): Promise<Record<string, FacturaDeReporte[]>> {
   const { data, error } = await supabase
     .from("presupuesto_facturas")
-    .select("presupuesto_id, comprobantes:comprobante_id (clase, punto_venta, numero)")
+    .select("presupuesto_id, comprobantes:comprobante_id (id, clase, punto_venta, numero)")
   if (error) throw error
-  const out: Record<string, string[]> = {}
+  const out: Record<string, FacturaDeReporte[]> = {}
   for (const f of data ?? []) {
-    const c = f.comprobantes as unknown as { clase: string; punto_venta: number | null; numero: number | null } | null
+    const c = f.comprobantes as unknown as {
+      id: string
+      clase: string
+      punto_venta: number | null
+      numero: number | null
+    } | null
     if (!c) continue
-    ;(out[f.presupuesto_id as string] ??= []).push(`${c.clase} ${formatearNumero(c.punto_venta, c.numero)}`)
+    ;(out[f.presupuesto_id as string] ??= []).push({
+      id: c.id,
+      etiqueta: `${c.clase} ${formatearNumero(c.punto_venta, c.numero)}`,
+    })
   }
   return out
 }

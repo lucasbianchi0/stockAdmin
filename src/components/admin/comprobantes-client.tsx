@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Check,
   Eye,
@@ -123,6 +123,12 @@ export function ComprobantesClient({ tipo }: { tipo: TipoComprobante }) {
     comprobante: null,
   })
   const [verId, setVerId] = useState<string | null>(null)
+  // `?ver=<id>` abre esa factura al entrar: es el enlace desde otras pantallas
+  // (las facturas de un presupuesto en el reporte de Comercial).
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("ver")
+    if (id) setVerId(id)
+  }, [])
   const [aEliminar, setAEliminar] = useState<Comprobante | null>(null)
   const [eliminando, setEliminando] = useState(false)
   const [importando, setImportando] = useState(false)
