@@ -634,14 +634,20 @@ function fechaParaGoogle(iso: string): string {
  * La primera línea es un PARAMETRO, no una fila: declara la zona horaria para
  * que Google no interprete las fechas en la suya.
  */
-export function csvDeConversiones(filas: ConversionASubir[]): string {
+export function csvDeConversiones(
+  filas: ConversionASubir[],
+  // El Administrador de datos de Google (donde se mudaron las subidas en 2026)
+  // exige los encabezados en la primera fila: la línea `Parameters:` lo rompe.
+  // No hace falta: cada hora ya lleva su offset (-03:00).
+  { parametros = true }: { parametros?: boolean } = {}
+): string {
   const escapar = (v: unknown) => {
     const s = String(v ?? "")
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
 
   const lineas = [
-    "Parameters:TimeZone=America/Argentina/Buenos_Aires",
+    ...(parametros ? ["Parameters:TimeZone=America/Argentina/Buenos_Aires"] : []),
     "Google Click ID,Conversion Name,Conversion Time,Conversion Value,Conversion Currency",
   ]
 

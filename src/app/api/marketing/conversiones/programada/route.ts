@@ -1,8 +1,5 @@
-import { timingSafeEqual } from "node:crypto"
-import { NextResponse } from "next/server"
-
 import { ruta } from "@/lib/admin/ruta"
-import { colaDeContactos, csvDeConversiones } from "@/lib/marketing/ads-server"
+import { respuestaProgramada } from "@/lib/marketing/conversiones-programadas"
 
 /**
  * El archivo que Google Ads viene a buscar solo, todos los días.
@@ -33,37 +30,4 @@ import { colaDeContactos, csvDeConversiones } from "@/lib/marketing/ads-server"
  * la ruta contesta 404: abierta sin contraseña sería peor que no existir.
  */
 
-const USUARIO = "google-ads"
-
-function igual(recibido: string, esperado: string): boolean {
-  const a = Buffer.from(recibido)
-  const b = Buffer.from(esperado)
-  if (a.length !== b.length) return false
-  return timingSafeEqual(a, b)
-}
-
-export const GET = ruta("conversiones programadas", async (req) => {
-  const clave = process.env.CONVERSIONES_PROGRAMADAS_CLAVE
-  if (!clave) return new NextResponse("Not found", { status: 404 })
-
-  const [esquema, credencial] = (req.headers.get("authorization") ?? "").split(" ")
-  const [usuario, ...resto] =
-    esquema?.toLowerCase() === "basic" && credencial ? Buffer.from(credencial, "base64").toString("utf8").split(":") : []
-
-  if (usuario !== USUARIO || !igual(resto.join(":"), clave)) {
-    return new NextResponse("No autorizado", {
-      status: 401,
-      headers: { "WWW-Authenticate": 'Basic realm="conversiones"' },
-    })
-  }
-
-  const c = await colaDeContactos()
-  // Un error se contesta como error y no como archivo vacío: Google marca la
-  // ejecución como fallida y se ve en el historial de subidas. Un CSV vacío
-  // pasaría por "todo bien, no hubo nada".
-  if (!c.ok) return new NextResponse(c.error, { status: 500 })
-
-  return new NextResponse(csvDeConversiones(c.filas), {
-    headers: { "content-type": "text/csv; charset=utf-8", "cache-control": "no-store" },
-  })
-})
+export const GET = ruta("conversiones programadas", (req) => respuestaProgramada(req, { parametros: true }))

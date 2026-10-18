@@ -102,6 +102,8 @@ const GRUPOS: Grupo[] = [
          venimos. Informes va abajo porque es lo que se manda, no lo que se
          consulta. */
       { name: "Resultados", href: "/marketing/resultados", available: true },
+      /* El changelog de Google Ads: qué se cambió en las campañas y por qué. */
+      { name: "Versiones de Ads", href: "/marketing/versiones", available: true },
       /* La base de gente. De acá sale lo que va al CRM de Comercial. */
       { name: "Contactos", href: "/marketing/contactos", available: true },
       { name: "Informes de campañas", href: "/marketing/informes", available: true },

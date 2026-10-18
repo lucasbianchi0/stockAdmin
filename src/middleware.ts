@@ -53,7 +53,10 @@ export async function middleware(request: NextRequest) {
    * devuelve 404 si la clave no está configurada. Lo único que expone es gclid
    * y hora — ni nombres, ni teléfonos, ni mensajes.
    */
-  if (pathname === "/api/marketing/conversiones/programada") {
+  if (
+    pathname === "/api/marketing/conversiones/programada" ||
+    pathname === "/api/marketing/conversiones/contactos.csv"
+  ) {
     return response
   }
 
