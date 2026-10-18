@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
+import { traerTodo } from "@/lib/admin/paginar"
 import { escaparParaOr } from "@/lib/admin/entidades-server"
 import { redondear } from "@/lib/admin/moneda"
 import type { CategoriaGasto, OrigenMovimiento } from "@/lib/admin/movimientos"
@@ -65,11 +66,16 @@ export const GET = ruta("extracto GET", async (req: Request, ctx: { params: Prom
   let arranque = Number(cuenta.saldo_inicial ?? 0)
 
   if (desde) {
-    const { data: previos, error: errPrevios } = await supabase
-      .from("movimientos")
-      .select("importe, signo")
-      .eq("cuenta_id", id)
-      .lt("fecha", desde)
+    // Todos, en páginas: Supabase corta en mil filas y el saldo de arranque
+    // de una cuenta con mucho movimiento quedaba mal sin avisar.
+    const { filas: previos, error: errPrevios } = await traerTodo(() =>
+      supabase
+        .from("movimientos")
+        .select("importe, signo")
+        .eq("cuenta_id", id)
+        .lt("fecha", desde)
+        .order("id", { ascending: true })
+    )
 
     if (errPrevios) {
       console.error("[extracto previos]", errPrevios)
@@ -86,39 +92,41 @@ export const GET = ruta("extracto GET", async (req: Request, ctx: { params: Prom
 
   /* ── Las filas del período ────────────────────────────────────────────── */
 
-  let query = supabase
-    .from("movimientos")
-    .select(
-      `id, fecha, importe, signo, origen, categoria, referencia, detalle,
-       conciliado, pago_id, importe_origen, moneda_origen,
-       contable:plan_cuentas (codigo, nombre)`
-    )
-    .eq("cuenta_id", id)
+  const armar = () => {
+    let query = supabase
+      .from("movimientos")
+      .select(
+        `id, fecha, importe, signo, origen, categoria, referencia, detalle,
+         conciliado, pago_id, importe_origen, moneda_origen,
+         contable:plan_cuentas (codigo, nombre)`
+      )
+      .eq("cuenta_id", id)
 
-  if (desde) query = query.gte("fecha", desde)
-  if (hasta) query = query.lte("fecha", hasta)
-  if (origen) query = query.eq("origen", origen)
-  if (conciliado === "si") query = query.eq("conciliado", true)
-  if (conciliado === "no") query = query.eq("conciliado", false)
-  if (q) {
-    const texto = escaparParaOr(q)
-    query = query.or(`detalle.ilike.%${texto}%,referencia.ilike.%${texto}%`)
+    if (desde) query = query.gte("fecha", desde)
+    if (hasta) query = query.lte("fecha", hasta)
+    if (origen) query = query.eq("origen", origen)
+    if (conciliado === "si") query = query.eq("conciliado", true)
+    if (conciliado === "no") query = query.eq("conciliado", false)
+    if (q) {
+      const texto = escaparParaOr(q)
+      query = query.or(`detalle.ilike.%${texto}%,referencia.ilike.%${texto}%`)
+    }
+
+    // Ascendente: el saldo de cada fila es el acumulado hasta ahí, y eso solo
+    // tiene sentido leído del más viejo al más nuevo.
+    //
+    // Los tres criterios de orden hacen falta. `created_at` desempata las del
+    // mismo día, y el `id` desempata las que además comparten `created_at` — pasa
+    // cuando varios movimientos entran en el mismo INSERT, que es exactamente lo
+    // que hace un recibo con dos medios de pago. Sin el tercer criterio, dos
+    // consultas iguales pueden devolver las filas en distinto orden y la columna
+    // de saldo cambia de una recarga a la otra sin que nada haya cambiado.
+    return query
+      .order("fecha", { ascending: true })
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
   }
-
-  // Ascendente: el saldo de cada fila es el acumulado hasta ahí, y eso solo
-  // tiene sentido leído del más viejo al más nuevo.
-  //
-  // Los tres criterios de orden hacen falta. `created_at` desempata las del
-  // mismo día, y el `id` desempata las que además comparten `created_at` — pasa
-  // cuando varios movimientos entran en el mismo INSERT, que es exactamente lo
-  // que hace un recibo con dos medios de pago. Sin el tercer criterio, dos
-  // consultas iguales pueden devolver las filas en distinto orden y la columna
-  // de saldo cambia de una recarga a la otra sin que nada haya cambiado.
-  const { data, error } = await query
-    .order("fecha", { ascending: true })
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true })
-    .limit(TOPE)
+  const { filas: data, truncado, error } = await traerTodo(armar, TOPE)
 
   if (error) {
     console.error("[extracto movimientos]", error)
@@ -199,7 +207,7 @@ export const GET = ruta("extracto GET", async (req: Request, ctx: { params: Prom
       saldoFinal: corrido,
       cantidad: filas.length,
       sinConciliar,
-      truncado: filas.length >= TOPE,
+      truncado,
     },
     filas,
   }

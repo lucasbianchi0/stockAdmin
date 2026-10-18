@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
+import { traerTodo } from "@/lib/admin/paginar"
 import { redondear } from "@/lib/admin/moneda"
 import { TIPOS_CUENTA, type TipoCuenta } from "@/lib/admin/cuentas-vocabulario"
 import type { FilaSumasSaldos, SumasYSaldos } from "@/lib/admin/asientos"
@@ -60,22 +61,23 @@ export const GET = ruta("sumas y saldos GET", async (req: Request) => {
       movimientos: Number(f.movimientos),
     }))
   } else {
-    let query = supabase
-      .from("libro_diario")
-      .select("cuenta_id, cuenta_codigo, cuenta_nombre, cuenta_tipo, debe_ars, haber_ars")
+    const armar = () => {
+      let query = supabase
+        .from("libro_diario")
+        .select("cuenta_id, cuenta_codigo, cuenta_nombre, cuenta_tipo, debe_ars, haber_ars")
+      if (desde) query = query.gte("fecha", desde)
+      if (hasta) query = query.lte("fecha", hasta)
+      return query.order("linea_id", { ascending: true })
+    }
 
-    if (desde) query = query.gte("fecha", desde)
-    if (hasta) query = query.lte("fecha", hasta)
-
-    const { data, error } = await query.limit(TOPE)
+    const { filas: lineas, truncado: cortado, error } = await traerTodo(armar, TOPE)
 
     if (error) {
       console.error("[sumas y saldos período]", error)
       return NextResponse.json({ error: "No se pudo cargar sumas y saldos" }, { status: 500 })
     }
 
-    const lineas = data ?? []
-    truncado = lineas.length >= TOPE
+    truncado = cortado
 
     const acc = new Map<string, FilaSumasSaldos>()
     for (const l of lineas) {

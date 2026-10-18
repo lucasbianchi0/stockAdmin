@@ -22,6 +22,14 @@ import { numeracionPorEjercicio } from "@/lib/admin/ejercicios-server"
 /** Un asiento rara vez pasa de diez líneas, así que esto son ~200 asientos. */
 const TOPE = 2000
 
+/**
+ * `?completo=1` es para bajar el libro (Excel y la hoja para imprimir): trae
+ * todo el período en páginas, del más viejo al más nuevo, que es el orden del
+ * libro. La pantalla sigue con los más recientes y el tope: es para mirar.
+ */
+const PAGINA = 1000
+const TOPE_COMPLETO = 100_000
+
 export const GET = ruta("diario GET", async (req: Request) => {
   const sinPermiso = await exigirModulo("administracion")
   if (sinPermiso) return sinPermiso
@@ -31,33 +39,65 @@ export const GET = ruta("diario GET", async (req: Request) => {
   const hasta = url.searchParams.get("hasta") ?? ""
   const origen = url.searchParams.get("origen") ?? ""
   const cuenta = url.searchParams.get("cuenta") ?? ""
+  const completo = url.searchParams.get("completo") === "1"
 
-  let query = supabase
-    .from("libro_diario")
-    .select(
-      `asiento_id, fecha, ejercicio, numero, origen, origen_id, descripcion,
-       linea_id, orden, detalle, debe, haber, debe_ars, haber_ars, moneda, tc,
-       auxiliar_tipo, auxiliar_id,
-       cuenta_id, cuenta_codigo, cuenta_nombre, cuenta_tipo`
-    )
-
-  if (desde) query = query.gte("fecha", desde)
-  if (hasta) query = query.lte("fecha", hasta)
-  if (origen) query = query.eq("origen", origen)
-  if (cuenta) query = query.eq("cuenta_id", cuenta)
-
-  const { data, error } = await query
-    .order("fecha", { ascending: false })
-    .order("numero", { ascending: false })
-    .order("orden", { ascending: true })
-    .limit(TOPE)
-
-  if (error) {
-    console.error("[diario]", error)
-    return NextResponse.json({ error: "No se pudo cargar el libro diario" }, { status: 500 })
+  const consulta = () => {
+    let query = supabase
+      .from("libro_diario")
+      .select(
+        `asiento_id, fecha, ejercicio, numero, origen, origen_id, descripcion,
+         linea_id, orden, detalle, debe, haber, debe_ars, haber_ars, moneda, tc,
+         auxiliar_tipo, auxiliar_id,
+         cuenta_id, cuenta_codigo, cuenta_nombre, cuenta_tipo`
+      )
+    if (desde) query = query.gte("fecha", desde)
+    if (hasta) query = query.lte("fecha", hasta)
+    if (origen) query = query.eq("origen", origen)
+    if (cuenta) query = query.eq("cuenta_id", cuenta)
+    return query
   }
 
-  const filas = data ?? []
+  type FilaDiario = NonNullable<Awaited<ReturnType<typeof consulta>>["data"]>[number]
+  const filas: FilaDiario[] = []
+  let truncado = false
+
+  /*
+   * Siempre en páginas: Supabase devuelve como mucho mil filas por pedido, y
+   * un `.limit(2000)` volvía mil sin avisar. La pantalla mostraba 410 de 461
+   * asientos del ejercicio y decía que estaban todos.
+   *
+   * La pantalla va del más nuevo al más viejo y corta en TOPE líneas; el libro
+   * completo, del más viejo al más nuevo. El orden llega hasta la línea para
+   * que las páginas no se pisen ni dejen huecos.
+   */
+  const tope = completo ? TOPE_COMPLETO : TOPE
+  const asc = completo
+  for (let inicio = 0; ; inicio += PAGINA) {
+    const { data, error } = await consulta()
+      .order("fecha", { ascending: asc })
+      .order("numero", { ascending: asc })
+      .order("asiento_id", { ascending: asc })
+      .order("orden", { ascending: true })
+      .order("linea_id", { ascending: true })
+      .range(inicio, Math.min(inicio + PAGINA, tope) - 1)
+    if (error) {
+      console.error("[diario]", error)
+      return NextResponse.json({ error: "No se pudo cargar el libro diario" }, { status: 500 })
+    }
+    filas.push(...(data ?? []))
+    if (!data || data.length < Math.min(PAGINA, tope - inicio)) break
+    if (filas.length >= tope) {
+      truncado = true
+      break
+    }
+  }
+
+  // Cortado, el último asiento puede haber quedado con la mitad de sus líneas:
+  // se saca entero antes que mostrarlo descuadrado.
+  if (truncado && filas.length) {
+    const ultimo = filas[filas.length - 1].asiento_id
+    while (filas.length && filas[filas.length - 1].asiento_id === ultimo) filas.pop()
+  }
 
   /* ── Los nombres de los auxiliares, en dos consultas ──────────────────── */
 
@@ -146,7 +186,7 @@ export const GET = ruta("diario GET", async (req: Request) => {
 
   return NextResponse.json({
     asientos,
-    truncado: filas.length >= TOPE,
+    truncado,
     cantidad: asientos.length,
   })
 })

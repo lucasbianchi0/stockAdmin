@@ -4,6 +4,7 @@ import { numeracionPorEjercicio } from "@/lib/admin/ejercicios-server"
 import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
+import { traerTodo } from "@/lib/admin/paginar"
 import { redondear } from "@/lib/admin/moneda"
 import type { FilaMayor, Mayor, OrigenAsiento } from "@/lib/admin/asientos"
 
@@ -53,14 +54,17 @@ export const GET = ruta("mayor GET", async (req: Request) => {
   let saldoInicial = 0
 
   if (desde) {
-    let previos = supabase
-      .from("libro_diario")
-      .select("debe_ars, haber_ars")
-      .eq("cuenta_id", cuentaId)
-      .lt("fecha", desde)
-    if (auxiliar) previos = previos.eq("auxiliar_id", auxiliar)
-
-    const { data, error } = await previos
+    // Todas: el saldo inicial de una cuenta con mucho movimiento (Caja,
+    // Créditos por ventas) pasa de mil líneas y se cortaba sin avisar.
+    const { filas: data, error } = await traerTodo(() => {
+      let previos = supabase
+        .from("libro_diario")
+        .select("debe_ars, haber_ars")
+        .eq("cuenta_id", cuentaId)
+        .lt("fecha", desde)
+      if (auxiliar) previos = previos.eq("auxiliar_id", auxiliar)
+      return previos.order("linea_id", { ascending: true })
+    })
     if (error) {
       console.error("[mayor previos]", error)
       return NextResponse.json({ error: "No se pudo calcular el saldo inicial" }, { status: 500 })
@@ -72,30 +76,28 @@ export const GET = ruta("mayor GET", async (req: Request) => {
 
   /* ── Las líneas del período ───────────────────────────────────────────── */
 
-  let query = supabase
-    .from("libro_diario")
-    .select(
-      `asiento_id, fecha, numero, origen, descripcion, detalle,
-       debe_ars, haber_ars, auxiliar_tipo, auxiliar_id`
-    )
-    .eq("cuenta_id", cuentaId)
-
-  if (desde) query = query.gte("fecha", desde)
-  if (hasta) query = query.lte("fecha", hasta)
-  if (auxiliar) query = query.eq("auxiliar_id", auxiliar)
-
-  const { data, error } = await query
-    .order("fecha", { ascending: true })
-    .order("numero", { ascending: true })
-    .order("orden", { ascending: true })
-    .limit(TOPE)
+  const { filas: filasCrudas, truncado, error } = await traerTodo(() => {
+    let query = supabase
+      .from("libro_diario")
+      .select(
+        `asiento_id, fecha, numero, origen, descripcion, detalle,
+         debe_ars, haber_ars, auxiliar_tipo, auxiliar_id`
+      )
+      .eq("cuenta_id", cuentaId)
+    if (desde) query = query.gte("fecha", desde)
+    if (hasta) query = query.lte("fecha", hasta)
+    if (auxiliar) query = query.eq("auxiliar_id", auxiliar)
+    return query
+      .order("fecha", { ascending: true })
+      .order("numero", { ascending: true })
+      .order("orden", { ascending: true })
+      .order("linea_id", { ascending: true })
+  }, TOPE)
 
   if (error) {
     console.error("[mayor]", error)
     return NextResponse.json({ error: "No se pudo cargar el mayor" }, { status: 500 })
   }
-
-  const filasCrudas = data ?? []
 
   /* ── Nombres del submayor ─────────────────────────────────────────────── */
 
@@ -158,7 +160,7 @@ export const GET = ruta("mayor GET", async (req: Request) => {
       haber: redondear(haber),
       saldoFinal: corrido,
       cantidad: filas.length,
-      truncado: filas.length >= TOPE,
+      truncado,
     },
     filas,
   }
