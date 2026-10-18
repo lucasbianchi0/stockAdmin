@@ -20,6 +20,7 @@ import {
   Search,
   Trash2,
   Upload,
+  UserPlus,
   Users,
   X,
 } from "lucide-react"
@@ -564,6 +565,10 @@ export function CrmClient() {
                   <Upload />
                   <span className="hidden sm:inline">Importar</span>
                 </Button>
+                <Button variant="outline" onClick={() => setCreando({})}>
+                  <UserPlus />
+                  <span className="hidden sm:inline">Nuevo contacto</span>
+                </Button>
                 <Button onClick={() => setNuevoProyecto({ empresa: "" })}>
                   <Plus />
                   <span className="hidden sm:inline">Nuevo proyecto</span>
@@ -803,6 +808,10 @@ export function CrmClient() {
                     <Button variant="outline" onClick={() => setImportando(true)}>
                       <Upload />
                       Importar planilla
+                    </Button>
+                    <Button variant="outline" onClick={() => setCreando({})}>
+                      <UserPlus />
+                      Nuevo contacto
                     </Button>
                     <Button onClick={() => setNuevoProyecto({ empresa: "" })}>
                       <Plus />
@@ -1094,12 +1103,11 @@ export function CrmClient() {
           opciones={opcionesQ.data ?? SIN_OPCIONES}
           alta={{
             url: "/api/comercial/crm/contactos",
-            cuerpo: { ownerId: ownerNuevo, proyecto: creando?.proyecto || undefined },
+            cuerpo: { ownerId: ownerNuevo },
             boton: esMio || esEquipo ? "Crear y sumar a mi CRM" : `Crear y sumar al CRM de ${primerNombre}`,
-            subtitulo: creando?.proyecto
-              ? `Se guarda en Contactos y el proyecto “${creando.proyecto}” entra a ${destino}`
-              : `Se guarda en Contactos y entra a ${destino}`,
+            subtitulo: `Se guarda en la base de Contactos y entra a ${destino}`,
             inicial: creando?.empresa ? { empresa: creando.empresa } : undefined,
+            proyecto: { inicial: creando?.proyecto, sugerencias: sugerencias(creando?.empresa ?? "") },
           }}
           onCerrar={() => setCreando(null)}
           onGuardado={(c, r) => {

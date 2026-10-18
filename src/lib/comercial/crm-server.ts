@@ -424,6 +424,7 @@ export async function crearContactoEnCrm(req: Request, yo: Sesion) {
   if ("error" in r) return NextResponse.json({ error: r.error }, { status: r.status })
 
   const proyecto = textoONull(b.proyecto, 120) ?? null
+  const cierre = cierreInicial(b)
   let nueva: string | undefined
   if (proyecto || !(await yaEnCrm([r.contacto.id], owner.id)).has(r.contacto.id)) {
     const { data, error } = await supabase
@@ -433,13 +434,14 @@ export async function crearContactoEnCrm(req: Request, yo: Sesion) {
         owner_id: owner.id,
         owner_nombre: owner.nombre,
         producto: proyecto,
+        ...cierre,
         created_by: yo.id,
       })
       .select("id")
       .single()
     if (error) throw error
     nueva = data.id as string
-    await anotar([nueva], "alta", proyecto ? `Nuevo proyecto: ${proyecto}` : "Lo cargó desde el CRM", yo)
+    await anotar([nueva], "alta", textoDeAlta(proyecto, cierre, "Lo cargó desde el CRM"), yo)
   }
 
   return NextResponse.json(

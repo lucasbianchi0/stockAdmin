@@ -6,6 +6,7 @@ import { AlertTriangle, Loader2, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { DetalleDialog, Bloque } from "@/components/admin/detalle-dialog"
+import { CIERRE_INICIAL, CampoProyecto, EtapaYCierre, type Cierre } from "@/components/comercial/proyecto-dialog"
 import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -62,6 +63,8 @@ export function ContactoPanel({
     subtitulo: string
     /** Lo que ya se sabe del nuevo, por ejemplo la empresa. */
     inicial?: Partial<BorradorContacto>
+    /** Si está, el alta trae su primer proyecto (opcional) con etapa y %. */
+    proyecto?: { inicial?: string; sugerencias: string[] }
   }
 }) {
   const { montado, saliendo } = usePresencia(abierto)
@@ -118,6 +121,8 @@ function Formulario({
         }
       : { ...BORRADOR_VACIO, amId: yoId, ...alta?.inicial }
   )
+  const [proyecto, setProyecto] = useState(alta?.proyecto?.inicial ?? "")
+  const [cierre, setCierre] = useState<Cierre>(CIERRE_INICIAL)
   const [guardando, setGuardando] = useState(false)
   const similares = useSimilares(b, contacto?.id ?? null)
   const [error, setError] = useState<string | null>(null)
@@ -136,7 +141,11 @@ function Formulario({
         {
           method: contacto ? "PATCH" : "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ...b, ...(contacto ? {} : alta?.cuerpo) }),
+          body: JSON.stringify({
+            ...b,
+            ...(contacto ? {} : alta?.cuerpo),
+            ...(!contacto && alta?.proyecto ? { proyecto: proyecto.trim() || undefined, ...cierre } : {}),
+          }),
         }
       )
       const data = await res.json().catch(() => ({}))
@@ -331,6 +340,20 @@ titulo
             </Campo>
           </div>
         </Bloque>
+
+        {!contacto && alta?.proyecto && (
+          <Bloque titulo="En el CRM">
+            <div className="space-y-4">
+              <CampoProyecto
+                valor={proyecto}
+                onCambio={setProyecto}
+                sugerencias={alta.proyecto.sugerencias}
+                opcional
+              />
+              <EtapaYCierre valor={cierre} onCambio={setCierre} />
+            </div>
+          </Bloque>
+        )}
 
         <Bloque titulo="Observaciones">
           <Textarea
