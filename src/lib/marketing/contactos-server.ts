@@ -208,8 +208,23 @@ export async function listarContactos(req: Request) {
     return NextResponse.json({ error: "No se pudieron cargar los contactos" }, { status: 500 })
   }
 
+  const contactos = (listado.data ?? []).map((f) => aContacto(f as unknown as Fila))
+
+  /*
+   * Cuántas personas tenemos de cada empresa de la página: es lo que decide si
+   * se ofrece el organigrama. Una consulta por página, no una por fila; para
+   * la exportación (miles de filas de una) no hace falta y no se pide.
+   */
+  const porEmpresa: Record<string, number> = {}
+  const empresas = [...new Set(contactos.map((c) => c.empresa))]
+  if (empresas.length && porPagina <= 200) {
+    const { data } = await supabase.from("contactos").select("empresa").in("empresa", empresas).limit(1000)
+    for (const f of data ?? []) porEmpresa[f.empresa as string] = (porEmpresa[f.empresa as string] ?? 0) + 1
+  }
+
   return NextResponse.json({
-    contactos: (listado.data ?? []).map((f) => aContacto(f as unknown as Fila)),
+    contactos,
+    porEmpresa,
     total: listado.count ?? 0,
     // Las pestañas, con los filtros y la búsqueda puestos.
     conteos: { todos: todos.count ?? 0, libres: libres.count ?? 0, sinAm: sinAmCuenta.count ?? 0 },

@@ -50,6 +50,8 @@ export type OpcionesContactos = {
 
 export type RespuestaContactos = {
   contactos: Contacto[]
+  /** Cuántas personas hay cargadas de cada empresa de la página. */
+  porEmpresa?: Record<string, number>
   total: number
   /** Las pestañas, con los filtros y la búsqueda puestos. */
   conteos: { todos: number; libres: number; sinAm: number }

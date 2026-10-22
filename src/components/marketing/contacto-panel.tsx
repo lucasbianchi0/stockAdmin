@@ -7,13 +7,15 @@ import { toast } from "sonner"
 
 import { DetalleDialog, Bloque } from "@/components/admin/detalle-dialog"
 import { CIERRE_INICIAL, CampoProyecto, EtapaYCierre, type Cierre } from "@/components/comercial/proyecto-dialog"
+import { BotonOrganigrama } from "@/components/contactos/empresa-panel"
+import { OrganigramaEmpresa, urlFichaEmpresa } from "@/components/contactos/organigrama-empresa"
 import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { claveDe, pedirJson } from "@/lib/admin/query"
 import { ESTADO_CRM_LABEL, esEstadoCrm } from "@/lib/comercial/crm"
-import type { Similar } from "@/lib/contactos-compartido"
+import type { FichaEmpresa, Similar } from "@/lib/contactos-compartido"
 import {
   BORRADOR_VACIO,
   type BorradorContacto,
@@ -208,6 +210,8 @@ titulo
           void guardar()
         }}
       >
+        {contacto && <CompanerosDeEmpresa contacto={contacto} />}
+
         {contacto && (contacto.crm.length > 0 || onNuevoProyecto) && (
           <Bloque
             titulo="Proyectos"
@@ -390,6 +394,55 @@ titulo
         </datalist>
       </form>
     </DetalleDialog>
+  )
+}
+
+/**
+ * Si de la empresa tenemos a más de una persona, quiénes son y el acceso al
+ * organigrama: entrar por un contacto es la forma más común de llegar a "¿y
+ * con quién más hablamos ahí?".
+ */
+function CompanerosDeEmpresa({ contacto }: { contacto: Contacto }) {
+  const [abierto, setAbierto] = useState(false)
+  const url = urlFichaEmpresa(contacto.empresa)
+  const q = useQuery({
+    queryKey: claveDe("marketing", url),
+    queryFn: ({ signal }) => pedirJson<FichaEmpresa>(url, { signal }),
+    staleTime: 60_000,
+  })
+  const personas = q.data?.personas ?? []
+  if (personas.length < 2) return null
+  const otros = personas.filter((p) => p.id !== contacto.id)
+
+  return (
+    <>
+      <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-subtle px-3.5 py-3">
+        <div className="flex shrink-0 -space-x-1.5">
+          {otros.slice(0, 4).map((p) => (
+            <Avatar key={p.id} id={p.id} nombre={p.nombre} size="sm" className="ring-2 ring-surface-subtle" />
+          ))}
+        </div>
+        <p className="min-w-0 flex-1 text-[12px] leading-snug text-ink-secondary">
+          <span className="font-semibold text-ink">
+            {otros.length === 1 ? "1 persona más" : `${otros.length} personas más`}
+          </span>{" "}
+          de {q.data?.nombre ?? contacto.empresa}:{" "}
+          <span className="text-ink-muted">
+            {otros
+              .slice(0, 2)
+              .map((p) => p.nombre.split(" ")[0] + (p.cargo ? ` (${p.cargo})` : ""))
+              .join(", ")}
+            {otros.length > 2 && "…"}
+          </span>
+        </p>
+        <BotonOrganigrama onClick={() => setAbierto(true)} />
+      </div>
+      <OrganigramaEmpresa
+        empresa={abierto ? contacto.empresa : null}
+        destacado={contacto.id}
+        onCerrar={() => setAbierto(false)}
+      />
+    </>
   )
 }
 

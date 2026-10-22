@@ -3,9 +3,10 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowUpRight, Mail, Phone } from "lucide-react"
+import { ArrowUpRight, Mail, Network, Phone } from "lucide-react"
 
 import { Bloque, DetalleDialog } from "@/components/admin/detalle-dialog"
+import { OrganigramaEmpresa, urlFichaEmpresa } from "@/components/contactos/organigrama-empresa"
 import { Avatar } from "@/components/ui/avatar"
 import { claveDe, mensajeError, pedirJson } from "@/lib/admin/query"
 import { ESTADO_CRM_ESTILO, ESTADO_CRM_LABEL, ESTA_ABIERTA, fechaCorta } from "@/lib/comercial/crm"
@@ -32,8 +33,9 @@ export function EmpresaPanel({
   const { montado, saliendo } = usePresencia(empresa !== null)
   const [mostrada, setMostrada] = useState(empresa)
   if (empresa && empresa !== mostrada) setMostrada(empresa)
+  const [organigrama, setOrganigrama] = useState(false)
 
-  const url = `/api/contactos/empresa?nombre=${encodeURIComponent(mostrada ?? "")}`
+  const url = urlFichaEmpresa(mostrada ?? "")
   const q = useQuery({
     queryKey: claveDe("marketing", url),
     queryFn: ({ signal }) => pedirJson<FichaEmpresa>(url, { signal }),
@@ -47,6 +49,7 @@ export function EmpresaPanel({
   const abiertas = f?.personas.flatMap((p) => p.crm).filter((o) => ESTA_ABIERTA(o.estado)).length ?? 0
 
   return (
+    <>
     <DetalleDialog
       abierto
       saliendo={saliendo}
@@ -69,7 +72,14 @@ export function EmpresaPanel({
     >
       {f && (
         <>
-          <Bloque titulo="Personas">
+          <Bloque
+            titulo="Personas"
+            accion={
+              f.personas.length > 1 ? (
+                <BotonOrganigrama onClick={() => setOrganigrama(true)} />
+              ) : undefined
+            }
+          >
             <ul className="divide-y divide-line-soft overflow-hidden rounded-lg border border-line">
               {f.personas.map((p) => (
                 <li key={p.id} className="px-3.5 py-3">
@@ -167,5 +177,22 @@ export function EmpresaPanel({
         </>
       )}
     </DetalleDialog>
+    <OrganigramaEmpresa empresa={organigrama ? mostrada : null} onCerrar={() => setOrganigrama(false)} />
+    </>
+  )
+}
+
+/** El acceso al organigrama: sólo tiene sentido con más de una persona. */
+export function BotonOrganigrama({ onClick, personas }: { onClick: () => void; personas?: number }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11.5px] font-semibold text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-100"
+    >
+      <Network className="h-3.5 w-3.5" />
+      Ver organigrama
+      {personas !== undefined && <span className="num font-medium text-brand-700/70">· {personas}</span>}
+    </button>
   )
 }

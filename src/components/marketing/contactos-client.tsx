@@ -23,6 +23,7 @@ import {
   UserRound,
   Users,
   X,
+  Network,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -38,7 +39,8 @@ import { PaginacionTabla } from "@/components/ui/paginacion-tabla"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
 import { ThOrden, type Orden } from "@/components/ui/th-orden"
 import { Vistas } from "@/components/ui/vistas"
-import { EmpresaPanel } from "@/components/contactos/empresa-panel"
+import { BotonOrganigrama, EmpresaPanel } from "@/components/contactos/empresa-panel"
+import { OrganigramaEmpresa } from "@/components/contactos/organigrama-empresa"
 import { CampanaDialog, type DestinoCampana } from "@/components/contactos/campana-dialog"
 import { EscribirDialog, type PersonaParaEscribir } from "@/components/contactos/escribir-dialog"
 import { EscribirVariosDialog, type Destinatario } from "@/components/contactos/escribir-varios-dialog"
@@ -191,6 +193,13 @@ export function ContactosClient() {
   const datos = lista.data
   const filas = datos?.contactos ?? []
   const total = datos?.total ?? 0
+  const porEmpresa = datos?.porEmpresa ?? {}
+  // Si lo que se ve es una sola empresa (se la buscó o se la filtró) y tiene
+  // más de una persona, el organigrama se ofrece en la barra.
+  const empresaUnica =
+    filas.length > 0 && filas.every((c) => c.empresa === filas[0].empresa) && (porEmpresa[filas[0].empresa] ?? 0) > 1
+      ? filas[0].empresa
+      : null
   const kpis = resumenQ.data?.kpis
   const totalPaginas = Math.max(1, Math.ceil(total / porPagina))
   const opciones = resumenQ.data?.opciones ?? { empresas: [], verticales: [], departamentos: [] }
@@ -294,6 +303,7 @@ export function ContactosClient() {
   const [lote, setLote] = useState<ModoLote | null>(null)
   const [escribirA, setEscribirA] = useState<PersonaParaEscribir | null>(null)
   const [empresa, setEmpresa] = useState<string | null>(null)
+  const [organigrama, setOrganigrama] = useState<{ empresa: string; destacado: string | null } | null>(null)
   const [grupoABorrar, setGrupoABorrar] = useState<Grupo | null>(null)
   const [escribirVarios, setEscribirVarios] = useState<Destinatario[] | null>(null)
   const [campana, setCampana] = useState<DestinoCampana | null>(null)
@@ -747,6 +757,13 @@ export function ContactosClient() {
             </div>
 
             <div className="ml-auto flex shrink-0 items-center gap-1">
+              {empresaUnica && (
+                <span className="mr-1.5">
+                  <BotonOrganigrama
+                    onClick={() => setOrganigrama({ empresa: empresaUnica, destacado: null })}
+                  />
+                </span>
+              )}
               <span className="num hidden pr-1 text-[12.5px] text-ink-muted sm:inline">
                 {plural(total, "persona", "personas")}
               </span>
@@ -885,6 +902,11 @@ export function ContactosClient() {
                         onAlternar={() => alternar(c.id)}
                         onAbrir={() => setPanel({ abierto: true, contacto: c })}
                         onEmpresa={() => setEmpresa(c.empresa)}
+                        onOrganigrama={
+                          (porEmpresa[c.empresa] ?? 0) > 1
+                            ? () => setOrganigrama({ empresa: c.empresa, destacado: c.id })
+                            : undefined
+                        }
                         onEscribir={() => setEscribirA(c)}
                         onProyecto={yo?.id ? () => setNuevoProyecto({ empresa: c.empresa, contactoId: c.id }) : undefined}
                         onBorrar={() => setABorrar([c])}
@@ -1005,6 +1027,12 @@ export function ContactosClient() {
 
         <EmpresaPanel empresa={empresa} onCerrar={() => setEmpresa(null)} />
 
+        <OrganigramaEmpresa
+          empresa={organigrama?.empresa ?? null}
+          destacado={organigrama?.destacado}
+          onCerrar={() => setOrganigrama(null)}
+        />
+
         <EscribirVariosDialog personas={escribirVarios} yoNombre={yo?.nombre ?? null} onCerrar={() => setEscribirVarios(null)} />
 
         <CampanaDialog
@@ -1090,6 +1118,7 @@ function FilaContacto({
   onAlternar,
   onAbrir,
   onEmpresa,
+  onOrganigrama,
   onEscribir,
   onProyecto,
   onBorrar,
@@ -1100,6 +1129,8 @@ function FilaContacto({
   onAlternar: () => void
   onAbrir: () => void
   onEmpresa: () => void
+  /** Sólo si de la empresa hay más de una persona. */
+  onOrganigrama?: () => void
   onEscribir: () => void
   /** Abrirle un proyecto en el CRM propio. */
   onProyecto?: () => void
@@ -1226,6 +1257,17 @@ function FilaContacto({
                 <Building2 />
                 Ver {c.empresa}
               </MenuItem>
+              {onOrganigrama && (
+                <MenuItem
+                  onClick={() => {
+                    cerrar()
+                    onOrganigrama()
+                  }}
+                >
+                  <Network />
+                  Ver organigrama
+                </MenuItem>
+              )}
               <MenuItem
                 onClick={() => {
                   cerrar()

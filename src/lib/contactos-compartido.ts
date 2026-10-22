@@ -26,6 +26,8 @@ export type FichaEmpresa = {
     departamento: string | null
     email: string | null
     telefono: string | null
+    /** Para qué es este contacto: lo que lo distingue de los demás de la empresa. */
+    observaciones: string | null
     amId: string | null
     amNombre: string | null
     crm: {
