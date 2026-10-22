@@ -21,7 +21,7 @@ export default function ResultadosPage() {
     <main className="flex min-h-full flex-col">
       <PageHeader
         title="Resultados"
-        description="De cada peso invertido a la consulta que entró: campañas de Google, recorrido en el sitio y la bandeja de leads, todo del mismo período."
+        description="De cada peso invertido a la consulta que entró: campañas de Google, recorrido en el sitio, la bandeja de leads y LinkedIn, todo del mismo período."
         back={{ href: "/marketing", label: "Marketing" }}
       />
       <PageBody>

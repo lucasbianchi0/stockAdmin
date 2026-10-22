@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ErrorState, LoadingState } from "@/components/ui/states"
 import { ResultadosCampanas } from "@/components/marketing/resultados-campanas"
 import { ResultadosLeads } from "@/components/marketing/resultados-leads"
+import { ResultadosLinkedin } from "@/components/marketing/resultados-linkedin"
 import { ResultadosPaginas } from "@/components/marketing/resultados-paginas"
 import { ResultadosResumen } from "@/components/marketing/resultados-resumen"
 import { claveDe, mensajeError, pedirJson } from "@/lib/admin/query"
@@ -133,6 +134,7 @@ export function ResultadosClient() {
               Leads
               <span className="num text-ink-faint">{datos.leads.filter((l) => !l.equipo).length}</span>
             </TabsTrigger>
+            <TabsTrigger value="linkedin">LinkedIn</TabsTrigger>
           </TabsList>
 
           <TabsContent value="resumen" className="mt-0">
@@ -146,6 +148,9 @@ export function ResultadosClient() {
           </TabsContent>
           <TabsContent value="leads" className="mt-0">
             <ResultadosLeads datos={datos} alCambiar={alCambiar} recargar={() => void query.refetch()} />
+          </TabsContent>
+          <TabsContent value="linkedin" className="mt-0">
+            <ResultadosLinkedin periodo={periodo} />
           </TabsContent>
         </Tabs>
       )}

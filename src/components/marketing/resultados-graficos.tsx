@@ -108,6 +108,10 @@ function etiquetaDia(iso: string): string {
   return `${d} ${MESES[m - 1]}`
 }
 
+export type NombresSerie = { arriba: [string, string]; abajo: [string, string] }
+
+const NOMBRES_SITIO: NombresSerie = { arriba: ["sesión", "sesiones"], abajo: ["lead", "leads"] }
+
 /**
  * Sesiones y leads del período.
  *
@@ -119,7 +123,14 @@ function etiquetaDia(iso: string): string {
  * elegante de mentir con un gráfico. Van apilados, compartiendo el eje de
  * tiempo: se comparan igual y ninguna escala está inventada.
  */
-export function SerieDiaria({ puntos }: { puntos: PuntoSerie[] }) {
+export function SerieDiaria({
+  puntos,
+  nombres = NOMBRES_SITIO,
+}: {
+  puntos: PuntoSerie[]
+  /** Cómo se llaman las dos series, en singular y plural. Lo usa también LinkedIn. */
+  nombres?: NombresSerie
+}) {
   const id = useId()
   const [activo, setActivo] = useState<number | null>(null)
 
@@ -162,7 +173,7 @@ export function SerieDiaria({ puntos }: { puntos: PuntoSerie[] }) {
         viewBox={`0 0 ${geo.W} ${geo.H}`}
         className="block h-auto w-full"
         role="img"
-        aria-label={`Sesiones y leads por día, del ${etiquetaDia(puntos[0].dia)} al ${etiquetaDia(puntos[puntos.length - 1].dia)}`}
+        aria-label={`${nombres.arriba[1]} y ${nombres.abajo[1]} por día, del ${etiquetaDia(puntos[0].dia)} al ${etiquetaDia(puntos[puntos.length - 1].dia)}`}
         onMouseLeave={() => setActivo(null)}
       >
         <defs>
@@ -274,10 +285,11 @@ export function SerieDiaria({ puntos }: { puntos: PuntoSerie[] }) {
         >
           <p className="text-[10.5px] text-n-400">{etiquetaDia(puntos[activo].dia)}</p>
           <p className="num">
-            <b>{puntos[activo].sesiones}</b> sesiones
+            <b>{puntos[activo].sesiones.toLocaleString("es-AR")}</b>{" "}
+            {puntos[activo].sesiones === 1 ? nombres.arriba[0] : nombres.arriba[1]}
           </p>
           <p className="num">
-            <b>{puntos[activo].leads}</b> {puntos[activo].leads === 1 ? "lead" : "leads"}
+            <b>{puntos[activo].leads}</b> {puntos[activo].leads === 1 ? nombres.abajo[0] : nombres.abajo[1]}
           </p>
         </div>
       )}
