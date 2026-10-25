@@ -206,6 +206,14 @@ export function ComprobanteDetalle({
                 valor={c.percepcionIibbCaba}
                 moneda={c.moneda}
               />
+              <Importe
+                rotulo="Percep. IIBB Mendoza"
+                valor={c.percepcionIibbMendoza}
+                moneda={c.moneda}
+              />
+              <Importe rotulo="Percep. Ganancias" valor={c.percepcionGanancias} moneda={c.moneda} />
+              <Importe rotulo="Ley 25413" valor={c.ley25413} moneda={c.moneda} />
+              <Importe rotulo="Impuestos internos" valor={c.impuestosInternos} moneda={c.moneda} />
               <Importe rotulo="Otros impuestos" valor={c.otrosImpuestos} moneda={c.moneda} />
               <Importe rotulo="Total" valor={c.total} moneda={c.moneda} destacado />
             </div>

@@ -8,8 +8,12 @@ import { redondear } from "@/lib/admin/moneda"
 import {
   ALICUOTAS_SUBDIARIO,
   type AlicuotaSubdiario,
+  facturaLibro,
   type FilaSubdiario,
+  importesEnCero,
   type LineaResumen,
+  type RetencionSubdiario,
+  soloComprobantes,
   totalizar,
   type Subdiario,
 } from "@/lib/admin/subdiarios"
@@ -20,6 +24,10 @@ import {
  * Sin tope y sin paginar en pantalla: un subdiario incompleto no sirve para
  * copiar al libro, y un mes de Accedra son decenas de comprobantes, no miles.
  * Se lee en páginas para no chocar con el límite de filas de PostgREST.
+ *
+ * En ventas van además las retenciones sufridas en los cobros del período, un
+ * renglón por retención —como en el libro del estudio, «RE …» con el cliente—.
+ * Son informativas: el total del libro no las suma.
  *
  * El asiento resumen sale de los asientos que la base ya generó para esos mismos
  * comprobantes, agrupados por cuenta. Así el resumen dice exactamente lo que
@@ -49,7 +57,37 @@ type Comprobante = {
   percepcion_iibb_bsas: number | string
   percepcion_iibb_caba: number | string
   otros_impuestos: number | string
+  ley_25413: number | string | null
+  percepcion_ganancias: number | string | null
+  percepcion_iibb_mendoza: number | string | null
+  impuestos_internos: number | string | null
   total: number | string
+}
+
+type Cobro = {
+  id: string
+  fecha: string
+  moneda: "ARS" | "USD"
+  tc: number | string | null
+  cliente_id: string | null
+  retenciones: {
+    id: string
+    tipo: "ganancias" | "iva" | "iibb" | "suss"
+    jurisdiccion: string | null
+    importe: number | string
+    numero_certificado: string | null
+  }[]
+}
+
+/** En qué columna del libro de ventas cae cada retención. */
+function columnaRetencion(tipo: string, jurisdiccion: string | null): RetencionSubdiario {
+  if (tipo === "ganancias") return "ganancias"
+  if (tipo === "iva") return "iva"
+  if (tipo === "suss") return "suss"
+  if (jurisdiccion === "mendoza") return "iibbMendoza"
+  if (jurisdiccion === "bsas") return "iibbBsas"
+  if (jurisdiccion === "caba") return "iibbCaba"
+  return "iibbOtras"
 }
 
 const n = (v: unknown) => {
@@ -59,8 +97,6 @@ const n = (v: unknown) => {
 
 /** Las claves de alícuota como las guarda la base (0.2100) → "0.21". */
 const claveAlicuota = (v: unknown): string => String(Number(v))
-
-const vacio = (): Record<AlicuotaSubdiario, number> => ({ "0.21": 0, "0.105": 0, "0.27": 0 })
 
 async function enPaginas<T>(armar: (desde: number, hasta: number) => PromiseLike<{ data: T[] | null; error: unknown }>) {
   const todo: T[] = []
@@ -116,7 +152,8 @@ export const GET = ruta("subdiario GET", async (req: Request) => {
         .select(
           `id, fecha, clase, punto_venta, numero, cliente_id, proveedor_id, moneda, tc, signo,
            neto_gravado, alicuota_iva, iva, no_gravado, exento, percepcion_iva,
-           percepcion_iibb_bsas, percepcion_iibb_caba, otros_impuestos, total`
+           percepcion_iibb_bsas, percepcion_iibb_caba, otros_impuestos, ley_25413,
+           percepcion_ganancias, percepcion_iibb_mendoza, impuestos_internos, total`
         )
         .eq("tipo", tipo)
         .eq("estado", "confirmado")
@@ -124,18 +161,49 @@ export const GET = ruta("subdiario GET", async (req: Request) => {
       if (error) throw error
       return (data ?? []) as Comprobante[]
     })
-    const clave = (c: Comprobante) =>
-      `${registroDe.get(c.id)}|${String(c.punto_venta ?? 0).padStart(5, "0")}|${String(c.numero ?? 0).padStart(12, "0")}|${c.id}`
-    comprobantes.sort((a, b) => clave(a).localeCompare(clave(b)))
   } catch (error) {
     console.error("[subdiario]", error)
     return NextResponse.json({ error: "No se pudo armar el subdiario" }, { status: 500 })
   }
 
+  /*
+   * Las retenciones sufridas, por la fecha del cobro: es la que figura en el
+   * recibo y la que usa el estudio. Solo en ventas; en compras las retenciones
+   * son las que practica Accedra y no van en este libro.
+   */
+  let cobros: Cobro[] = []
+  if (tipo === "venta") {
+    try {
+      cobros = await enPaginas<Cobro>((i, j) =>
+        supabase
+          .from("pagos")
+          .select(
+            `id, fecha, moneda, tc, cliente_id,
+             retenciones:pago_retenciones (id, tipo, jurisdiccion, importe, numero_certificado)`
+          )
+          .eq("tipo", "cobro")
+          .gte("fecha", desde)
+          .lte("fecha", hasta)
+          .order("id")
+          .range(i, j)
+          .returns<Cobro[]>()
+      )
+      cobros = cobros.filter((c) => (c.retenciones ?? []).length > 0)
+    } catch (error) {
+      console.error("[subdiario retenciones]", error)
+      return NextResponse.json({ error: "No se pudo armar el subdiario" }, { status: 500 })
+    }
+  }
+
   const ids = comprobantes.map((c) => c.id)
   const tabla = tipo === "venta" ? "clientes" : "proveedores"
   const idsEntidad = [
-    ...new Set(comprobantes.map((c) => (tipo === "venta" ? c.cliente_id : c.proveedor_id)).filter(Boolean)),
+    ...new Set(
+      [
+        ...comprobantes.map((c) => (tipo === "venta" ? c.cliente_id : c.proveedor_id)),
+        ...cobros.map((c) => c.cliente_id),
+      ].filter(Boolean)
+    ),
   ] as string[]
 
   try {
@@ -175,13 +243,13 @@ export const GET = ruta("subdiario GET", async (req: Request) => {
     }
     const entidadDe = new Map(entidades.map((e) => [e.id as string, e]))
 
-    const filas: FilaSubdiario[] = comprobantes.map((c) => {
+    const facturas: FilaSubdiario[] = comprobantes.map((c) => {
       const signo = n(c.signo) || 1
       const tc = c.moneda === "USD" ? n(c.tc) : 1
       const ars = (v: unknown) => redondear(n(v) * tc * signo)
 
-      const neto = vacio()
-      const iva = vacio()
+      const fila = importesEnCero()
+      const { neto, iva } = fila
       let exentoPorAlicuotaCero = 0
 
       // Lo normal: el desglose por alícuota. Las facturas viejas sin desglose
@@ -199,33 +267,123 @@ export const GET = ruta("subdiario GET", async (req: Request) => {
         }
       }
 
+      fila.gravado = redondear(ALICUOTAS_SUBDIARIO.reduce((a, k) => a + neto[k], 0))
+      fila.noGravado = ars(c.no_gravado)
+      fila.exento = redondear(ars(c.exento) + exentoPorAlicuotaCero)
+      // El IVA de la cabecera y no la suma del desglose: es contra el que cuadra
+      // el asiento, y un centavo de redondeo entre los dos no puede separar el
+      // libro del mayor.
+      fila.ivaTotal = ars(c.iva)
+      fila.percepcionIva = ars(c.percepcion_iva)
+      fila.percepcionIibbBsas = ars(c.percepcion_iibb_bsas)
+      fila.percepcionIibbCaba = ars(c.percepcion_iibb_caba)
+      fila.ley25413 = ars(c.ley_25413)
+      fila.percepcionGanancias = ars(c.percepcion_ganancias)
+      fila.impuestosInternos = ars(c.impuestos_internos)
+      fila.total = ars(c.total)
+
+      /*
+       * La factura C de un monotributista no discrimina IVA: el libro la pone
+       * entera en MONOTRIBUTO, cualquiera sea el campo en que se cargó el
+       * importe. Lo mismo su nota de crédito, en negativo.
+       */
+      if (/^(FC|NC|ND)C$/.test(c.clase)) {
+        fila.monotributo = redondear(fila.gravado + fila.noGravado + fila.exento)
+        fila.gravado = 0
+        fila.noGravado = 0
+        fila.exento = 0
+        fila.neto = { "0.21": 0, "0.105": 0, "0.27": 0 }
+      }
+
+      /*
+       * Lo que el libro no tiene como columna va a OTROS, así el TOTAL sigue
+       * siendo la suma de lo que se ve. En compras: Mendoza, los internos (que
+       * en una compra son costo) y los otros impuestos. En ventas: el no
+       * gravado, las percepciones practicadas y los otros impuestos —y lo de
+       * compras, que la API no acepta en una venta pero una fila vieja podría
+       * tener—.
+       */
+      if (tipo === "compra") {
+        fila.otros = redondear(ars(c.otros_impuestos) + fila.impuestosInternos + ars(c.percepcion_iibb_mendoza))
+        fila.impuestosInternos = 0
+      } else {
+        fila.otros = redondear(
+          fila.noGravado +
+            fila.percepcionIva +
+            fila.percepcionIibbBsas +
+            fila.percepcionIibbCaba +
+            ars(c.otros_impuestos) +
+            fila.ley25413 +
+            fila.percepcionGanancias +
+            ars(c.percepcion_iibb_mendoza)
+        )
+        fila.noGravado = 0
+        fila.percepcionIva = 0
+        fila.percepcionIibbBsas = 0
+        fila.percepcionIibbCaba = 0
+        fila.ley25413 = 0
+        fila.percepcionGanancias = 0
+      }
+
       const idEntidad = tipo === "venta" ? c.cliente_id : c.proveedor_id
       const e = idEntidad ? entidadDe.get(idEntidad) : undefined
 
       return {
+        ...fila,
         id: c.id,
+        origen: "comprobante" as const,
         fecha: registroDe.get(c.id) ?? c.fecha,
         fechaComprobante: c.fecha,
         clase: c.clase,
         numero: formatearNumero(c.punto_venta, c.numero),
+        factura: facturaLibro(c.clase, tipo, c.punto_venta, c.numero),
         entidadId: idEntidad,
         razonSocial: (e?.razon_social as string) ?? "—",
         cuit: (e?.cuit as string | null) ?? null,
         condicionIva: (e?.forma_juridica as FilaSubdiario["condicionIva"]) ?? null,
         moneda: c.moneda,
         tc: c.moneda === "USD" ? n(c.tc) : null,
-        neto,
-        iva,
-        noGravado: ars(c.no_gravado),
-        exento: redondear(ars(c.exento) + exentoPorAlicuotaCero),
-        percepcionIva: ars(c.percepcion_iva),
-        percepcionIibb: redondear(ars(c.percepcion_iibb_bsas) + ars(c.percepcion_iibb_caba)),
-        otrosImpuestos: ars(c.otros_impuestos),
-        total: ars(c.total),
       }
     })
 
-    const totales = totalizar(filas)
+    // Una por retención, en negativo: es lo que el cliente descontó del cobro.
+    const retenciones: FilaSubdiario[] = cobros.flatMap((p) => {
+      const tc = p.moneda === "USD" ? n(p.tc) : 1
+      const e = p.cliente_id ? entidadDe.get(p.cliente_id) : undefined
+      return (p.retenciones ?? []).map((r) => {
+        const fila = importesEnCero()
+        const importe = -redondear(n(r.importe) * tc)
+        fila.ret[columnaRetencion(r.tipo, r.jurisdiccion)] = importe
+        fila.total = importe
+        const certificado = r.numero_certificado?.trim() || "s/n"
+        return {
+          ...fila,
+          id: `ret-${r.id}`,
+          origen: "retencion" as const,
+          fecha: p.fecha,
+          fechaComprobante: p.fecha,
+          clase: "RE",
+          numero: certificado,
+          factura: `RE ${certificado}`,
+          entidadId: p.cliente_id,
+          razonSocial: (e?.razon_social as string) ?? "—",
+          cuit: (e?.cuit as string | null) ?? null,
+          condicionIva: (e?.forma_juridica as FilaSubdiario["condicionIva"]) ?? null,
+          moneda: p.moneda,
+          tc: p.moneda === "USD" ? n(p.tc) : null,
+        }
+      })
+    })
+
+    // Todo por fecha, y dentro del día por cómo se lee en el libro.
+    const filas = [...facturas, ...retenciones].sort(
+      (a, b) =>
+        a.fecha.localeCompare(b.fecha) ||
+        a.factura.localeCompare(b.factura, "es") ||
+        a.id.localeCompare(b.id)
+    )
+
+    const totales = totalizar(soloComprobantes(filas))
 
     /* ── El asiento resumen, desde el mayor ─────────────────────────────── */
 

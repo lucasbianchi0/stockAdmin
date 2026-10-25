@@ -89,6 +89,9 @@ export const CLASES_COMPRA: Clase[] = [
   clase("FCB", "Factura B"),
   clase("FCC", "Factura C"),
   clase("FCEA", "Factura de crédito electrónica A"),
+  // La del proveedor del exterior (Microsoft, DGNET): el libro del estudio la
+  // lista como «FC E», con el importe en exento.
+  clase("FCE", "Factura E (del exterior)"),
   clase("NCA", "Nota de crédito A"),
   clase("NCB", "Nota de crédito B"),
   clase("NCC", "Nota de crédito C"),
@@ -97,6 +100,15 @@ export const CLASES_COMPRA: Clase[] = [
   clase("NDB", "Nota de débito B"),
   clase("NDC", "Nota de débito C"),
   clase("NDEA", "Nota de débito electrónica A"),
+  /*
+   * El extracto bancario: lo que el banco cobra en el mes —comisiones con su IVA,
+   * percepciones, Ley 25413— se carga como un comprobante de compra del banco,
+   * igual que lo hace el estudio («EX A-0001-30092026 BANCO GALICIA» en su
+   * libro). El número es la fecha del extracto, ddmmaaaa, y el punto de venta 1.
+   * Se paga como cualquier compra: una orden de pago al banco contra la cuenta
+   * corriente, que es como lo registra el estudio en el diario.
+   */
+  clase("EXA", "Extracto bancario"),
 ]
 
 export function clasesDe(tipo: TipoComprobante): Clase[] {
@@ -290,6 +302,20 @@ export type ImportesComprobante = {
   percepcionIibbBsas: number
   percepcionIibbCaba: number
   otrosImpuestos: number
+  /*
+   * Los que agregó el libro del estudio (20261025_01). Opcionales porque la
+   * importación masiva y la lectura de PDFs no los conocen: sin ellos son cero
+   * y nada de lo que ya funcionaba cambia.
+   *
+   * Ley 25413, Ganancias y Mendoza son créditos de una compra —el extracto del
+   * banco, el resumen de la tarjeta— y van cada uno a su cuenta (59, 55, 52).
+   * Los impuestos internos son la columna IMP INTERNOS del libro de ventas; en
+   * una compra son costo, como los otros impuestos.
+   */
+  ley25413?: number
+  percepcionGanancias?: number
+  percepcionIibbMendoza?: number
+  impuestosInternos?: number
 }
 
 /** Las dos jurisdicciones juntas, que es lo que se muestra donde no hay lugar
@@ -315,7 +341,11 @@ export function totalDe(i: ImportesComprobante): number {
     i.percepcionIva +
     i.percepcionIibbBsas +
     i.percepcionIibbCaba +
-    i.otrosImpuestos
+    i.otrosImpuestos +
+    (i.ley25413 ?? 0) +
+    (i.percepcionGanancias ?? 0) +
+    (i.percepcionIibbMendoza ?? 0) +
+    (i.impuestosInternos ?? 0)
   return Math.round(suma * 100) / 100
 }
 
@@ -379,6 +409,10 @@ export type Comprobante = {
   percepcionIibbBsas: number
   percepcionIibbCaba: number
   otrosImpuestos: number
+  ley25413: number
+  percepcionGanancias: number
+  percepcionIibbMendoza: number
+  impuestosInternos: number
   total: number
   totalArs: number
   /** `null` cuando no hay TC cargado: no se sabe, y un guion es la respuesta
