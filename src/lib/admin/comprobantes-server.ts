@@ -130,6 +130,13 @@ export function validarComprobante(
     percepcionIibbBsas: importe(raw.percepcionIibbBsas),
     percepcionIibbCaba: importe(raw.percepcionIibbCaba),
     otrosImpuestos: importe(raw.otrosImpuestos),
+    // Ley 25413, Ganancias y Mendoza son créditos de una compra. En una venta
+    // no tienen sentido —Accedra no los practica— y se ignoran en vez de dejar
+    // que inflen el total de la factura.
+    ley25413: tipo === "compra" ? importe(raw.ley25413) : 0,
+    percepcionGanancias: tipo === "compra" ? importe(raw.percepcionGanancias) : 0,
+    percepcionIibbMendoza: tipo === "compra" ? importe(raw.percepcionIibbMendoza) : 0,
+    impuestosInternos: importe(raw.impuestosInternos),
   }
 
   /*
@@ -182,6 +189,21 @@ export function validarComprobante(
     total,
     condicion_pago: textoONull(raw.condicionPago, 100),
     observaciones: textoONull(raw.observaciones, 1000),
+  }
+
+  /*
+   * Las columnas de 20261025_01 se escriben solo si el pedido las trae. La
+   * importación y la lectura de PDFs no las mandan, y así no las pisan con cero
+   * ni dependen de que la migración esté aplicada para seguir andando.
+   */
+  const NUEVAS = [
+    ["ley25413", "ley_25413"],
+    ["percepcionGanancias", "percepcion_ganancias"],
+    ["percepcionIibbMendoza", "percepcion_iibb_mendoza"],
+    ["impuestosInternos", "impuestos_internos"],
+  ] as const
+  for (const [campo, columna] of NUEVAS) {
+    if (raw[campo] !== undefined) fila[columna] = importes[campo]
   }
 
   // El estado solo se acepta si el formulario lo mandó explícitamente. Sin él la
@@ -349,6 +371,10 @@ export function aComprobante(fila: FilaCompleta): Comprobante {
     percepcionIibbBsas: num(fila.percepcion_iibb_bsas),
     percepcionIibbCaba: num(fila.percepcion_iibb_caba),
     otrosImpuestos: num(fila.otros_impuestos),
+    ley25413: num(fila.ley_25413),
+    percepcionGanancias: num(fila.percepcion_ganancias),
+    percepcionIibbMendoza: num(fila.percepcion_iibb_mendoza),
+    impuestosInternos: num(fila.impuestos_internos),
     total: num(fila.total),
     totalArs: num(fila.total_ars),
     totalUsd: numONull(fila.total_usd),

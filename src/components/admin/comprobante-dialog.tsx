@@ -88,6 +88,10 @@ type Borrador = {
   percepcionIibbBsas: string
   percepcionIibbCaba: string
   otrosImpuestos: string
+  ley25413: string
+  percepcionGanancias: string
+  percepcionIibbMendoza: string
+  impuestosInternos: string
   condicionPago: string
   observaciones: string
 }
@@ -120,6 +124,10 @@ const VACIO = (): Borrador => ({
   percepcionIibbBsas: "",
   percepcionIibbCaba: "",
   otrosImpuestos: "",
+  ley25413: "",
+  percepcionGanancias: "",
+  percepcionIibbMendoza: "",
+  impuestosInternos: "",
   condicionPago: "",
   observaciones: "",
 })
@@ -188,6 +196,10 @@ function aBorrador(c: Comprobante): Borrador {
     percepcionIibbBsas: String(c.percepcionIibbBsas || ""),
     percepcionIibbCaba: String(c.percepcionIibbCaba || ""),
     otrosImpuestos: String(c.otrosImpuestos || ""),
+    ley25413: String(c.ley25413 || ""),
+    percepcionGanancias: String(c.percepcionGanancias || ""),
+    percepcionIibbMendoza: String(c.percepcionIibbMendoza || ""),
+    impuestosInternos: String(c.impuestosInternos || ""),
     condicionPago: c.condicionPago ?? "",
     observaciones: c.observaciones ?? "",
   }
@@ -319,6 +331,12 @@ export function ComprobanteDialog({
       percepcionIibbBsas: parsearImporte(f.percepcionIibbBsas) ?? 0,
       percepcionIibbCaba: parsearImporte(f.percepcionIibbCaba) ?? 0,
       otrosImpuestos: parsearImporte(f.otrosImpuestos) ?? 0,
+      // Los créditos del extracto y de la tarjeta son solo de compras: en una
+      // venta los campos no se muestran y no suman.
+      ley25413: esCompra ? (parsearImporte(f.ley25413) ?? 0) : 0,
+      percepcionGanancias: esCompra ? (parsearImporte(f.percepcionGanancias) ?? 0) : 0,
+      percepcionIibbMendoza: esCompra ? (parsearImporte(f.percepcionIibbMendoza) ?? 0) : 0,
+      impuestosInternos: parsearImporte(f.impuestosInternos) ?? 0,
     }),
     [
       neto,
@@ -330,6 +348,11 @@ export function ComprobanteDialog({
       f.percepcionIibbBsas,
       f.percepcionIibbCaba,
       f.otrosImpuestos,
+      f.ley25413,
+      f.percepcionGanancias,
+      f.percepcionIibbMendoza,
+      f.impuestosInternos,
+      esCompra,
     ]
   )
 
@@ -939,6 +962,58 @@ export function ComprobanteDialog({
                 id="percepcionIibbCaba"
                 valor={f.percepcionIibbCaba}
                 onChange={(v) => set("percepcionIibbCaba", v)}
+                moneda={f.moneda}
+                tc={tc}
+                disabled={guardando}
+              />
+            </Campo>
+          </div>
+
+          {/* Las columnas que faltaban del libro del estudio. Ley 25413 y
+              Ganancias son las del extracto del banco y el resumen de la
+              tarjeta: créditos que van a su propia cuenta (59 y 55), no gasto.
+              Los impuestos internos son la columna IMP INTERNOS del libro de
+              ventas; en una compra son costo, como los otros impuestos. */}
+          <div className="grid gap-4 sm:grid-cols-4">
+            {esCompra && (
+              <>
+                <Campo id="ley25413" rotulo="Ley 25413" opcional>
+                  <CampoMoneda
+                    id="ley25413"
+                    valor={f.ley25413}
+                    onChange={(v) => set("ley25413", v)}
+                    moneda={f.moneda}
+                    tc={tc}
+                    disabled={guardando}
+                  />
+                </Campo>
+                <Campo id="percepcionGanancias" rotulo="Percep. Ganancias" opcional>
+                  <CampoMoneda
+                    id="percepcionGanancias"
+                    valor={f.percepcionGanancias}
+                    onChange={(v) => set("percepcionGanancias", v)}
+                    moneda={f.moneda}
+                    tc={tc}
+                    disabled={guardando}
+                  />
+                </Campo>
+                <Campo id="percepcionIibbMendoza" rotulo="Percep. IIBB Mendoza" opcional>
+                  <CampoMoneda
+                    id="percepcionIibbMendoza"
+                    valor={f.percepcionIibbMendoza}
+                    onChange={(v) => set("percepcionIibbMendoza", v)}
+                    moneda={f.moneda}
+                    tc={tc}
+                    disabled={guardando}
+                  />
+                </Campo>
+              </>
+            )}
+            <Campo id="impuestosInternos" rotulo="Impuestos internos" opcional>
+              <CampoMoneda
+                id="impuestosInternos"
+                valor={f.impuestosInternos}
+                onChange={(v) => set("impuestosInternos", v)}
                 moneda={f.moneda}
                 tc={tc}
                 disabled={guardando}

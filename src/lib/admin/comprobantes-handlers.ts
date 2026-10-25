@@ -721,6 +721,10 @@ const DEUDA: ReadonlyArray<readonly [string, string]> = [
   ["percepcion_iibb_bsas", "la percepción de IIBB Buenos Aires"],
   ["percepcion_iibb_caba", "la percepción de IIBB Capital"],
   ["otros_impuestos", "los otros impuestos"],
+  ["ley_25413", "la Ley 25413"],
+  ["percepcion_ganancias", "la percepción de Ganancias"],
+  ["percepcion_iibb_mendoza", "la percepción de IIBB Mendoza"],
+  ["impuestos_internos", "los impuestos internos"],
   ["total", "el total"],
   ["estado", "el estado"],
 ]
