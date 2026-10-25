@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { Download, FileQuestion, FileText, FileWarning, PieChart, Users } from "lucide-react"
@@ -55,7 +55,8 @@ import { cn } from "@/lib/utils"
  * y la columna **Facturas** muestra de qué facturas salen: cada una abre la
  * factura en Administración.
  * El resumen de arriba queda fijo al bajar: la tabla es larga y lo que se quiere
- * tener a la vista mientras se la recorre son los totales.
+ * tener a la vista mientras se la recorre son los totales y los títulos de las
+ * columnas.
  */
 export function ReportesComercialClient({ veFacturas }: { veFacturas: boolean }) {
   const router = useRouter()
@@ -127,6 +128,8 @@ export function ReportesComercialClient({ veFacturas }: { veFacturas: boolean })
     return acc
   }, [filas])
 
+  const fijo = useEncabezadoFijo(filas.length > 0)
+
   if (consulta.isPending) return <LoadingState label="Armando el reporte…" />
   if (consulta.isError) {
     return (
@@ -136,6 +139,28 @@ export function ReportesComercialClient({ veFacturas }: { veFacturas: boolean })
       />
     )
   }
+
+  const encabezados = (
+    <TableRow>
+      <TableHead>N.º</TableHead>
+      <TableHead>Cliente</TableHead>
+      <TableHead>Referencia</TableHead>
+      <TableHead>Fecha</TableHead>
+      <TableHead>Vendedor</TableHead>
+      <TableHead>Estado</TableHead>
+      <TableHead>Facturas</TableHead>
+      <TableHead className="text-right">Venta</TableHead>
+      <TableHead className="text-right">Costo</TableHead>
+      <TableHead className="text-right">Renta</TableHead>
+      <TableHead className="text-right" title="Renta sobre venta">% renta</TableHead>
+      <TableHead
+        className="text-right"
+        title={`${PUNTOS_SOBRE_RENTA * 100}% de la renta, sólo en lo facturado`}
+      >
+        Puntos
+      </TableHead>
+    </TableRow>
+  )
 
   return (
     <div className="panel overflow-clip">
@@ -231,6 +256,22 @@ export function ReportesComercialClient({ veFacturas }: { veFacturas: boolean })
             {filas.length} de {todos.length} presupuesto{todos.length === 1 ? "" : "s"}
           </span>
         </div>
+
+        {filas.length > 0 && fijo.anchos.length > 0 && (
+          <div ref={fijo.franja} aria-hidden className="overflow-hidden border-t border-line">
+            <table
+              className="border-separate border-spacing-0 text-[13px]"
+              style={{ tableLayout: "fixed", width: fijo.anchos.reduce((a, b) => a + b, 0) }}
+            >
+              <colgroup>
+                {fijo.anchos.map((w, i) => (
+                  <col key={i} style={{ width: w }} />
+                ))}
+              </colgroup>
+              <TableHeader className="[&_th]:border-b-0">{encabezados}</TableHeader>
+            </table>
+          </div>
+        )}
       </FranjaFija>
 
       {filas.length === 0 ? (
@@ -245,27 +286,9 @@ export function ReportesComercialClient({ veFacturas }: { veFacturas: boolean })
         />
       ) : (
         <TooltipProvider delayDuration={150}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>N.º</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Referencia</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Vendedor</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Facturas</TableHead>
-                <TableHead className="text-right">Venta</TableHead>
-                <TableHead className="text-right">Costo</TableHead>
-                <TableHead className="text-right">Renta</TableHead>
-                <TableHead className="text-right" title="Renta sobre venta">% renta</TableHead>
-                <TableHead
-                  className="text-right"
-                  title={`${PUNTOS_SOBRE_RENTA * 100}% de la renta, sólo en lo facturado`}
-                >
-                  Puntos
-                </TableHead>
-              </TableRow>
+          <Table ref={fijo.tabla}>
+            <TableHeader className={OCULTO}>
+              {encabezados}
             </TableHeader>
             <TableBody>
               {filas.map((p) => (
@@ -560,3 +583,57 @@ function Total({
     </div>
   )
 }
+
+/**
+ * Los títulos de las columnas, fijos junto con los totales.
+ *
+ * Un `<thead>` sticky no sirve acá: la tabla va dentro de una caja con scroll
+ * horizontal (en pantallas angostas no entra), y esa caja pasa a ser el
+ * contenedor del sticky, así que el encabezado nunca se pega al bajar la página.
+ *
+ * Entonces la fila de títulos se dibuja otra vez adentro de la `FranjaFija`,
+ * con el ancho de cada columna copiado de la tabla real y el scroll horizontal
+ * sincronizado. El `<thead>` de la tabla sigue estando —es el que decide los
+ * anchos y el que leen los lectores de pantalla— pero sin alto y sin texto
+ * visible (`OCULTO`): la copia es la que se ve.
+ */
+function useEncabezadoFijo(hayTabla: boolean) {
+  const tabla = useRef<HTMLTableElement>(null)
+  const franja = useRef<HTMLDivElement>(null)
+  const [anchos, setAnchos] = useState<number[]>([])
+
+  useEffect(() => {
+    const t = tabla.current
+    const caja = t?.parentElement
+    if (!t || !caja) return
+    const medir = () => {
+      const nuevos = Array.from(t.querySelectorAll("thead th"), (th) => th.getBoundingClientRect().width)
+      setAnchos((viejos) => (viejos.length === nuevos.length && viejos.every((w, i) => w === nuevos[i]) ? viejos : nuevos))
+    }
+    const seguir = () => {
+      if (franja.current) franja.current.scrollLeft = caja.scrollLeft
+    }
+    medir()
+    const observador = new ResizeObserver(() => {
+      medir()
+      seguir()
+    })
+    observador.observe(t)
+    caja.addEventListener("scroll", seguir, { passive: true })
+    return () => {
+      observador.disconnect()
+      caja.removeEventListener("scroll", seguir)
+    }
+  }, [hayTabla])
+
+  // Recién montada, la copia arranca en 0: si la tabla ya estaba corrida, se alinea.
+  useEffect(() => {
+    const caja = tabla.current?.parentElement
+    if (franja.current && caja) franja.current.scrollLeft = caja.scrollLeft
+  }, [anchos])
+
+  return { tabla, franja, anchos }
+}
+
+/** El `<thead>` real: ocupa su lugar en el cálculo de anchos pero no se ve. */
+const OCULTO = "[&_th]:h-0 [&_th]:border-b-0 [&_th]:leading-[0] [&_th]:text-transparent [&_th]:select-none"
