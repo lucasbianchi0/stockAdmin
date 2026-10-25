@@ -284,6 +284,12 @@ const GRUPOS: Grupo[] = [
             href: "/admin/contabilidad/sumas-y-saldos",
             available: true,
           },
+          // Pedido del estudio (oct/2026): no está en el árbol del 14/10.
+          {
+            name: "Cierre de períodos",
+            href: "/admin/contabilidad/cierre",
+            available: true,
+          },
         ],
       },
     ],

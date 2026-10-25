@@ -55,10 +55,13 @@ export async function exigirAlgunModulo(
  * Sólo administradores, sin importar los módulos.
  *
  * Para lo que se decidió mostrar únicamente a quien administra el sistema —el
- * stock, por pedido de Lucas el 15/10/2026—. Devuelve también el id del usuario,
- * que es lo que piden las altas para el `created_by`.
+ * stock, por pedido de Lucas el 15/10/2026; reabrir un período contable
+ * cerrado—. Devuelve también el id del usuario, que es lo que piden las altas
+ * para el `created_by`. El mensaje cambia según qué se le está negando.
  */
-export async function exigirAdmin(): Promise<
+export async function exigirAdmin(
+  mensaje = "Sólo los administradores ven el stock"
+): Promise<
   { error: NextResponse; usuarioId: null } | { error: null; usuarioId: string }
 > {
   const supabase = await createSupabaseServer()
@@ -71,7 +74,7 @@ export async function exigirAdmin(): Promise<
   }
   if (!accesoDeUsuario(user).admin) {
     return {
-      error: NextResponse.json({ error: "Sólo los administradores ven el stock" }, { status: 403 }),
+      error: NextResponse.json({ error: mensaje }, { status: 403 }),
       usuarioId: null,
     }
   }

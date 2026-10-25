@@ -21,6 +21,7 @@ import {
 } from "@/lib/admin/comprobantes-server"
 import { cotizacionHasta } from "@/lib/admin/cotizaciones-server"
 import { impactoDeComprobantes } from "@/lib/admin/impacto-server"
+import { respuestaPeriodoCerrado } from "@/lib/admin/cierre-server"
 
 /**
  * Los handlers de facturas de venta y de compra, parametrizados por tipo.
@@ -163,23 +164,72 @@ export async function crearComprobante(tipo: TipoComprobante, req: Request) {
     data: { user },
   } = await supabaseUsuario.auth.getUser()
 
+  /*
+   * La factura vieja que llega tarde: fecha del 28/09, registrada en octubre,
+   * con septiembre ya cerrado. El período de una factura es el de su fecha de
+   * registro, pero esa fecha vive en otra tabla que necesita la factura ya
+   * creada, y el cierre rechaza el alta confirmada porque todavía no la ve.
+   * Por eso, cuando viene una fecha de registro distinta, la factura entra como
+   * borrador —que no es un hecho contable y el cierre no lo frena—, se le
+   * guarda la fecha de registro y recién ahí se confirma.
+   */
+  const crudoRegistro = body.raw.fechaRegistro
+  const fechaRegistro =
+    typeof crudoRegistro === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(crudoRegistro) &&
+    crudoRegistro !== validado.fila.fecha
+      ? crudoRegistro
+      : null
+  const confirmarDespues =
+    fechaRegistro !== null && (validado.fila.estado ?? "confirmado") === "confirmado"
+
   const { data, error } = await supabase
     .from("comprobantes")
-    .insert({ ...(await conTcDelDia(validado.fila)), created_by: user?.id ?? null })
+    .insert({
+      ...(await conTcDelDia(validado.fila)),
+      ...(confirmarDespues && { estado: "borrador" }),
+      created_by: user?.id ?? null,
+    })
     .select(SELECT_COMPROBANTE)
     .single()
 
   if (error) return errorDeComprobante(error, "crear")
+  const nuevoId = (data as { id: string }).id
 
   // El desglose por alícuota va después, como los hijos de un recibo. Su trigger
   // rehace el asiento con los renglones ya adentro.
-  const errIvas = await guardarIvas((data as { id: string }).id, validado.ivas)
+  const errIvas = await guardarIvas(nuevoId, validado.ivas)
   if (errIvas) return errIvas
+
+  if (fechaRegistro) {
+    const { error: errRegistro } = await supabase.from("comprobante_registro").upsert({
+      comprobante_id: nuevoId,
+      fecha_registro: fechaRegistro,
+      updated_at: new Date().toISOString(),
+      updated_by: user?.id ?? null,
+    })
+    const { error: errConfirmar } =
+      !errRegistro && confirmarDespues
+        ? await supabase.from("comprobantes").update({ estado: "confirmado" }).eq("id", nuevoId)
+        : { error: null }
+
+    const errPaso = errRegistro ?? errConfirmar
+    if (errPaso) {
+      // Un borrador que nadie pidió es basura en la lista: se borra. Si se
+      // pidió confirmado y no se pudo, que la persona lo vuelva a intentar
+      // sabiendo por qué.
+      if (confirmarDespues) {
+        await supabase.from("comprobantes").delete().eq("id", nuevoId)
+        return errorDeComprobante(errPaso, "crear")
+      }
+      console.error("[comprobantes registro]", errPaso)
+    }
+  }
 
   const { data: completo } = await supabase
     .from("comprobantes")
     .select(SELECT_COMPROBANTE)
-    .eq("id", (data as { id: string }).id)
+    .eq("id", nuevoId)
     .single()
 
   const comprobante = aComprobante(completo ?? data)
@@ -348,6 +398,8 @@ export async function cambiarEstadoComprobante(
     if (error.code === "23514" || error.message?.includes("imputado")) {
       return NextResponse.json({ error: error.message }, { status: 409 })
     }
+    const cerrado = respuestaPeriodoCerrado(error)
+    if (cerrado) return cerrado
     console.error(`[${tipo} estado]`, error)
     return NextResponse.json({ error: "No se pudo cambiar el estado" }, { status: 500 })
   }
@@ -604,6 +656,8 @@ export async function borrarComprobante(tipo: TipoComprobante, id: string) {
         { status: 409 }
       )
     }
+    const cerrado = respuestaPeriodoCerrado(error)
+    if (cerrado) return cerrado
     console.error(`[${tipo} DELETE]`, error)
     return NextResponse.json(
       { error: `No se pudo eliminar ${NOMBRE[tipo].singular}` },
@@ -660,6 +714,8 @@ async function guardarIvas(
     .eq("comprobante_id", comprobanteId)
 
   if (errBorrado) {
+    const cerrado = respuestaPeriodoCerrado(errBorrado)
+    if (cerrado) return cerrado
     console.error("[comprobante_ivas borrado]", errBorrado)
     return NextResponse.json(
       { error: "No se pudo guardar el desglose de IVA" },
@@ -680,6 +736,8 @@ async function guardarIvas(
   )
 
   if (error) {
+    const cerrado = respuestaPeriodoCerrado(error)
+    if (cerrado) return cerrado
     console.error("[comprobante_ivas]", error)
     return NextResponse.json(
       { error: "No se pudo guardar el desglose de IVA" },

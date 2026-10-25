@@ -4,6 +4,7 @@ import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { createSupabaseServer } from "@/lib/supabase-server"
 import { ruta } from "@/lib/admin/ruta"
+import { respuestaPeriodoCerrado } from "@/lib/admin/cierre-server"
 import { POR_PAGINA_MAX, escaparParaOr } from "@/lib/admin/entidades-server"
 import { esMoneda } from "@/lib/admin/moneda"
 import { CATEGORIAS_GASTO, type CategoriaGasto } from "@/lib/admin/movimientos"
@@ -199,6 +200,8 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
       .single()
 
     if (errSalida || !salida) {
+      const cerrado = respuestaPeriodoCerrado(errSalida)
+      if (cerrado) return cerrado
       console.error("[transferencia salida]", errSalida)
       return NextResponse.json({ error: "No se pudo registrar la salida" }, { status: 500 })
     }
@@ -309,6 +312,8 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
     .single()
 
   if (error) {
+    const cerrado = respuestaPeriodoCerrado(error)
+    if (cerrado) return cerrado
     console.error("[movimientos POST]", error)
     return NextResponse.json({ error: "No se pudo registrar el movimiento" }, { status: 500 })
   }
