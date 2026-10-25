@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FranjaFija } from "@/components/ui/franja-fija"
 import { Input } from "@/components/ui/input"
+import { Paginacion, usePaginado } from "@/components/ui/paginacion"
 import { EmptyState, LoadingState } from "@/components/ui/states"
 import {
   Table,
@@ -102,8 +103,9 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
     queryFn: ({ signal }) =>
       pedirJson<{ filas?: Pendiente[]; totales?: Totales }>(url, { signal }),
   })
-  const filas = query.data?.filas ?? []
+  const filas = query.data?.filas ?? SIN_FILAS
   const totales = query.data?.totales ?? null
+  const paginado = usePaginado(filas, 50, url)
   const cargando = query.isPending
 
   const exportar = () =>
@@ -232,7 +234,7 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filas.map((f) => (
+            {paginado.visibles.map((f) => (
               <TableRow key={f.id} className={cn(f.vencida && "bg-danger-soft/40")}>
                 <TableCell className="font-medium text-ink">{f.entidad}</TableCell>
                 <TableCell>
@@ -285,9 +287,21 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
           </TableBody>
         </Table>
       )}
+      {paginado.hayMasDeUna && (
+        <Paginacion
+          pagina={paginado.pagina}
+          totalPaginas={paginado.totalPaginas}
+          total={paginado.total}
+          porPagina={paginado.porPagina}
+          onIr={paginado.irA}
+        />
+      )}
     </div>
   )
 }
+
+/** Fija, para que un `[]` nuevo en cada render no reinicie la página. */
+const SIN_FILAS: never[] = []
 
 /**
  * La fecha estimada de pago, editable en la fila.

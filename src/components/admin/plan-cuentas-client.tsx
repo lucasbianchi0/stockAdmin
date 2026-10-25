@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Paginacion, usePaginado } from "@/components/ui/paginacion"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
 import {
   Table,
@@ -87,6 +88,7 @@ export function PlanCuentasClient() {
     )
     return filtrarCuentas(porEstado, q)
   }, [cuentas, q, filtro])
+  const paginado = usePaginado(visibles, 50, `${q}|${filtro}`)
 
   /* ── Subir el Excel ───────────────────────────────────────────────────── */
 
@@ -259,6 +261,7 @@ export function PlanCuentasClient() {
           </p>
         </div>
 
+        <div ref={paginado.ancla} className="scroll-mt-28" />
         {cargando ? (
           <LoadingState label="Cargando el plan de cuentas…" />
         ) : error ? (
@@ -281,7 +284,7 @@ export function PlanCuentasClient() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibles.map((c) => (
+              {paginado.visibles.map((c) => (
                 <TableRow key={c.id} className={cn(!c.activo && "opacity-60")}>
                   <TableCell className="num font-mono text-[12px] font-semibold text-brand-600">
                     {c.codigo}
@@ -353,6 +356,15 @@ export function PlanCuentasClient() {
               ))}
             </TableBody>
           </Table>
+        )}
+        {!cargando && !error && paginado.hayMasDeUna && (
+          <Paginacion
+            pagina={paginado.pagina}
+            totalPaginas={paginado.totalPaginas}
+            total={paginado.total}
+            porPagina={paginado.porPagina}
+            onIr={paginado.irA}
+          />
         )}
       </div>
     </div>

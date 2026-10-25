@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Menu, MenuItem, MenuRotulo } from "@/components/ui/menu"
+import { Paginacion, usePaginado } from "@/components/ui/paginacion"
 import { EmptyState, LoadingState } from "@/components/ui/states"
 import {
   Table,
@@ -55,6 +56,9 @@ import { useRangoDeEjercicio } from "@/lib/admin/use-ejercicios"
  * dato, pero las columnas suman una sola moneda: mezclarlas es el error que el
  * punto 6 del documento del contador pedía arreglar.
  */
+
+/** Una lista vacía fija: un `[]` nuevo en cada render reiniciaría la página. */
+const SIN_FILAS: never[] = []
 
 export type VistaContable = "diario" | "mayor" | "saldos" | "pendientes"
 
@@ -272,6 +276,7 @@ function DiarioPorAsiento({ desde, hasta, origen }: { desde: string; hasta: stri
   })
   const asientos = query.data?.asientos ?? []
   const truncado = Boolean(query.data?.truncado)
+  const paginado = usePaginado(asientos, 25, url)
 
   // El Excel lleva el período entero, no los asientos que entran en pantalla:
   // es lo que se copia al libro.
@@ -335,10 +340,20 @@ function DiarioPorAsiento({ desde, hasta, origen }: { desde: string; hasta: stri
           description="Los asientos se generan solos al cargar facturas, recibos y movimientos."
         />
       ) : (
-        <div className="space-y-3">
-          {asientos.map((a) => (
+        <div ref={paginado.ancla} className="scroll-mt-28 space-y-3">
+          {paginado.visibles.map((a) => (
             <AsientoCard key={a.id} asiento={a} />
           ))}
+          {paginado.hayMasDeUna && (
+            <Paginacion
+              className="rounded-xl border border-line"
+              pagina={paginado.pagina}
+              totalPaginas={paginado.totalPaginas}
+              total={paginado.total}
+              porPagina={paginado.porPagina}
+              onIr={paginado.irA}
+            />
+          )}
         </div>
       )}
     </div>
@@ -649,6 +664,9 @@ function MayorDeCuenta() {
   const deOtraCuenta = query.isPlaceholderData && datos?.cuenta?.id !== cuenta
   const cargando = query.isPending || deOtraCuenta
   const mayor = !deOtraCuenta && datos?.cuenta ? (datos as Mayor) : null
+  // El saldo corrido viene calculado fila por fila desde el servidor: paginar
+  // en pantalla no lo altera, y el Excel sigue saliendo entero.
+  const paginado = usePaginado(mayor?.filas ?? SIN_FILAS, 100, url)
 
   const exportar = () => {
     if (!mayor) return
@@ -723,7 +741,7 @@ function MayorDeCuenta() {
           {!mayor.filas.length ? (
             <EmptyState icon={Layers} title="La cuenta no tuvo movimientos en el período" />
           ) : (
-            <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-e1">
+            <div ref={paginado.ancla} className="scroll-mt-28 overflow-hidden rounded-xl border border-line bg-surface shadow-e1">
               <Table>
                 <TableHeader>
                   {/* Las mismas columnas y en el mismo orden que el extracto
@@ -745,8 +763,8 @@ function MayorDeCuenta() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mayor.filas.map((f, i) => (
-                    <TableRow key={`${f.asientoId}-${i}`}>
+                  {paginado.visibles.map((f, i) => (
+                    <TableRow key={`${f.asientoId}-${paginado.offset + i}`}>
                       <TableCell className="num whitespace-nowrap font-mono text-[11.5px] text-ink-muted">
                         {formatearFecha(f.fecha)}
                       </TableCell>
@@ -788,6 +806,15 @@ function MayorDeCuenta() {
                   ))}
                 </TableBody>
               </Table>
+              {paginado.hayMasDeUna && (
+                <Paginacion
+                  pagina={paginado.pagina}
+                  totalPaginas={paginado.totalPaginas}
+                  total={paginado.total}
+                  porPagina={paginado.porPagina}
+                  onIr={paginado.irA}
+                />
+              )}
             </div>
           )}
         </>

@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useMemo, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -59,7 +60,9 @@ export function Paginacion({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-between gap-3 border-t border-line bg-surface-subtle px-5 py-3 sm:flex-row",
+        // El margen derecho es para el botón del asistente, que flota en esa
+        // esquina y tapaba «siguiente» y «última» justo al llegar al pie.
+        "flex flex-col items-center justify-between gap-3 border-t border-line bg-surface-subtle px-5 py-3 sm:flex-row sm:pr-24",
         className
       )}
     >
@@ -133,4 +136,56 @@ export function Paginacion({
       )}
     </div>
   )
+}
+
+/**
+ * Paginado en el cliente, para las pantallas que ya traen todo de una vez
+ * —el diario, un mayor, un extracto— porque necesitan la lista entera para el
+ * saldo corrido, los totales o el Excel. Lo que se corta es solo lo que se
+ * dibuja: con 500 asientos en pantalla el navegador se arrastra.
+ *
+ * Vuelve a la página 1 cuando cambia `reinicio` —la clave de lo que se está
+ * mirando: el filtro, el período, la cuenta—, y no cuando la lista se refresca
+ * sola: conciliar o desactivar una fila en la página 3 no tiene que mandar al
+ * usuario a la 1. Al cambiar de página sube hasta `ancla`, para no dejarlo
+ * mirando el pie de una página que ya no está.
+ */
+export function usePaginado<T>(items: T[], porPagina: number, reinicio: string) {
+  const [pagina, setPagina] = useState(1)
+  const ancla = useRef<HTMLDivElement>(null)
+  useEffect(() => setPagina(1), [reinicio])
+
+  const total = items.length
+  const totalPaginas = Math.max(1, Math.ceil(total / porPagina))
+  const actual = Math.min(pagina, totalPaginas)
+  const visibles = useMemo(
+    () => items.slice((actual - 1) * porPagina, actual * porPagina),
+    [items, actual, porPagina]
+  )
+  // Se sube después de dibujar la página nueva y no en el click: antes, el
+  // navegador mantiene a la vista el botón que tiene el foco y la lista nueva
+  // lo empuja, así que el salto quedaba a mitad de camino o para abajo.
+  const subir = useRef(false)
+  useEffect(() => {
+    if (!subir.current) return
+    subir.current = false
+    ancla.current?.scrollIntoView({ block: "start" })
+  }, [actual])
+  const irA = (p: number) => {
+    subir.current = true
+    setPagina(Math.min(Math.max(1, p), totalPaginas))
+  }
+  return {
+    pagina: actual,
+    totalPaginas,
+    total,
+    porPagina,
+    visibles,
+    irA,
+    ancla,
+    /** Cuántos quedaron antes de esta página: para numerar o acumular. */
+    offset: (actual - 1) * porPagina,
+    /** El pie solo tiene sentido si hay más de una página. */
+    hayMasDeUna: totalPaginas > 1,
+  }
 }

@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { Download, PieChart, Search } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Paginacion, usePaginado } from "@/components/ui/paginacion"
 import { Switch } from "@/components/ui/switch"
 import { EmptyState, LoadingState } from "@/components/ui/states"
 import {
@@ -101,7 +102,7 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
       }>(urlCuenta, { signal }),
     enabled: entidadId !== null,
   })
-  const filas = cuenta.data?.filas ?? []
+  const filas = cuenta.data?.filas ?? SIN_FILAS
   const saldoFinal = cuenta.data?.saldoFinal ?? 0
   const cargando = cuenta.isLoading
 
@@ -113,7 +114,10 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
    * que ir tachando a mano para encontrar las cuatro que importan.
    */
   const [soloImpagas, setSoloImpagas] = useState(false)
-  const visibles = soloImpagas ? filas.filter((f) => f.impaga) : filas
+  const visibles = useMemo(() => (soloImpagas ? filas.filter((f) => f.impaga) : filas), [filas, soloImpagas])
+  // El saldo de cada fila viene corrido desde el servidor: paginar solo corta
+  // lo que se dibuja. Los totales y el Excel siguen usando la lista entera.
+  const paginado = usePaginado(visibles, 100, `${urlCuenta}|${soloImpagas}`)
 
   // Filtrada, el saldo corrido no significa nada —le faltan las filas del
   // medio—, así que la última columna pasa a ser lo que cada comprobante debe,
@@ -311,10 +315,10 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibles.map((f, i) => {
+              {paginado.visibles.map((f, i) => {
                 const esPago = f.importeArs < 0
                 return (
-                  <TableRow key={i}>
+                  <TableRow key={paginado.offset + i}>
                     <TableCell className="num whitespace-nowrap text-ink-secondary">
                       {fechaCorta(f.fecha)}
                     </TableCell>
@@ -398,11 +402,23 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
               )}
             </TableBody>
           </Table>
+          {paginado.hayMasDeUna && (
+            <Paginacion
+              pagina={paginado.pagina}
+              totalPaginas={paginado.totalPaginas}
+              total={paginado.total}
+              porPagina={paginado.porPagina}
+              onIr={paginado.irA}
+            />
+          )}
         </div>
       )}
     </div>
   )
 }
+
+/** Fija, para que un `[]` nuevo en cada render no reinicie la página. */
+const SIN_FILAS: never[] = []
 
 function fechaCorta(iso: string): string {
   const [a, m, d] = iso.split("-")

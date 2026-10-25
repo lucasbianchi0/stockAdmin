@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { ConfirmarDialog } from "@/components/ui/confirmar-dialog"
 import { DatoRevision, DialogoPasos } from "@/components/ui/dialogo-pasos"
 import { Input } from "@/components/ui/input"
+import { Paginacion, usePaginado } from "@/components/ui/paginacion"
 import { Textarea } from "@/components/ui/textarea"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
 import {
@@ -131,6 +132,7 @@ export function StockClient() {
         (!t || i.nombre.toLowerCase().includes(t) || (i.codigo ?? "").toLowerCase().includes(t))
     )
   }, [todos, buscar, filtro])
+  const paginado = usePaginado(items, 50, `${buscar}|${filtro}`)
 
   const valorDe = (lista: ItemStock[]) =>
     lista.reduce((s, i) => s + Math.max(i.saldo, 0) * (i.costoPromedioUsd ?? 0), 0)
@@ -261,7 +263,7 @@ export function StockClient() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {items.map((i) => (
+                  {paginado.visibles.map((i) => (
                     <TableRow
                       key={i.id}
                       onClick={() => router.push(`/admin/stock/${i.id}`)}
@@ -347,6 +349,15 @@ export function StockClient() {
                   ))}
                 </TableBody>
               </Table>
+            )}
+            {paginado.hayMasDeUna && (
+              <Paginacion
+                pagina={paginado.pagina}
+                totalPaginas={paginado.totalPaginas}
+                total={paginado.total}
+                porPagina={paginado.porPagina}
+                onIr={paginado.irA}
+              />
             )}
           </div>
         </>

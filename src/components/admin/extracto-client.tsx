@@ -22,6 +22,7 @@ import { MovimientoDetalle } from "@/components/admin/movimiento-detalle"
 import { MovimientoDialog } from "@/components/admin/movimiento-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Paginacion, usePaginado } from "@/components/ui/paginacion"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
 import {
   Table,
@@ -69,6 +70,9 @@ const SIN_CUENTAS: CuentaFinanciera[] = []
  * del módulo. La columna de saldo es un acumulado y leída de abajo hacia arriba
  * no querría decir nada.
  */
+/** Fija, para que un `[]` nuevo en cada render no reinicie la página. */
+const SIN_FILAS: never[] = []
+
 export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
   /* El encabezado de la página —el nombre de la cuenta y sus datos bancarios—
      lo arma el servidor, así que después de editar la ficha hay que pedirle que
@@ -245,6 +249,10 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
     URL.revokeObjectURL(a.href)
   }
 
+  // Los totales del período van arriba y el saldo anterior al pie de la última
+  // página: con cien filas por página se lee igual que antes, sin dibujar mil.
+  const paginado = usePaginado(datos?.filas ?? SIN_FILAS, 100, urlExtracto)
+
   if (query.isPending) return <LoadingState label="Cargando el extracto…" />
   if (error && !datos) return <ErrorState message={error} onRetry={() => query.refetch()} />
   if (!datos) return null
@@ -392,8 +400,9 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
 
         {/* ── El extracto ─────────────────────────────────────────────────── */}
         <div
+          ref={paginado.ancla}
           className={cn(
-            "overflow-x-auto transition-opacity duration-150",
+            "scroll-mt-28 overflow-x-auto transition-opacity duration-150",
             cargando && "pointer-events-none opacity-55"
           )}
         >
@@ -439,7 +448,7 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
                     <TableCell colSpan={2} />
                   </TableRow>
 
-                  {filas.map((f) => (
+                  {paginado.visibles.map((f) => (
                     <TableRow
                       key={f.id}
                       onClick={() => setVer(f)}
@@ -546,7 +555,8 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
                   {/* El arranque, al pie: leyendo de arriba hacia abajo se va
                       para atrás en el tiempo, y este es el punto donde el
                       período empieza. Sigue siendo lo que explica de dónde sale
-                      la columna de saldo. */}
+                      la columna de saldo. Solo en la última página. */}
+                  {paginado.pagina === paginado.totalPaginas && (
                   <TableRow className="border-t-2 border-line-strong bg-surface-subtle">
                     <TableCell className="num whitespace-nowrap text-ink-muted">
                       {p.desde ? formatearFecha(p.desde) : "Inicio"}
@@ -561,6 +571,7 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
                     </TableCell>
                     <TableCell colSpan={2} />
                   </TableRow>
+                  )}
                 </>
               ) : (
                 <TableRow>
@@ -583,6 +594,16 @@ export function ExtractoClient({ cuentaId }: { cuentaId: string }) {
               )}
             </TableBody>
           </Table>
+          {paginado.hayMasDeUna && (
+            <Paginacion
+              pagina={paginado.pagina}
+              totalPaginas={paginado.totalPaginas}
+              total={paginado.total}
+              porPagina={paginado.porPagina}
+              cargando={cargando}
+              onIr={paginado.irA}
+            />
+          )}
         </div>
       </div>
 
