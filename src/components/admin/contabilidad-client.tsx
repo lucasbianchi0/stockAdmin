@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react"
 import Link from "next/link"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
-import { AlertTriangle, BookOpen, Check, ChevronDown, Download, Layers, Loader2, Printer, Scale } from "lucide-react"
+import { AlertTriangle, BookOpen, Check, ChevronDown, ChevronRight, Download, Layers, Loader2, Printer, Scale, Search } from "lucide-react"
 import { toast } from "sonner"
 
 import { SelectorCuenta } from "@/components/admin/selector-cuenta"
@@ -624,6 +624,11 @@ function AsientoCard({ asiento }: { asiento: Asiento }) {
 
 function MayorDeCuenta() {
   const [cuenta, setCuenta] = useState("")
+  // `?cuenta=<id>` abre esa cuenta: es el enlace desde sumas y saldos.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("cuenta")
+    if (id) setCuenta(id)
+  }, [])
   const { desde, hasta, setDesde, setHasta, listo, ejercicios } = useRangoDeEjercicio()
 
   const p = new URLSearchParams({ cuenta })
@@ -815,6 +820,36 @@ function Saldos() {
   // el reporte en el formato clásico (Activo, Pasivo, PN, Pérdidas, Ganancias).
   const agrupado = datos ? agruparSumasYSaldos(datos.filas) : null
 
+  // En pantalla, cada rubro se pliega y se puede buscar una cuenta. Los totales
+  // de rubro son siempre los del rubro entero: la búsqueda solo ayuda a
+  // encontrar, no cambia los números. El PDF y el Excel van completos.
+  const [buscar, setBuscar] = useState("")
+  const [plegados, setPlegados] = useState<Set<string>>(new Set())
+  const plegar = (tipo: string) =>
+    setPlegados((prev) => {
+      const s = new Set(prev)
+      if (s.has(tipo)) s.delete(tipo)
+      else s.add(tipo)
+      return s
+    })
+  const termino = buscar.trim().toLowerCase()
+  const coincide = (f: { codigo: string; nombre: string }) =>
+    !termino || f.codigo.startsWith(termino) || f.nombre.toLowerCase().includes(termino)
+  const irAlRubro = (tipo: string) => {
+    setPlegados((prev) => {
+      const s = new Set(prev)
+      s.delete(tipo)
+      return s
+    })
+    document.getElementById(`rubro-${tipo}`)?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+  const enlaceMayor = (cuentaId: string) => {
+    const q = new URLSearchParams({ cuenta: cuentaId })
+    if (desde) q.set("desde", desde)
+    if (hasta) q.set("hasta", hasta)
+    return `/admin/contabilidad/mayor?${q}`
+  }
+
   const exportar = () => {
     if (!agrupado) return
     // Los subtotales van como filas con la cuenta "Total <rubro>" y sin código,
@@ -896,23 +931,51 @@ function Saldos() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-3 2xl:grid-cols-6">
         {datos.porRubro.map((r) => (
-          <Cifra
-            key={r.tipo}
-            etiqueta={TIPO_CUENTA_LABEL[r.tipo]}
-            valor={saldoNatural(r.tipo, r.saldo)}
-            nota={`${r.cuentas} cuenta${r.cuentas === 1 ? "" : "s"}`}
-          />
+          <button key={r.tipo} onClick={() => irAlRubro(r.tipo)} className="text-left" title="Ir al rubro">
+            <Cifra
+              etiqueta={TIPO_CUENTA_LABEL[r.tipo]}
+              valor={saldoNatural(r.tipo, r.saldo)}
+              nota={`${r.cuentas} cuenta${r.cuentas === 1 ? "" : "s"}`}
+            />
+          </button>
         ))}
+        {(() => {
+          // Ganancias menos pérdidas: la primera pregunta de cualquiera que mira
+          // un balance, y la cuenta que nadie quiere hacer a mano.
+          const de = (tipo: string) => datos.porRubro.find((r) => r.tipo === tipo)
+          const g = de("ingreso")
+          const pe = de("egreso")
+          if (!g && !pe) return null
+          const resultado =
+            (g ? saldoNatural(g.tipo, g.saldo) : 0) - (pe ? saldoNatural(pe.tipo, pe.saldo) : 0)
+          return (
+            <Cifra
+              etiqueta={resultado >= 0 ? "Resultado · ganancia" : "Resultado · pérdida"}
+              valor={Math.abs(resultado)}
+              nota="Ganancias − pérdidas"
+              destacado
+            />
+          )
+        })()}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-e1">
-        <Table>
-          <TableHeader>
+      <div className="relative max-w-[320px]">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
+        <Input
+          value={buscar}
+          onChange={(e) => setBuscar(e.target.value)}
+          placeholder="Buscar cuenta por nombre o código"
+          className="pl-8"
+        />
+      </div>
+
+      <div className="overflow-clip rounded-xl border border-line bg-surface shadow-e1">
+        <Table contenedorClassName="max-h-[calc(100dvh-12rem)] min-h-[320px]">
+          <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-[2]">
             <TableRow>
               <TableHead>Cuenta</TableHead>
-              <TableHead>Rubro</TableHead>
               <TableHead className="text-right">Debe</TableHead>
               <TableHead className="text-right">Haber</TableHead>
               <TableHead className="text-right">Saldo deudor</TableHead>
@@ -920,18 +983,42 @@ function Saldos() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {agrupado?.rubros.map((r) => (
+            {agrupado?.rubros.map((r) => {
+              const visibles = r.filas.filter(coincide)
+              if (termino && !visibles.length) return null
+              const plegado = plegados.has(r.tipo) && !termino
+              return (
               <Fragment key={r.tipo}>
-                {r.filas.map((f) => (
-                  <TableRow key={f.cuentaId}>
-                    <TableCell>
-                      <p className="text-[12.5px] text-ink">
+                <TableRow id={`rubro-${r.tipo}`} className="scroll-mt-10 hover:bg-transparent">
+                  <TableCell colSpan={5} className="border-b border-line bg-surface py-2">
+                    <button
+                      onClick={() => plegar(r.tipo)}
+                      aria-expanded={!plegado}
+                      className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-700 hover:text-brand-600"
+                    >
+                      {plegado ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      {TIPO_CUENTA_LABEL[r.tipo]}
+                      <span className="font-normal normal-case tracking-normal text-ink-faint">
+                        · {termino ? `${visibles.length} de ${r.filas.length}` : r.filas.length} cuenta
+                        {r.filas.length === 1 ? "" : "s"}
+                      </span>
+                    </button>
+                  </TableCell>
+                </TableRow>
+                {!plegado && visibles.map((f) => (
+                  <TableRow key={f.cuentaId} className="group">
+                    <TableCell className="pl-8">
+                      <Link
+                        href={enlaceMayor(f.cuentaId)}
+                        className="text-[12.5px] text-ink group-hover:text-brand-700"
+                        title="Ver el mayor de la cuenta"
+                      >
                         <span className="font-mono text-[11px] text-ink-faint">{f.codigo}</span>{" "}
                         {f.nombre}
-                      </p>
-                    </TableCell>
-                    <TableCell className="text-[11.5px] text-ink-muted">
-                      {TIPO_CUENTA_LABEL[f.tipo]}
+                        <span className="ml-1.5 text-[11px] text-brand-600 opacity-0 transition-opacity group-hover:opacity-100">
+                          Ver mayor →
+                        </span>
+                      </Link>
                     </TableCell>
                     <CeldaImporte valor={f.debeArs} />
                     <CeldaImporte valor={f.haberArs} />
@@ -941,7 +1028,8 @@ function Saldos() {
                 ))}
                 <FilaTotal etiqueta={`Total ${TIPO_CUENTA_LABEL[r.tipo]}`} columnas={r.subtotal} />
               </Fragment>
-            ))}
+              )
+            })}
             {agrupado && agrupado.rubros.length > 1 && (
               <FilaTotal etiqueta="Total general" columnas={agrupado.total} general />
             )}
@@ -979,10 +1067,12 @@ function FilaTotal({
     <TableRow
       className={cn(
         "bg-surface-sunken hover:bg-surface-sunken",
-        general ? "border-t-2 border-ink/40" : "border-t border-line-strong"
+        general
+          ? "border-t-2 border-ink/40 [&_td]:sticky [&_td]:bottom-0 [&_td]:z-[2] [&_td]:border-t [&_td]:border-line-strong [&_td]:bg-surface-sunken"
+          : "border-t border-line-strong"
       )}
     >
-      <TableCell colSpan={2} className="text-[12.5px] font-semibold text-ink">
+      <TableCell className="text-[12.5px] font-semibold text-ink">
         {etiqueta}
       </TableCell>
       <TableCell className={celda}>{fmt(columnas.debe)}</TableCell>
@@ -1086,7 +1176,7 @@ function Cifra({
       <p className="eyebrow">{etiqueta}</p>
       <p
         className={cn(
-          "num mt-1 font-mono text-[17px] font-semibold",
+          "num mt-1 whitespace-nowrap font-mono text-[17px] font-semibold",
           destacado ? "text-brand-600" : "text-ink"
         )}
       >

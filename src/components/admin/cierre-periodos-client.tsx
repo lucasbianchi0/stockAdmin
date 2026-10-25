@@ -1,8 +1,9 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
-import { Lock, LockOpen } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Loader2, Lock, LockOpen } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -19,7 +20,9 @@ import {
   type EstadoCierre,
 } from "@/lib/admin/cierre"
 import { formatearFechaLarga, hoyArgentina } from "@/lib/admin/fecha"
+import type { DocumentoSinAsiento } from "@/lib/admin/asientos"
 import { claves, mensajeError, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
+import { cn } from "@/lib/utils"
 
 /**
  * Cierre de períodos.
@@ -47,6 +50,7 @@ export function CierrePeriodosClient() {
   return (
     <div className="space-y-6">
       <EstadoActual estado={estado} />
+      <LineaDeMeses hasta={estado.hasta} />
       <Historial estado={estado} />
     </div>
   )
@@ -63,6 +67,8 @@ function EstadoActual({ estado }: { estado: EstadoCierre }) {
   const [trabajando, setTrabajando] = useState(false)
 
   const yaCerrado = estado.hasta !== null && finDeMes(mes) <= estado.hasta
+  const revision = useRevision(mes && !yaCerrado && mes <= ultimoTerminado ? mes : null)
+  const avisos = revision.borradores + revision.sinAsentar
 
   const cerrar = async () => {
     setTrabajando(true)
@@ -136,6 +142,8 @@ function EstadoActual({ estado }: { estado: EstadoCierre }) {
         )}
       </div>
 
+      {mes && !yaCerrado && mes <= ultimoTerminado && <Revision mes={mes} revision={revision} />}
+
       <ConfirmarDialog
         abierto={confirmando}
         titulo={`¿Cerrar hasta ${mes ? nombreMes(mes) : ""}?`}
@@ -144,6 +152,12 @@ function EstadoActual({ estado }: { estado: EstadoCierre }) {
             Desde ahora no se va a poder cargar, editar ni borrar nada con fecha hasta el{" "}
             {mes ? formatearFechaLarga(finDeMes(mes)) : ""}. Para corregir algo después, un
             administrador tiene que reabrir el período.
+            {avisos > 0 && (
+              <span className="mt-2 block font-medium text-warning-text">
+                Ojo: quedan {avisos} pendiente{avisos === 1 ? "" : "s"} de ese período (ver la
+                revisión). Si cerrás igual, para resolverlos hay que reabrir.
+              </span>
+            )}
           </>
         }
         confirmar="Cerrar el período"
@@ -288,6 +302,171 @@ function Historial({ estado }: { estado: EstadoCierre }) {
           ))}
         </ul>
       )}
+    </div>
+  )
+}
+
+/* ── Revisión antes de cerrar ─────────────────────────────────────────────── */
+
+type RespuestaRevision = {
+  borradores: number
+  ejemplos: { id: string; tipo: "compra" | "venta"; fecha: string; referencia: string }[]
+}
+
+/**
+ * Lo que queda pendiente hasta el último día del mes elegido: facturas en
+ * borrador (después del cierre ya no se confirman con esa fecha) y documentos
+ * sin asiento (no entrarían en el mayor del período). No frena el cierre:
+ * avisa, que es lo que se hace a mano mirando dos pantallas.
+ */
+function useRevision(mes: string | null) {
+  const url = mes ? `/api/admin/contabilidad/cierre/revision?mes=${mes}` : ""
+  const borradores = useQuery({
+    queryKey: claves.url(url),
+    queryFn: ({ signal }) => pedirJson<RespuestaRevision>(url, { signal }),
+    enabled: Boolean(mes),
+  })
+  const pendientes = useQuery({
+    queryKey: claves.url("/api/admin/contabilidad/pendientes"),
+    queryFn: ({ signal }) =>
+      pedirJson<{ documentos?: DocumentoSinAsiento[] }>("/api/admin/contabilidad/pendientes", { signal }),
+    enabled: Boolean(mes),
+  })
+  const hasta = mes ? finDeMes(mes) : ""
+  const sinAsentar = (pendientes.data?.documentos ?? []).filter((d) => d.fecha <= hasta)
+  return {
+    cargando: borradores.isPending || pendientes.isPending,
+    borradores: borradores.data?.borradores ?? 0,
+    ejemplos: borradores.data?.ejemplos ?? [],
+    sinAsentar: sinAsentar.length,
+  }
+}
+
+function Revision({ mes, revision }: { mes: string; revision: ReturnType<typeof useRevision> }) {
+  if (revision.cargando) {
+    return (
+      <p className="flex items-center gap-2 border-t border-line px-5 py-3 text-[12px] text-ink-muted">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Revisando lo pendiente hasta {nombreMes(mes)}…
+      </p>
+    )
+  }
+  const compras = revision.ejemplos.filter((e) => e.tipo === "compra").length
+  return (
+    <div className="space-y-2 border-t border-line px-5 py-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+        Antes de cerrar {nombreMes(mes)}
+      </p>
+      <ItemRevision
+        ok={revision.borradores === 0}
+        texto={
+          revision.borradores === 0
+            ? "No hay facturas en borrador del período"
+            : `${revision.borradores} factura${revision.borradores === 1 ? "" : "s"} en borrador con fecha del período: confirmalas o borralas antes de cerrar`
+        }
+        detalle={revision.ejemplos.map((e) => e.referencia).slice(0, 4).join(" · ")}
+        enlace={
+          revision.borradores
+            ? { href: compras ? "/admin/compras/listado" : "/admin/ventas/listado", texto: "Ver borradores" }
+            : undefined
+        }
+      />
+      <ItemRevision
+        ok={revision.sinAsentar === 0}
+        texto={
+          revision.sinAsentar === 0
+            ? "Todo lo del período tiene asiento"
+            : `${revision.sinAsentar} documento${revision.sinAsentar === 1 ? "" : "s"} del período sin asiento: no entran en el mayor ni en los libros`
+        }
+        enlace={
+          revision.sinAsentar ? { href: "/admin/contabilidad/sin-asentar", texto: "Corregir" } : undefined
+        }
+      />
+    </div>
+  )
+}
+
+function ItemRevision({
+  ok,
+  texto,
+  detalle,
+  enlace,
+}: {
+  ok: boolean
+  texto: string
+  detalle?: string
+  enlace?: { href: string; texto: string }
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-start gap-2.5 rounded-lg px-3 py-2 text-[12.5px]",
+        ok ? "text-ink-secondary" : "border border-warning-line bg-warning-soft text-warning-text"
+      )}
+    >
+      {ok ? (
+        <CheckCircle2 className="mt-px h-4 w-4 shrink-0 text-success-text" />
+      ) : (
+        <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
+      )}
+      <div className="min-w-0 flex-1">
+        <p>{texto}</p>
+        {!ok && detalle && <p className="num mt-0.5 truncate text-[11px] opacity-80">{detalle}</p>}
+      </div>
+      {enlace && (
+        <Link href={enlace.href} className="shrink-0 font-semibold hover:underline">
+          {enlace.texto} →
+        </Link>
+      )}
+    </div>
+  )
+}
+
+/* ── Los últimos doce meses ───────────────────────────────────────────────── */
+
+/** Una tira con los últimos doce meses, cerrado o abierto cada uno: el estado
+ *  del año de un vistazo, que es lo que el estudio pregunta. */
+function LineaDeMeses({ hasta }: { hasta: string | null }) {
+  const meses = useMemo(() => {
+    const lista: string[] = []
+    let m = mesDe(hoyArgentina())
+    for (let i = 0; i < 12; i++) {
+      lista.unshift(m)
+      m = mesAnterior(m)
+    }
+    return lista
+  }, [])
+  const actual = mesDe(hoyArgentina())
+  return (
+    <div className="panel overflow-clip">
+      <div className="panel-header">
+        <p className="text-[13.5px] font-semibold text-ink">Últimos doce meses</p>
+      </div>
+      <div className="grid grid-cols-4 gap-2 p-4 sm:grid-cols-6 lg:grid-cols-12">
+        {meses.map((m) => {
+          const cerrado = hasta !== null && finDeMes(m) <= hasta
+          const enCurso = m === actual
+          const [a, n] = m.split("-")
+          return (
+            <div
+              key={m}
+              className={cn(
+                "flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-center",
+                cerrado
+                  ? "border-warning-line bg-warning-soft text-warning-text"
+                  : enCurso
+                    ? "border-brand-200 bg-brand-50 text-brand-700"
+                    : "border-line bg-surface text-ink-secondary"
+              )}
+              title={cerrado ? "Cerrado" : enCurso ? "Mes en curso" : "Abierto"}
+            >
+              {cerrado ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5 opacity-50" />}
+              <span className="text-[12px] font-semibold capitalize">{nombreMes(m).slice(0, 3)}</span>
+              <span className="num text-[10.5px] opacity-70">{a.slice(2)}/{n}</span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

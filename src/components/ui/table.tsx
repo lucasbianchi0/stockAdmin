@@ -2,11 +2,17 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * `contenedorClassName` va en la caja que scrollea. Con un alto máximo ahí, la
+ * tabla scrollea adentro y un `<thead>` o `<tfoot>` sticky queda pegado arriba
+ * o abajo de la caja: es la forma de tener títulos y totales siempre a la vista
+ * en una tabla ancha, que además deja la barra horizontal al alcance.
+ */
 const Table = React.forwardRef<
   HTMLTableElement,
-  React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
+  React.HTMLAttributes<HTMLTableElement> & { contenedorClassName?: string }
+>(({ className, contenedorClassName, ...props }, ref) => (
+  <div className={cn("relative w-full overflow-auto", contenedorClassName)}>
     <table
       ref={ref}
       className={cn("w-full caption-bottom border-separate border-spacing-0 text-[13px]", className)}

@@ -266,6 +266,13 @@ export function rangoDelMes(mes: string): { desde: string; hasta: string } {
 }
 
 /** El mes en curso en Buenos Aires, como `2026-10`. */
+/** `2026-10`, -1 → `2026-09`. */
+export function moverMes(mes: string, delta: number): string {
+  const [a, m] = mes.split("-").map(Number)
+  const d = new Date(a, m - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+}
+
 export function mesActual(): string {
   const hoy = new Date(Date.now() - 3 * 3600_000)
   return hoy.toISOString().slice(0, 7)

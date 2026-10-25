@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
-import { AlertTriangle, BookMarked, Download, Printer } from "lucide-react"
+import { AlertTriangle, BookMarked, ChevronLeft, ChevronRight, Download, Eye, EyeOff, Printer } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { FranjaFija } from "@/components/ui/franja-fija"
 import { Input } from "@/components/ui/input"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
 import {
@@ -31,6 +30,7 @@ import {
   importeLibro,
   ivaTotal,
   mesActual,
+  moverMes,
   netoTotal,
   rangoDelMes,
   soloComprobantes,
@@ -76,6 +76,11 @@ export function SubdiarioClient({ tipo }: { tipo: TipoComprobante }) {
   }, [])
   const [entidad, setEntidad] = useState("")
   const [clase, setClase] = useState("")
+  // En pantalla, las columnas del libro sin ningún importe en el período se
+  // esconden: con todas, la tabla no entra y hay que correrla de costado. La
+  // hoja impresa y el Excel las llevan siempre, como el libro.
+  const [verVacias, setVerVacias] = useState(false)
+  const [verRetenciones, setVerRetenciones] = useState(true)
 
   const { desde, hasta } =
     periodo.modo === "mes" ? rangoDelMes(periodo.mes) : { desde: periodo.desde, hasta: periodo.hasta }
@@ -106,6 +111,15 @@ export function SubdiarioClient({ tipo }: { tipo: TipoComprobante }) {
         (f) => (!entidad || f.entidadId === entidad) && (!clase || f.clase === clase)
       ),
     [datos, entidad, clase]
+  )
+  const filasEnPantalla = useMemo(
+    () => (verRetenciones ? filas : soloComprobantes(filas)),
+    [filas, verRetenciones]
+  )
+  const retenciones = useMemo(() => soloRetenciones(filas), [filas])
+  const vacias = useMemo(
+    () => columnasVisibles(tipo, filasEnPantalla).filter((c) => filasEnPantalla.every((f) => c.valor(f) === 0)),
+    [tipo, filasEnPantalla]
   )
   // Los totales del libro son los de las facturas: las retenciones sufridas
   // se listan pero no son ventas.
@@ -207,13 +221,35 @@ export function SubdiarioClient({ tipo }: { tipo: TipoComprobante }) {
               ))}
             </div>
             {periodo.modo === "mes" ? (
-              <Input
-                type="month"
-                aria-label="Mes"
-                value={periodo.mes}
-                onChange={(e) => e.target.value && setPeriodo({ modo: "mes", mes: e.target.value })}
-                className="w-[170px]"
-              />
+              <div className="flex items-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Mes anterior"
+                  title="Mes anterior"
+                  onClick={() => setPeriodo({ modo: "mes", mes: moverMes(periodo.mes, -1) })}
+                  className="h-9 w-8 px-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Input
+                  type="month"
+                  aria-label="Mes"
+                  value={periodo.mes}
+                  onChange={(e) => e.target.value && setPeriodo({ modo: "mes", mes: e.target.value })}
+                  className="w-[170px]"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Mes siguiente"
+                  title="Mes siguiente"
+                  onClick={() => setPeriodo({ modo: "mes", mes: moverMes(periodo.mes, 1) })}
+                  className="h-9 w-8 px-0"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             ) : (
               <>
                 <Input
@@ -308,13 +344,27 @@ export function SubdiarioClient({ tipo }: { tipo: TipoComprobante }) {
       ) : (
         <>
           <div className="panel overflow-clip">
-            <FranjaFija className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-line bg-surface-subtle px-5 py-4">
+            {/* Sin franja fija: la tabla scrollea en su caja, con los títulos
+                arriba y el total abajo siempre a la vista. Una franja pegada
+                taparía los títulos al bajar la página. */}
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-line bg-surface-subtle px-5 py-4">
               <Cifra rotulo="Comprobantes" valor={String(totales.comprobantes)} />
               <Cifra rotulo="Neto gravado" valor={formatearImporte(netoTotal(totales))} />
               <Cifra
                 rotulo={esVenta ? "IVA débito" : "IVA crédito"}
                 valor={formatearImporte(ivaTotal(totales))}
               />
+              {esVenta ? (
+                retenciones.length > 0 && (
+                  <Cifra
+                    rotulo="Retenciones sufridas"
+                    valor={formatearImporte(Math.abs(totalizar(retenciones).total))}
+                    nota="informativo"
+                  />
+                )
+              ) : (
+                <Cifra rotulo="Percepciones e impuestos" valor={formatearImporte(percepciones(totales))} />
+              )}
               <Cifra rotulo="Total" valor={formatearImporte(totales.total)} destacado />
               {totales.notasDeCredito > 0 && (
                 <p className="text-[11.5px] text-ink-muted">
@@ -322,8 +372,38 @@ export function SubdiarioClient({ tipo }: { tipo: TipoComprobante }) {
                   crédito, en negativo
                 </p>
               )}
-            </FranjaFija>
-            <TablaSubdiario filas={filas} tipo={tipo} />
+            </div>
+            {(vacias.length > 0 || verVacias || retenciones.length > 0) && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line-soft px-5 py-2 text-[11.5px] text-ink-muted">
+                {(vacias.length > 0 || verVacias) && (
+                  <button
+                    onClick={() => setVerVacias((v) => !v)}
+                    className="inline-flex items-center gap-1.5 hover:text-ink"
+                    title={vacias.map((c) => c.rotulo).join(" · ")}
+                  >
+                    {verVacias ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    {verVacias
+                      ? "Ocultar las columnas sin importes"
+                      : `${vacias.length} columna${vacias.length === 1 ? "" : "s"} sin importes en el período, ocultas`}
+                  </button>
+                )}
+                {retenciones.length > 0 && (
+                  <button
+                    onClick={() => setVerRetenciones((v) => !v)}
+                    className="inline-flex items-center gap-1.5 hover:text-ink"
+                  >
+                    {verRetenciones ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    {verRetenciones
+                      ? `Ocultar las ${retenciones.length} retenciones sufridas`
+                      : `Ver las ${retenciones.length} retenciones sufridas`}
+                  </button>
+                )}
+                <span className="ml-auto hidden text-ink-faint sm:inline">
+                  Clic en una factura para abrirla · el PDF y el Excel llevan todas las columnas
+                </span>
+              </div>
+            )}
+            <TablaSubdiario filas={filasEnPantalla} tipo={tipo} ocultarVacias={!verVacias} enPantalla />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -344,25 +424,41 @@ export function SubdiarioClient({ tipo }: { tipo: TipoComprobante }) {
  * por fecha, en gris y en negativo, y tienen su propio renglón de total: son
  * informativas y no suman al total del libro.
  */
-export function TablaSubdiario({ filas, tipo }: { filas: FilaSubdiario[]; tipo: TipoComprobante }) {
+export function TablaSubdiario({
+  filas,
+  tipo,
+  ocultarVacias,
+  enPantalla,
+}: {
+  filas: FilaSubdiario[]
+  tipo: TipoComprobante
+  /** Sin las columnas que no tienen ningún importe. */
+  ocultarVacias?: boolean
+  /** La tabla scrollea adentro de su caja, con títulos y total siempre a la
+   *  vista, y cada factura abre su ficha. */
+  enPantalla?: boolean
+}) {
   const comprobantes = soloComprobantes(filas)
   const retenciones = soloRetenciones(filas)
   const totales = totalizar(comprobantes)
   const totalesRet = totalizar(retenciones)
-  const columnas = columnasVisibles(tipo, filas)
-  const celda = "num whitespace-nowrap text-right font-mono text-[11.5px]"
+  const columnas = columnasVisibles(tipo, filas).filter(
+    (c) => !ocultarVacias || filas.some((f) => c.valor(f) !== 0)
+  )
+  const listado = tipo === "venta" ? "/admin/ventas/listado" : "/admin/compras/listado"
+  const celda = "num whitespace-nowrap px-2 text-right font-mono text-[11.5px]"
   const texto = "text-[12px]"
 
   return (
-    <Table>
-      <TableHeader>
+    <Table contenedorClassName={enPantalla ? "max-h-[calc(100dvh-15rem)] min-h-[320px]" : undefined}>
+      <TableHeader className={enPantalla ? "[&_th]:sticky [&_th]:top-0 [&_th]:z-[2]" : undefined}>
         <TableRow>
           <TableHead title="La fecha de registro: define el período">Fecha</TableHead>
           <TableHead>Factura</TableHead>
           <TableHead>Nombre</TableHead>
           <TableHead>C.U.I.T.</TableHead>
           {columnas.map((c) => (
-            <TableHead key={c.clave} className="whitespace-nowrap text-right">
+            <TableHead key={c.clave} className="whitespace-nowrap px-2 text-right">
               {c.rotulo}
             </TableHead>
           ))}
@@ -389,7 +485,18 @@ export function TablaSubdiario({ filas, tipo }: { filas: FilaSubdiario[]; tipo: 
                 )}
               </TableCell>
               <TableCell className={cn("num whitespace-nowrap font-mono", texto)}>
-                {f.factura}
+                {enPantalla && !esRetencion ? (
+                  <Link
+                    href={`${listado}?ver=${f.id}`}
+                    target="_blank"
+                    className="text-ink hover:text-brand-600 hover:underline"
+                    title="Abrir la factura en otra pestaña"
+                  >
+                    {f.factura}
+                  </Link>
+                ) : (
+                  f.factura
+                )}
                 {esRetencion && (
                   <span className="block text-[9.5px] not-italic text-ink-faint">
                     Retención sufrida · informativa
@@ -424,7 +531,13 @@ export function TablaSubdiario({ filas, tipo }: { filas: FilaSubdiario[]; tipo: 
           )
         })}
       </TableBody>
-      <TableFooter>
+      <TableFooter
+        className={
+          enPantalla
+            ? "[&_td]:bg-surface-subtle [&_tr:first-child_td]:sticky [&_tr:first-child_td]:bottom-0 [&_tr:first-child_td]:z-[2]"
+            : undefined
+        }
+      >
         <TableRow className="bg-surface-subtle">
           <TableCell colSpan={4} className={cn("font-semibold uppercase tracking-[0.06em] text-ink-muted", texto)}>
             Total · {totales.comprobantes} comprobantes
@@ -565,10 +678,28 @@ export function AsientoResumen({ resumen }: { resumen: Subdiario["resumen"] }) {
 
 /* ── Piezas chicas ────────────────────────────────────────────────────────── */
 
-function Cifra({ rotulo, valor, destacado }: { rotulo: string; valor: string; destacado?: boolean }) {
+/** Lo que una compra suma por encima del neto y el IVA: percepciones, Ley
+ *  25413 y los otros impuestos. */
+const percepciones = (t: ReturnType<typeof totalizar>) =>
+  t.percepcionIva + t.percepcionIibbCaba + t.percepcionIibbBsas + t.ley25413 + t.percepcionGanancias + t.otros
+
+function Cifra({
+  rotulo,
+  valor,
+  destacado,
+  nota,
+}: {
+  rotulo: string
+  valor: string
+  destacado?: boolean
+  nota?: string
+}) {
   return (
     <div>
-      <p className="eyebrow">{rotulo}</p>
+      <p className="eyebrow">
+        {rotulo}
+        {nota && <span className="ml-1 normal-case tracking-normal text-ink-faint">· {nota}</span>}
+      </p>
       <p
         className={cn(
           "num mt-0.5 text-[16px] font-bold tracking-[-0.02em]",
