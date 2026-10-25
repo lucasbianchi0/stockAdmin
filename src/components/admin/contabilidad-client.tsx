@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react"
 import Link from "next/link"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
-import { AlertTriangle, BookOpen, Check, Download, Layers, Loader2, Printer, Scale } from "lucide-react"
+import { AlertTriangle, BookOpen, Check, ChevronDown, Download, Layers, Loader2, Printer, Scale } from "lucide-react"
 import { toast } from "sonner"
 
 import { SelectorCuenta } from "@/components/admin/selector-cuenta"
@@ -11,6 +11,7 @@ import { CorregirImputacionDialog } from "@/components/admin/corregir-imputacion
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Menu, MenuItem, MenuRotulo } from "@/components/ui/menu"
 import { EmptyState, LoadingState } from "@/components/ui/states"
 import {
   Table,
@@ -312,15 +313,7 @@ function DiarioPorAsiento({ desde, hasta, origen }: { desde: string; hasta: stri
           {asientos.length} asiento{asientos.length === 1 ? "" : "s"}
         </p>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!asientos.length}
-            onClick={() => window.open(`/admin/contabilidad/imprimir?${p}`, "_blank", "noopener")}
-          >
-            <Printer className="h-3.5 w-3.5" />
-            PDF
-          </Button>
+          <BotonPdfDiario desde={desde} hasta={hasta} origen={origen} disabled={!asientos.length} />
           <Button variant="outline" size="sm" onClick={exportar} disabled={!asientos.length || exportando}>
             {exportando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             Excel
@@ -373,6 +366,87 @@ function nombreMes(mes: string): string {
   return `${nombre[0].toUpperCase()}${nombre.slice(1)} ${a}`
 }
 
+/**
+ * El PDF del libro diario. Por defecto sale con el formato del estudio, el que
+ * va a los libros rubricados (un renglón por imputación, facturas resumidas
+ * por mes, hojas numeradas). Las otras dos hojas siguen a mano en el menú.
+ */
+function BotonPdfDiario({
+  desde,
+  hasta,
+  origen = "",
+  disabled,
+}: {
+  desde: string
+  hasta: string
+  origen?: string
+  disabled: boolean
+}) {
+  const abrir = (modo: "libro" | "asientos" | "mes") => {
+    const p = new URLSearchParams()
+    if (desde) p.set("desde", desde)
+    if (hasta) p.set("hasta", hasta)
+    // El libro es siempre el período entero; el filtro por origen sólo vale
+    // para la hoja detallada, que ya avisa que no es el libro completo.
+    if (modo === "asientos" && origen) p.set("origen", origen)
+    if (modo !== "asientos") p.set("modo", modo)
+    window.open(`/admin/contabilidad/imprimir?${p}`, "_blank", "noopener")
+  }
+
+  return (
+    <div className="flex items-center">
+      <Button
+        variant="outline"
+        size="sm"
+        className="rounded-r-none"
+        disabled={disabled}
+        onClick={() => abrir("libro")}
+        title="Formato del libro rubricado"
+      >
+        <Printer className="h-3.5 w-3.5" />
+        PDF
+      </Button>
+      <Menu
+        disparador={(abrirMenu) => (
+          <Button
+            variant="outline"
+            size="sm"
+            className="-ml-px rounded-l-none px-2"
+            disabled={disabled}
+            onClick={abrirMenu}
+            aria-label="Otros formatos del PDF"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      >
+        {(cerrar) => (
+          <>
+            <MenuRotulo>Imprimir el libro diario</MenuRotulo>
+            {(
+              [
+                ["libro", "Formato del libro rubricado"],
+                ["asientos", "Detallado por asiento"],
+                ["mes", "Resumen mensual por cuenta"],
+              ] as const
+            ).map(([modo, rotulo]) => (
+              <MenuItem
+                key={modo}
+                onClick={() => {
+                  cerrar()
+                  abrir(modo)
+                }}
+              >
+                {rotulo}
+              </MenuItem>
+            ))}
+          </>
+        )}
+      </Menu>
+    </div>
+  )
+}
+
 function DiarioMensual({ desde, hasta }: { desde: string; hasta: string }) {
   const p = new URLSearchParams()
   if (desde) p.set("desde", desde)
@@ -406,15 +480,7 @@ function DiarioMensual({ desde, hasta }: { desde: string; hasta: string }) {
           siguen siendo los registrados.
         </p>
         <div className="flex shrink-0 items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!meses.length}
-            onClick={() => window.open(`/admin/contabilidad/imprimir?${p}&modo=mes`, "_blank", "noopener")}
-          >
-            <Printer className="h-3.5 w-3.5" />
-            PDF
-          </Button>
+          <BotonPdfDiario desde={desde} hasta={hasta} disabled={!meses.length} />
           <Button variant="outline" size="sm" onClick={exportar} disabled={!meses.length}>
             <Download className="h-3.5 w-3.5" />
             Excel

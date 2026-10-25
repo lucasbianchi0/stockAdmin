@@ -77,6 +77,8 @@ export type Asiento = {
   descripcion: string
   lineas: LineaAsiento[]
   totalArs: number
+  /** Sólo con `completo=1` y en asientos de factura: de qué libro de IVA es. */
+  comprobanteTipo?: "compra" | "venta"
 }
 
 export type FilaMayor = {

@@ -184,6 +184,33 @@ export const GET = ruta("diario GET", async (req: Request) => {
     }
   }
 
+  /*
+   * El libro para el estudio resume las facturas en un asiento de IVA Compras y
+   * otro de IVA Ventas por mes, así que necesita saber de qué lado está cada
+   * comprobante. Sólo hace falta al bajar el libro, no en la pantalla.
+   */
+  if (completo) {
+    const idsComprobante = [
+      ...new Set(asientos.filter((a) => a.origen === "comprobante" && a.origenId).map((a) => a.origenId as string)),
+    ]
+    const tipos = new Map<string, "compra" | "venta">()
+    for (let i = 0; i < idsComprobante.length; i += 300) {
+      const { data, error } = await supabase
+        .from("comprobantes")
+        .select("id, tipo")
+        .in("id", idsComprobante.slice(i, i + 300))
+      if (error) {
+        console.error("[diario] tipos de comprobante", error)
+        return NextResponse.json({ error: "No se pudo cargar el libro diario" }, { status: 500 })
+      }
+      data?.forEach((c) => tipos.set(c.id as string, c.tipo as "compra" | "venta"))
+    }
+    for (const a of asientos) {
+      const tipo = a.origenId ? tipos.get(a.origenId) : undefined
+      if (a.origen === "comprobante" && tipo) a.comprobanteTipo = tipo
+    }
+  }
+
   return NextResponse.json({
     asientos,
     truncado,
