@@ -30,11 +30,13 @@ import { EMPRESA } from "@/lib/brand-kit"
 const RENGLONES_POR_HOJA = 62
 
 /**
- * Importes como en el libro original: 1,234.56. El resto del sistema usa
- * 1.234,56 (es-AR); acá se respeta el formato que ya está encuadernado.
+ * Importes en 1.234,56, como los subdiarios y el resto del sistema. El libro
+ * del sistema anterior salía en 1,234.56; si el estudio lo quiere igual, es
+ * cambiar "es-AR" por "en-US" acá y en los subdiarios a la vez, para que los
+ * tres libros sigan saliendo iguales.
  */
 const importe = (n: number) =>
-  n ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""
+  n ? n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""
 
 /** Las columnas del original, en mm: entran justo en el ancho útil de A4. */
 const COLUMNAS = "15mm 8mm 11mm 43mm 61mm 24mm 24mm"
