@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Fragment, useEffect, useState } from "react"
 import Link from "next/link"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { AlertTriangle, BookOpen, Check, Download, Layers, Loader2, Printer, Scale } from "lucide-react"
@@ -22,7 +22,9 @@ import {
 } from "@/components/ui/table"
 import {
   ORIGEN_ASIENTO_LABEL,
+  agruparSumasYSaldos,
   saldoNatural,
+  type ColumnasSumasSaldos,
   type Asiento,
   type DocumentoSinAsiento,
   type Mayor,
@@ -743,21 +745,38 @@ function Saldos() {
   const cargando = query.isPending
   const datos = query.data?.filas ? (query.data as SumasYSaldos & { truncado?: boolean }) : null
 
+  // Agrupado por rubro con su subtotal: lo pidió el estudio contable, que lee
+  // el reporte en el formato clásico (Activo, Pasivo, PN, Pérdidas, Ganancias).
+  const agrupado = datos ? agruparSumasYSaldos(datos.filas) : null
+
   const exportar = () => {
-    if (!datos) return
+    if (!agrupado) return
+    // Los subtotales van como filas con la cuenta "Total <rubro>" y sin código,
+    // así quien filtre la planilla por código los deja afuera sin pensarlo.
+    const columnas = (c: ColumnasSumasSaldos) => [c.debe, c.haber, c.saldoDeudor, c.saldoAcreedor]
     descargarCsv(
       "sumas-y-saldos.csv",
-      ["Código", "Cuenta", "Rubro", "Debe", "Haber", "Saldo"],
-      datos.filas.map((f) => [
-        f.codigo,
-        f.nombre,
-        TIPO_CUENTA_LABEL[f.tipo],
-        f.debeArs,
-        f.haberArs,
-        f.saldoArs,
-      ])
+      ["Código", "Cuenta", "Rubro", "Debe", "Haber", "Saldo deudor", "Saldo acreedor"],
+      [
+        ...agrupado.rubros.flatMap((r) => [
+          ...r.filas.map((f) => [
+            f.codigo,
+            f.nombre,
+            TIPO_CUENTA_LABEL[f.tipo],
+            f.debeArs,
+            f.haberArs,
+            f.saldoDeudor,
+            f.saldoAcreedor,
+          ]),
+          ["", `Total ${TIPO_CUENTA_LABEL[r.tipo]}`, TIPO_CUENTA_LABEL[r.tipo], ...columnas(r.subtotal)],
+        ]),
+        ["", "Total general", "", ...columnas(agrupado.total)],
+      ]
     )
   }
+
+  const imprimir = () =>
+    window.open(`/admin/contabilidad/sumas-y-saldos/imprimir?${p}`, "_blank", "noopener")
 
   if (cargando) return <LoadingState label="Cargando sumas y saldos…" />
   if (!datos) return <EmptyState icon={Scale} title="No se pudo cargar sumas y saldos" />
@@ -766,10 +785,16 @@ function Saldos() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <RangoFechas desde={desde} hasta={hasta} onDesde={setDesde} onHasta={setHasta} ejercicios={ejercicios} />
-        <Button variant="outline" size="sm" onClick={exportar} disabled={!datos.filas.length}>
-          <Download className="h-3.5 w-3.5" />
-          Exportar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={imprimir} disabled={!datos.filas.length}>
+            <Printer className="h-3.5 w-3.5" />
+            Imprimir / PDF
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportar} disabled={!datos.filas.length}>
+            <Download className="h-3.5 w-3.5" />
+            Exportar
+          </Button>
+        </div>
       </div>
 
       {/* El veredicto arriba de todo. Si la partida doble no cierra, cualquier
@@ -824,36 +849,81 @@ function Saldos() {
               <TableHead>Rubro</TableHead>
               <TableHead className="text-right">Debe</TableHead>
               <TableHead className="text-right">Haber</TableHead>
-              <TableHead className="text-right">Saldo</TableHead>
+              <TableHead className="text-right">Saldo deudor</TableHead>
+              <TableHead className="text-right">Saldo acreedor</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {datos.filas.map((f) => (
-              <TableRow key={f.cuentaId}>
-                <TableCell>
-                  <p className="text-[12.5px] text-ink">
-                    <span className="font-mono text-[11px] text-ink-faint">{f.codigo}</span>{" "}
-                    {f.nombre}
-                  </p>
-                </TableCell>
-                <TableCell className="text-[11.5px] text-ink-muted">
-                  {TIPO_CUENTA_LABEL[f.tipo]}
-                </TableCell>
-                <TableCell className="num text-right font-mono text-[12px]">
-                  {formatearImporte(f.debeArs, "ARS", { simbolo: false })}
-                </TableCell>
-                <TableCell className="num text-right font-mono text-[12px]">
-                  {formatearImporte(f.haberArs, "ARS", { simbolo: false })}
-                </TableCell>
-                <TableCell className="num text-right font-mono text-[12px] font-semibold text-ink">
-                  {formatearImporte(saldoNatural(f.tipo, f.saldoArs), "ARS", { simbolo: false })}
-                </TableCell>
-              </TableRow>
+            {agrupado?.rubros.map((r) => (
+              <Fragment key={r.tipo}>
+                {r.filas.map((f) => (
+                  <TableRow key={f.cuentaId}>
+                    <TableCell>
+                      <p className="text-[12.5px] text-ink">
+                        <span className="font-mono text-[11px] text-ink-faint">{f.codigo}</span>{" "}
+                        {f.nombre}
+                      </p>
+                    </TableCell>
+                    <TableCell className="text-[11.5px] text-ink-muted">
+                      {TIPO_CUENTA_LABEL[f.tipo]}
+                    </TableCell>
+                    <CeldaImporte valor={f.debeArs} />
+                    <CeldaImporte valor={f.haberArs} />
+                    <CeldaImporte valor={f.saldoDeudor} fuerte />
+                    <CeldaImporte valor={f.saldoAcreedor} fuerte />
+                  </TableRow>
+                ))}
+                <FilaTotal etiqueta={`Total ${TIPO_CUENTA_LABEL[r.tipo]}`} columnas={r.subtotal} />
+              </Fragment>
             ))}
+            {agrupado && agrupado.rubros.length > 1 && (
+              <FilaTotal etiqueta="Total general" columnas={agrupado.total} general />
+            )}
           </TableBody>
         </Table>
       </div>
     </div>
+  )
+}
+
+/** Un importe de sumas y saldos; el cero se deja en blanco para que el saldo
+ *  que importa —el deudor o el acreedor, nunca los dos— salte a la vista. */
+function CeldaImporte({ valor, fuerte = false }: { valor: number; fuerte?: boolean }) {
+  return (
+    <TableCell className={cn("num text-right font-mono text-[12px]", fuerte && "font-semibold text-ink")}>
+      {valor ? formatearImporte(valor, "ARS", { simbolo: false }) : ""}
+    </TableCell>
+  )
+}
+
+/** El subtotal de un rubro (o el total general): distinto del resto a simple
+ *  vista, porque es la línea que el contador busca al recorrer el reporte. */
+function FilaTotal({
+  etiqueta,
+  columnas,
+  general = false,
+}: {
+  etiqueta: string
+  columnas: ColumnasSumasSaldos
+  general?: boolean
+}) {
+  const celda = "num text-right font-mono text-[12px] font-semibold text-ink"
+  const fmt = (n: number) => formatearImporte(n, "ARS", { simbolo: false })
+  return (
+    <TableRow
+      className={cn(
+        "bg-surface-sunken hover:bg-surface-sunken",
+        general ? "border-t-2 border-ink/40" : "border-t border-line-strong"
+      )}
+    >
+      <TableCell colSpan={2} className="text-[12.5px] font-semibold text-ink">
+        {etiqueta}
+      </TableCell>
+      <TableCell className={celda}>{fmt(columnas.debe)}</TableCell>
+      <TableCell className={celda}>{fmt(columnas.haber)}</TableCell>
+      <TableCell className={celda}>{fmt(columnas.saldoDeudor)}</TableCell>
+      <TableCell className={celda}>{fmt(columnas.saldoAcreedor)}</TableCell>
+    </TableRow>
   )
 }
 

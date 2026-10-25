@@ -16,6 +16,7 @@
  */
 
 import type { TipoCuenta } from "@/lib/admin/cuentas-vocabulario"
+import { redondear } from "@/lib/admin/moneda"
 
 /* ── Vocabulario ──────────────────────────────────────────────────────────── */
 
@@ -183,6 +184,85 @@ export function esDeudora(tipo: TipoCuenta): boolean {
 /** El saldo con el signo que espera quien lee esa cuenta. */
 export function saldoNatural(tipo: TipoCuenta, saldoArs: number): number {
   return esDeudora(tipo) ? saldoArs : -saldoArs
+}
+
+/* ── Sumas y saldos por rubro ─────────────────────────────────────────────── */
+
+/**
+ * El orden clásico del balance de sumas y saldos: primero las patrimoniales
+ * (Activo, Pasivo, Patrimonio neto) y después las de resultado, Pérdidas antes
+ * que Ganancias. No es el orden de `TIPOS_CUENTA` a propósito: el estudio
+ * contable lee el reporte así y los subtotales tienen que caer donde los busca.
+ */
+export const ORDEN_RUBROS_SUMAS_SALDOS: readonly TipoCuenta[] = [
+  "activo",
+  "pasivo",
+  "patrimonio",
+  "egreso",
+  "ingreso",
+]
+
+/** Las cuatro columnas numéricas del formato clásico. */
+export type ColumnasSumasSaldos = {
+  debe: number
+  haber: number
+  saldoDeudor: number
+  saldoAcreedor: number
+}
+
+export type RubroSumasSaldos = {
+  tipo: TipoCuenta
+  filas: (FilaSumasSaldos & { saldoDeudor: number; saldoAcreedor: number })[]
+  subtotal: ColumnasSumasSaldos
+}
+
+/**
+ * El saldo partido en dos columnas, como lo escribe un contador: debe − haber;
+ * si da positivo va al deudor, si da negativo su valor absoluto va al acreedor.
+ * Sin signos que haya que interpretar según la naturaleza de la cuenta.
+ */
+export function saldoEnColumnas(saldoArs: number): { saldoDeudor: number; saldoAcreedor: number } {
+  return saldoArs >= 0
+    ? { saldoDeudor: redondear(saldoArs), saldoAcreedor: 0 }
+    : { saldoDeudor: 0, saldoAcreedor: redondear(-saldoArs) }
+}
+
+/**
+ * Las filas agrupadas por rubro, cada grupo con su subtotal por columna, más el
+ * total general. Lo usan la pantalla, el CSV y la impresión, para que los tres
+ * den exactamente los mismos números. Dentro de cada rubro se respeta el orden
+ * en que vienen (por código, del servidor). Los rubros sin cuentas no aparecen.
+ */
+export function agruparSumasYSaldos(filas: FilaSumasSaldos[]): {
+  rubros: RubroSumasSaldos[]
+  total: ColumnasSumasSaldos
+} {
+  const sumar = (xs: ColumnasSumasSaldos[]): ColumnasSumasSaldos => ({
+    debe: redondear(xs.reduce((a, x) => a + x.debe, 0)),
+    haber: redondear(xs.reduce((a, x) => a + x.haber, 0)),
+    saldoDeudor: redondear(xs.reduce((a, x) => a + x.saldoDeudor, 0)),
+    saldoAcreedor: redondear(xs.reduce((a, x) => a + x.saldoAcreedor, 0)),
+  })
+
+  const rubros = ORDEN_RUBROS_SUMAS_SALDOS.map((tipo) => {
+    const delRubro = filas
+      .filter((f) => f.tipo === tipo)
+      .map((f) => ({ ...f, ...saldoEnColumnas(f.saldoArs) }))
+    return {
+      tipo,
+      filas: delRubro,
+      subtotal: sumar(
+        delRubro.map((f) => ({
+          debe: f.debeArs,
+          haber: f.haberArs,
+          saldoDeudor: f.saldoDeudor,
+          saldoAcreedor: f.saldoAcreedor,
+        }))
+      ),
+    }
+  }).filter((r) => r.filas.length > 0)
+
+  return { rubros, total: sumar(rubros.map((r) => r.subtotal)) }
 }
 
 /** El total del asiento: la suma de un solo lado, porque los dos son iguales. */
