@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { supabase } from "@/lib/supabase"
 import { aCobro, SELECT_COBRO, type TipoPago } from "@/lib/admin/cobros-server"
+import { respuestaPeriodoCerrado } from "@/lib/admin/cierre-server"
 
 export async function obtenerPago(tipo: TipoPago, id: string) {
   const { data, error } = await supabase
@@ -42,6 +43,8 @@ export async function anularPago(tipo: TipoPago, id: string) {
     .maybeSingle()
 
   if (error) {
+    const cerrado = respuestaPeriodoCerrado(error)
+    if (cerrado) return cerrado
     console.error(`[${tipo} DELETE]`, error)
     return NextResponse.json({ error: `No se pudo anular el ${tipo}` }, { status: 500 })
   }

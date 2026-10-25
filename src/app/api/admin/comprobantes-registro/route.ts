@@ -4,6 +4,7 @@ import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
 import { createSupabaseServer } from "@/lib/supabase-server"
+import { respuestaPeriodoCerrado } from "@/lib/admin/cierre-server"
 
 /**
  * La fecha de registro de una factura, cuando es distinta de la del comprobante.
@@ -41,6 +42,8 @@ export const PUT = ruta("registro PUT", async (req: Request) => {
   // Igual a la del comprobante es lo mismo que no tenerla: no se guarda.
   if (!fechaRegistro || fechaRegistro === c.fecha) {
     const { error } = await supabase.from("comprobante_registro").delete().eq("comprobante_id", comprobanteId)
+    const cerrado = respuestaPeriodoCerrado(error)
+    if (cerrado) return cerrado
     if (error) throw error
     return NextResponse.json({ fechaRegistro: null })
   }
@@ -55,6 +58,10 @@ export const PUT = ruta("registro PUT", async (req: Request) => {
     updated_at: new Date().toISOString(),
     updated_by: usuario.data.user?.id ?? null,
   })
+  // Mover la fecha de registro mueve la factura de período: el cierre lo
+  // frena si la de antes o la de después están cerradas.
+  const cerrado = respuestaPeriodoCerrado(error)
+  if (cerrado) return cerrado
   if (error) throw error
   return NextResponse.json({ fechaRegistro })
 })

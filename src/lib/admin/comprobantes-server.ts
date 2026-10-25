@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { supabase } from "@/lib/supabase"
+import { respuestaPeriodoCerrado } from "@/lib/admin/cierre-server"
 import { esMoneda, redondear } from "@/lib/admin/moneda"
 import {
   alicuotaDeCabecera,
@@ -269,6 +270,8 @@ export function errorDeComprobante(
   error: { code?: string; message?: string },
   accion: string
 ) {
+  const cerrado = respuestaPeriodoCerrado(error)
+  if (cerrado) return cerrado
   if (error.code === "23505") {
     return NextResponse.json(
       { error: "Ese comprobante ya está cargado: mismo tipo, punto de venta y número" },

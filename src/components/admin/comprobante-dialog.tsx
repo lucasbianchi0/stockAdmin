@@ -401,6 +401,10 @@ export function ComprobanteDialog({
             cuentaExentoId: f.cuentaExentoId || null,
             condicionPago: f.condicionPago,
             observaciones: f.observaciones,
+            // En el alta viaja con la factura: si su fecha cae en un mes
+            // cerrado, la API la confirma recién después de guardarle esta
+            // fecha (ver `crearComprobante`). El PUT de abajo queda igual.
+            ...(!editando && { fechaRegistro: f.fechaRegistro || null }),
           }),
         }
       )
@@ -417,7 +421,16 @@ export function ComprobanteDialog({
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ comprobanteId: idGuardado, fechaRegistro: f.fechaRegistro || null }),
         })
-        if (!r.ok) toast.error("La factura se guardó, pero no la fecha de registro. Volvé a abrirla para cargarla.")
+        if (!r.ok) {
+          // Un 409 es el cierre de períodos: su mensaje dice qué pasó y es lo
+          // que la persona tiene que leer.
+          const motivo = r.status === 409 ? ((await r.json().catch(() => ({}))) as { error?: string }).error : null
+          toast.error(
+            motivo
+              ? `La factura se guardó, pero no la fecha de registro. ${motivo}`
+              : "La factura se guardó, pero no la fecha de registro. Volvé a abrirla para cargarla."
+          )
+        }
       }
       // Acá y no en cada pantalla que abre el formulario: una factura mueve la
       // cuenta corriente, los pendientes de cobro y el mayor.

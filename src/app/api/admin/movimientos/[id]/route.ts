@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
+import { respuestaPeriodoCerrado } from "@/lib/admin/cierre-server"
 import { esMoneda } from "@/lib/admin/moneda"
 import {
   CATEGORIAS_GASTO,
@@ -303,6 +304,8 @@ export const PATCH = ruta("movimientos PATCH", async (req: Request, ctx: Ctx) =>
     .single()
 
   if (error || !data) {
+    const cerrado = respuestaPeriodoCerrado(error)
+    if (cerrado) return cerrado
     console.error("[movimientos PATCH]", error)
     return NextResponse.json({ error: "No se pudo actualizar el movimiento" }, { status: 500 })
   }
@@ -417,6 +420,8 @@ export const DELETE = ruta("movimientos DELETE", async (_req: Request, ctx: Ctx)
   const { error } = await supabase.from("movimientos").delete().eq("id", id)
 
   if (error) {
+    const cerrado = respuestaPeriodoCerrado(error)
+    if (cerrado) return cerrado
     console.error("[movimientos DELETE]", error)
     return NextResponse.json({ error: "No se pudo borrar el movimiento" }, { status: 500 })
   }

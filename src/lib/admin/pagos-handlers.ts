@@ -11,6 +11,7 @@ import {
   sumaRetenciones,
 } from "@/lib/admin/cobros"
 import { aCobro, SELECT_COBRO, type TipoPago } from "@/lib/admin/cobros-server"
+import { respuestaPeriodoCerrado } from "@/lib/admin/cierre-server"
 
 /**
  * Cobros y pagos comparten tabla, forma y aritmética: los dos imputan contra
@@ -674,6 +675,8 @@ export async function crearPago(tipo: TipoPago, req: Request) {
     .single()
 
   if (errPago || !pago) {
+    const cerrado = respuestaPeriodoCerrado(errPago)
+    if (cerrado) return cerrado
     console.error(`[${tipo} POST]`, errPago)
     return NextResponse.json({ error: `No se pudo registrar ${cfg.nombre}` }, { status: 500 })
   }
@@ -730,6 +733,10 @@ export async function crearPago(tipo: TipoPago, req: Request) {
 
     if (errMov) {
       await deshacer()
+      // Un movimiento con fecha distinta a la del recibo puede caer en un mes
+      // cerrado aunque el recibo no.
+      const cerrado = respuestaPeriodoCerrado(errMov)
+      if (cerrado) return cerrado
       console.error(`[${tipo} movimientos]`, errMov)
       return NextResponse.json(
         { error: `No se pudo registrar el movimiento en la cuenta` },
@@ -852,6 +859,8 @@ export async function editarPago(tipo: TipoPago, req: Request, id: string) {
   if (errBorrado) {
     console.error(`[${tipo} PATCH borrado]`, errBorrado)
     await reponer()
+    const cerrado = respuestaPeriodoCerrado(errBorrado)
+    if (cerrado) return cerrado
     return NextResponse.json({ error: `No se pudo actualizar ${cfg.nombre}` }, { status: 500 })
   }
 
@@ -868,6 +877,8 @@ export async function editarPago(tipo: TipoPago, req: Request, id: string) {
   if (errCabecera) {
     console.error(`[${tipo} PATCH cabecera]`, errCabecera)
     await reponer()
+    const cerrado = respuestaPeriodoCerrado(errCabecera)
+    if (cerrado) return cerrado
     return NextResponse.json({ error: `No se pudo actualizar ${cfg.nombre}` }, { status: 500 })
   }
 
@@ -894,6 +905,8 @@ export async function editarPago(tipo: TipoPago, req: Request, id: string) {
   if (errInsercion) {
     console.error(`[${tipo} PATCH insercion]`, errInsercion)
     await reponer()
+    const cerrado = respuestaPeriodoCerrado(errInsercion)
+    if (cerrado) return cerrado
     return NextResponse.json(
       { error: `No se pudo actualizar ${cfg.nombre}: ${errInsercion.message}` },
       { status: 500 }

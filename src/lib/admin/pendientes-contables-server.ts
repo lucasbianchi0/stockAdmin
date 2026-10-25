@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import type { DocumentoSinAsiento } from "@/lib/admin/asientos"
 import { TABLA_DE_TIPO, recordarCuentaEnFicha } from "@/lib/admin/entidad-de-comprobante"
+import { respuestaPeriodoCerrado } from "@/lib/admin/cierre-server"
 
 /**
  * La lista de trabajo de lo que no llegó al mayor, y cómo arreglarlo.
@@ -263,6 +264,8 @@ export async function imputarDocumento(req: Request) {
     if (error.code === "23503") {
       return NextResponse.json({ error: "Esa cuenta contable ya no existe" }, { status: 409 })
     }
+    const cerrado = respuestaPeriodoCerrado(error)
+    if (cerrado) return cerrado
     console.error("[imputar]", error)
     return NextResponse.json({ error: "No se pudo imputar el documento" }, { status: 500 })
   }
