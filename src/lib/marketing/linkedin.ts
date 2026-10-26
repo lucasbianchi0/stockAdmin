@@ -13,7 +13,7 @@
  * desactualizado una semana se lee como "LinkedIn no anduvo esta semana".
  */
 
-/** La página de Accedra en LinkedIn (la URL pública `accedra-s` no resuelve). */
+/** La analítica de la página de Accedra; el admin va por id, no por el slug público `accedra-s.a.`. */
 export const ANALITICA_LINKEDIN = "https://www.linkedin.com/company/1420716/admin/analytics/updates/"
 
 export const TIPOS_CARGA = ["contenido", "seguidores", "visitantes"] as const
