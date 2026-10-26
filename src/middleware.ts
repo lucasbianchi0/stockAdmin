@@ -60,6 +60,15 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
+  /*
+   * El webhook de WhatsApp: lo llama Kapso con cada mensaje, sin sesión. Misma
+   * idea que la de arriba: una ruta exacta, y el handler rechaza todo lo que no
+   * venga firmado con `KAPSO_WEBHOOK_SECRET` (y devuelve 404 sin el secreto).
+   */
+  if (pathname === "/api/whatsapp/webhook") {
+    return response
+  }
+
   const { data: { user } } = await supabase.auth.getUser()
   const esApi = pathname.startsWith("/api/")
 

@@ -83,6 +83,13 @@ export const DESTINOS: Destino[] = [
     claves: ["marca", "identidad", "manual"],
   },
   {
+    titulo: "WhatsApp",
+    href: "/marketing/whatsapp",
+    seccion: "Marketing",
+    descripcion: "Los chats del WhatsApp de Accedra, con lo que se contestó desde el celular",
+    claves: ["whatsapp", "wsp", "chats", "mensajes", "conversaciones", "clientes"],
+  },
+  {
     titulo: "Plantillas de mensajes",
     href: "/marketing/mensajes",
     seccion: "Marketing",

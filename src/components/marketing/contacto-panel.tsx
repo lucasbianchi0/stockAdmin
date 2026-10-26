@@ -9,6 +9,7 @@ import { DetalleDialog, Bloque } from "@/components/admin/detalle-dialog"
 import { CIERRE_INICIAL, CampoProyecto, EtapaYCierre, type Cierre } from "@/components/comercial/proyecto-dialog"
 import { BotonOrganigrama } from "@/components/contactos/empresa-panel"
 import { OrganigramaEmpresa, urlFichaEmpresa } from "@/components/contactos/organigrama-empresa"
+import { ChatDeContacto } from "@/components/whatsapp/chat-de-contacto"
 import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -367,6 +368,8 @@ titulo
             placeholder="Qué le interesa, en qué quedamos, quién nos lo presentó…"
           />
         </Bloque>
+
+        {contacto && <ChatDeContacto contactoId={contacto.id} />}
 
         {error && (
           <p className="rounded-lg border border-danger-line bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger-text">

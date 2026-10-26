@@ -106,6 +106,9 @@ const GRUPOS: Grupo[] = [
       { name: "Versiones de Ads", href: "/marketing/versiones", available: true },
       /* La base de gente. De acá sale lo que va al CRM de Comercial. */
       { name: "Contactos", href: "/marketing/contactos", available: true },
+      /* Lo que le escriben al WhatsApp de Accedra, con lo contestado desde el
+         celular. Cada persona queda en Contactos. */
+      { name: "WhatsApp", href: "/marketing/whatsapp", available: true },
       { name: "Informes de campañas", href: "/marketing/informes", available: true },
       { name: "Brand Kit", href: "/marketing/brand", available: true },
       { name: "Plantillas de mensajes", href: "/marketing/mensajes", available: true },
