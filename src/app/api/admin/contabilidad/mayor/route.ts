@@ -50,19 +50,14 @@ export const GET = ruta("mayor GET", async (req: Request) => {
       .maybeSingle(),
 
     /* ── Lo anterior al período ─────────────────────────────────────────── */
-    // Todas: el saldo inicial de una cuenta con mucho movimiento (Caja,
-    // Créditos por ventas) pasa de mil líneas y se cortaba sin avisar.
-    // (La función `saldo_cuenta_hasta` de la migración 20261026_01 lo resuelve
-    // con una suma en la base; cuando esté aplicada, esto puede pasar a usarla.)
+    // Una suma en la base (`saldo_cuenta_hasta`, migración 20261026_01) en vez
+    // de traer todas las líneas anteriores para sumarlas acá: en una cuenta con
+    // mucho movimiento eran miles de filas solo para un número.
     desde
-      ? traerTodo(() => {
-          let previos = supabase
-            .from("libro_diario")
-            .select("debe_ars, haber_ars")
-            .eq("cuenta_id", cuentaId)
-            .lt("fecha", desde)
-          if (auxiliar) previos = previos.eq("auxiliar_id", auxiliar)
-          return previos.order("linea_id", { ascending: true })
+      ? supabase.rpc("saldo_cuenta_hasta", {
+          p_cuenta: cuentaId,
+          p_hasta: desde,
+          p_auxiliar: auxiliar || null,
         })
       : null,
 
@@ -99,9 +94,7 @@ export const GET = ruta("mayor GET", async (req: Request) => {
       console.error("[mayor previos]", resPrevios.error)
       return NextResponse.json({ error: "No se pudo calcular el saldo inicial" }, { status: 500 })
     }
-    saldoInicial = redondear(
-      resPrevios.filas.reduce((a, l) => a + Number(l.debe_ars) - Number(l.haber_ars), 0)
-    )
+    saldoInicial = redondear(Number(resPrevios.data) || 0)
   }
 
   const { filas: filasCrudas, truncado, error } = resLineas
