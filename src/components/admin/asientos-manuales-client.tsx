@@ -95,7 +95,7 @@ function Seccion({ tipo }: { tipo: TipoBorrador }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ejercicioId: terminado.id }),
       })
-      await invalidar()
+      void invalidar()
       toast.success(`Cierre de ${terminado.nombre} armado: revisalo`)
       setEditando(b)
     } catch (e) {
@@ -108,7 +108,7 @@ function Seccion({ tipo }: { tipo: TipoBorrador }) {
   const descartar = async (b: AsientoBorrador) => {
     try {
       await pedirJson(`/api/admin/asientos-borradores/${b.id}`, { method: "DELETE" })
-      await invalidar()
+      void invalidar()
       toast.success("Borrador descartado")
     } catch (e) {
       toast.error(mensajeError(e, "No se pudo descartar"))
@@ -350,7 +350,7 @@ function EditorAsiento({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tipo, fecha, descripcion, lineas }),
       })
-      await invalidar()
+      void invalidar()
       toast.success("Borrador guardado")
       onCerrar()
     } catch (e) {

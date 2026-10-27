@@ -3,9 +3,10 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowLeftRight, ArrowRight, FileInput, Pencil, Receipt } from "lucide-react"
+import { ArrowLeftRight, ArrowRight, FileInput, Landmark, Pencil, Receipt } from "lucide-react"
 import { toast } from "sonner"
 
+import { ComprobanteDialog } from "@/components/admin/comprobante-dialog"
 import { LecturaGastoDialog } from "@/components/admin/lectura-gasto-dialog"
 import {
   MovimientoDialog,
@@ -13,7 +14,8 @@ import {
 } from "@/components/admin/movimiento-dialog"
 import { Button } from "@/components/ui/button"
 import type { CuentaFinanciera } from "@/lib/admin/cobros"
-import { claves, pedirJson } from "@/lib/admin/query"
+import { formatearImporte } from "@/lib/admin/moneda"
+import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
 import { cn } from "@/lib/utils"
 
 const URL_CUENTAS = "/api/admin/cuentas"
@@ -21,10 +23,11 @@ const URL_CUENTAS = "/api/admin/cuentas"
  *  formulario que dependen de la lista. */
 const SIN_CUENTAS: CuentaFinanciera[] = []
 
-type Modo = "gasto" | "transferencia" | "ajuste"
+type Modo = "gasto" | "conIva" | "transferencia" | "ajuste"
 
 const MODOS: { valor: Modo; etiqueta: string; icon: typeof Receipt }[] = [
   { valor: "gasto", etiqueta: "Gasto", icon: Receipt },
+  { valor: "conIva", etiqueta: "Con IVA / varias cuentas", icon: Landmark },
   { valor: "transferencia", etiqueta: "Transferencia", icon: ArrowLeftRight },
   { valor: "ajuste", etiqueta: "Ajuste", icon: Pencil },
 ]
@@ -72,7 +75,7 @@ export function CargaMovimientoClient() {
   return (
     <div className="space-y-4">
       <div className="panel flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div className="flex items-center gap-1 rounded-lg border border-line bg-surface p-0.5">
+        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-line bg-surface p-0.5">
           {MODOS.map((m) => (
             <button
               key={m.valor}
@@ -117,6 +120,9 @@ export function CargaMovimientoClient() {
         </p>
       )}
 
+      {modo === "conIva" ? (
+        <GastoConIva key={serie} cuentas={cuentas} onListo={limpiar} />
+      ) : (
       <MovimientoDialog
         key={`${modo}-${serie}`}
         modo={modo}
@@ -129,6 +135,7 @@ export function CargaMovimientoClient() {
           toast.success("Movimiento registrado")
         }}
       />
+      )}
 
       <div className="flex justify-center">
         <Link
@@ -148,6 +155,103 @@ export function CargaMovimientoClient() {
           setBorrador(leido)
           setSerie((n) => n + 1)
         }}
+      />
+    </div>
+  )
+}
+
+/* ── Gasto con IVA o con varias cuentas ───────────────────────────────────── */
+
+/**
+ * El pedido del estudio del 26/10: «poder cargar varias cuentas contables
+ * cuando cargo los movimientos y que calcule el IVA como en las facturas», con
+ * el resumen del Galicia de ejemplo —gravado, IVA, Ley 25413, percepciones de
+ * IIBB y de IVA, cada uno a su cuenta—.
+ *
+ * Eso ya lo sabe hacer el formulario de facturas de compra: renglones con su
+ * cuenta y su alícuota, y los impuestos con su cuenta propia. Así que acá se
+ * usa ese mismo formulario, con la clase «EX» (extracto bancario) y el banco
+ * como proveedor, y al guardarlo se registra solo el débito desde la cuenta
+ * elegida. Queda igual que en su libro: el gasto en IVA Compras, cada importe
+ * en su cuenta y un único débito en el extracto del banco.
+ */
+function GastoConIva({ cuentas, onListo }: { cuentas: CuentaFinanciera[]; onListo: () => void }) {
+  const invalidar = useInvalidarAdmin()
+  const enPesos = cuentas.filter((c) => c.moneda === "ARS")
+  const [cuentaId, setCuentaId] = useState(
+    () => enPesos.find((c) => /galicia/i.test(c.nombre))?.id ?? enPesos[0]?.id ?? ""
+  )
+
+  const debitar = async (c: {
+    id: string
+    proveedorId: string | null
+    fecha: string
+    total: number
+    clase: string
+    estado: string
+  }) => {
+    if (c.estado !== "confirmado") {
+      toast.success("Quedó en borrador. El débito se registra al pagarlo desde Pagos.")
+      return onListo()
+    }
+    const cuenta = cuentas.find((x) => x.id === cuentaId)
+    try {
+      await pedirJson("/api/admin/pagos", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          entidadId: c.proveedorId,
+          fecha: c.fecha,
+          moneda: "ARS",
+          tc: null,
+          retenciones: [],
+          imputaciones: [{ comprobanteId: c.id, importe: c.total, tcAplicado: null }],
+          aplicaciones: [],
+          medios: [{ cuentaId, importe: c.total, referencia: "Débito en cuenta" }],
+          observaciones: `Débito en cuenta ${cuenta?.nombre ?? ""}`.trim(),
+        }),
+      })
+      void invalidar()
+      toast.success(`Registrado: ${formatearImporte(c.total)} debitados de ${cuenta?.nombre ?? "la cuenta"}`)
+    } catch (e) {
+      toast.error(
+        `El gasto se guardó pero no el débito: ${e instanceof Error ? e.message : "error"}. Pagalo desde Pagos de facturas.`
+      )
+    }
+    onListo()
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="panel flex flex-wrap items-center gap-3 px-4 py-3">
+        <label htmlFor="cuenta-debito" className="text-[12.5px] font-medium text-ink">
+          Se debitó de
+        </label>
+        <select
+          id="cuenta-debito"
+          value={cuentaId}
+          onChange={(e) => setCuentaId(e.target.value)}
+          className="h-9 min-w-[220px] rounded-md border border-line bg-surface px-2 text-[12.5px] text-ink"
+        >
+          {enPesos.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nombre}
+            </option>
+          ))}
+        </select>
+        <p className="text-[11.5px] text-ink-muted">
+          Proveedor: el banco (si no está, se crea desde el buscador). Cada importe con su cuenta;
+          el IVA y los impuestos van a las suyas y el gasto entra en IVA Compras.
+        </p>
+      </div>
+      <ComprobanteDialog
+        abierto
+        embebido
+        tipo="compra"
+        comprobante={null}
+        claseInicial="EXA"
+        onCerrar={onListo}
+        onGuardado={(c) => void debitar(c)}
       />
     </div>
   )

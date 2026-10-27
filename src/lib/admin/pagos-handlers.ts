@@ -760,6 +760,94 @@ export async function crearPago(tipo: TipoPago, req: Request) {
 /* ── PATCH · edición ──────────────────────────────────────────────────────── */
 
 /**
+ * Editar también borra y reinserta las retenciones. Esto es solo una red: el
+ * formulario ya precarga y devuelve base, alícuota y cuenta contable. Si llegan
+ * vacías —un cliente
+ * viejo, o un renglón que se armó sin ellas— y el renglón es el mismo de antes
+ * (tipo, jurisdicción e importe), se reponen las que tenía: borrarlas dejaba el
+ * asiento sin la cuenta de la provincia y el certificado sin base imponible.
+ * El certificado no entra: es un campo del formulario, y vaciarlo es una
+ * decisión que hay que respetar. El índice único por tipo y jurisdicción
+ * garantiza que el par, si existe, es uno solo.
+ */
+function conservarDatosDeRetenciones(
+  nuevas: Record<string, unknown>[],
+  previas: Record<string, unknown>[]
+): Record<string, unknown>[] {
+  return nuevas.map((nueva) => {
+    const vieja = previas.find(
+      (v) =>
+        v.tipo === nueva.tipo &&
+        ((v.jurisdiccion as string | null) ?? null) === (nueva.jurisdiccion ?? null) &&
+        Math.abs(Number(v.importe) - Number(nueva.importe)) <= 0.005
+    )
+    if (!vieja) return nueva
+    return {
+      ...nueva,
+      base: nueva.base ?? vieja.base ?? null,
+      alicuota: nueva.alicuota ?? vieja.alicuota ?? null,
+      cuenta_contable_id: nueva.cuenta_contable_id ?? vieja.cuenta_contable_id ?? null,
+    }
+  })
+}
+
+/**
+ * Lo que un movimiento acumuló después de cargarse y que el recibo no conoce.
+ *
+ * Editar reemplaza los movimientos enteros —borrar e insertar—, y la fila nueva
+ * nace con lo que dice el formulario: `conciliado` en falso, el detalle pisado
+ * por las observaciones y la fecha del recibo. Así, corregir un dígito del
+ * número de transferencia deshacía la conciliación del banco y borraba el
+ * detalle que alguien había escrito a mano en el extracto.
+ *
+ * Por eso cada fila nueva busca a su par viejo —misma cuenta, mismo importe— y
+ * hereda de él lo que no viene del recibo. Cada fila vieja se usa una sola vez:
+ * dos transferencias iguales a la misma cuenta siguen siendo dos. Si el importe
+ * o la cuenta cambiaron, el movimiento es otro de verdad y arranca de cero: lo
+ * que estaba conciliado era un importe que ya no existe.
+ *
+ *   · `conciliado`: se hereda siempre.
+ *   · `detalle`: se hereda si alguien lo cambió a mano (difiere de las
+ *     observaciones viejas). Si era la copia de las observaciones, sigue a las
+ *     nuevas, que es el pedido original: «lo de OBSERVACIONES va al detalle».
+ *   · `referencia`: no se hereda. El formulario la precarga y la devuelve, así
+ *     que lo que llega es la vieja o la que el usuario corrigió a propósito —
+ *     incluso vaciarla—, y reponer la vieja desharía esa corrección.
+ *   · `fecha`: igual que el detalle. Si el movimiento tenía la fecha del recibo,
+ *     sigue a la nueva; si alguien la había movido —la acreditación del banco
+ *     cayó otro día—, se respeta esa.
+ */
+function conservarDatosDeMovimientos(
+  nuevos: Record<string, unknown>[],
+  previos: Record<string, unknown>[],
+  cabeceraVieja: { fecha: string; observaciones: string | null }
+): Record<string, unknown>[] {
+  const libres = [...previos]
+
+  return nuevos.map((nuevo) => {
+    const i = libres.findIndex(
+      (v) =>
+        v.cuenta_id === nuevo.cuenta_id &&
+        Math.abs(Number(v.importe) - Number(nuevo.importe)) <= 0.005
+    )
+    if (i === -1) return nuevo
+    const [viejo] = libres.splice(i, 1)
+
+    const detalleViejo = (viejo.detalle as string | null) ?? null
+    const detalleEditado = detalleViejo !== (cabeceraVieja.observaciones ?? null)
+    const fechaVieja = typeof viejo.fecha === "string" ? viejo.fecha : null
+    const fechaEditada = fechaVieja !== null && fechaVieja !== cabeceraVieja.fecha
+
+    return {
+      ...nuevo,
+      conciliado: Boolean(viejo.conciliado),
+      detalle: detalleEditado ? detalleViejo : nuevo.detalle,
+      fecha: fechaEditada ? fechaVieja : nuevo.fecha,
+    }
+  })
+}
+
+/**
  * Editar un recibo ya cargado.
  *
  * Hasta ahora la única forma de corregir un cobro mal cargado era borrarlo y
@@ -797,7 +885,7 @@ export async function editarPago(tipo: TipoPago, req: Request, id: string) {
 
   const { data: existente } = await supabase
     .from("pagos")
-    .select("id")
+    .select("id, fecha, observaciones")
     .eq("id", id)
     .eq("tipo", tipo)
     .maybeSingle()
@@ -847,6 +935,20 @@ export async function editarPago(tipo: TipoPago, req: Request, id: string) {
     ])
   }
 
+  const movimientosAInsertar = conservarDatosDeMovimientos(
+    movimientos,
+    (movPrevios ?? []) as Record<string, unknown>[],
+    {
+      fecha: existente.fecha as string,
+      observaciones: (existente.observaciones as string | null) ?? null,
+    }
+  )
+
+  const retencionesAInsertar = conservarDatosDeRetenciones(
+    retenciones,
+    (retPrevias ?? []) as Record<string, unknown>[]
+  )
+
   // 3 · Fuera lo viejo, adentro lo nuevo.
   const borrados = await Promise.all([
     supabase.from("imputaciones").delete().eq("pago_id", id),
@@ -887,12 +989,16 @@ export async function editarPago(tipo: TipoPago, req: Request, id: string) {
       ? supabase.from("imputaciones").insert(imputaciones.map((f) => ({ ...f, pago_id: id })))
       : { error: null },
     retenciones.length
-      ? supabase.from("pago_retenciones").insert(retenciones.map((f) => ({ ...f, pago_id: id })))
+      ? supabase
+          .from("pago_retenciones")
+          .insert(retencionesAInsertar.map((f) => ({ ...f, pago_id: id })))
       : { error: null },
     movimientos.length
       ? supabase
           .from("movimientos")
-          .insert(movimientos.map((f) => ({ ...f, pago_id: id, created_by: user?.id ?? null })))
+          .insert(
+            movimientosAInsertar.map((f) => ({ ...f, pago_id: id, created_by: user?.id ?? null }))
+          )
       : { error: null },
     aplicaciones.length
       ? supabase

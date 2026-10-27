@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
 
-import { exigirModulo } from "@/lib/guard-api"
+import { exigirModulo, exigirModuloConUsuario } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
-import { createSupabaseServer } from "@/lib/supabase-server"
 import { ruta } from "@/lib/admin/ruta"
 import { TAMANO_MAX, tipoAceptado, type Adjunto } from "@/lib/admin/adjuntos"
 
@@ -65,8 +64,9 @@ export const GET = ruta("adjuntos GET", async (req: Request) => {
 })
 
 export const POST = ruta("adjuntos POST", async (req: Request) => {
-  const sinPermiso = await exigirModulo("administracion")
-  if (sinPermiso) return sinPermiso
+  // Con el id de quien carga, de la misma lectura del token que el permiso.
+  const s = await exigirModuloConUsuario(["administracion"])
+  if (s.error) return s.error
 
   let form: FormData
   try {
@@ -124,10 +124,6 @@ export const POST = ruta("adjuntos POST", async (req: Request) => {
     return NextResponse.json({ error: "No se pudo subir el archivo" }, { status: 500 })
   }
 
-  const supabaseUsuario = await createSupabaseServer()
-  const {
-    data: { user },
-  } = await supabaseUsuario.auth.getUser()
 
   const { data, error } = await supabase
     .from("comprobante_adjuntos")
@@ -137,7 +133,7 @@ export const POST = ruta("adjuntos POST", async (req: Request) => {
       ruta,
       tipo_mime: archivo.type,
       tamano: archivo.size,
-      created_by: user?.id ?? null,
+      created_by: s.usuarioId,
     })
     .select("id, nombre, ruta, tipo_mime, tamano, created_at")
     .single()

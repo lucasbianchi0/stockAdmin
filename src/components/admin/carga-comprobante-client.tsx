@@ -45,6 +45,9 @@ export function CargaComprobanteClient({ tipo }: { tipo: TipoComprobante }) {
    */
   const [serie, setSerie] = useState(0)
   const limpiar = () => setSerie((n) => n + 1)
+  // La última fecha de registro elegida pasa a la factura siguiente: se cargan
+  // en tanda y todas van al mismo mes. Antes se vaciaba al guardar cada una.
+  const [ultimoRegistro, setUltimoRegistro] = useState<string | null>(null)
 
   return (
     <div className="space-y-4">
@@ -64,8 +67,13 @@ export function CargaComprobanteClient({ tipo }: { tipo: TipoComprobante }) {
         embebido
         tipo={tipo}
         comprobante={null}
-        onCerrar={limpiar}
-        onGuardado={(c, _esNuevo, imp) => {
+        registroInicial={ultimoRegistro}
+        onCerrar={() => {
+          setUltimoRegistro(null)
+          limpiar()
+        }}
+        onGuardado={(c, _esNuevo, imp, registro) => {
+          setUltimoRegistro(registro)
           // Guardar deja la pantalla lista para la siguiente factura: casi
           // nunca llega una sola, y quedarse mirando los campos ya cargados
           // obliga a borrarlos a mano antes de seguir.

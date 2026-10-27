@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server"
 
-import { exigirModulo } from "@/lib/guard-api"
+import { exigirModuloConUsuario } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
-import { createSupabaseServer } from "@/lib/supabase-server"
-import { accesoDeUsuario } from "@/lib/permisos"
 import { ruta } from "@/lib/admin/ruta"
 import { hoyArgentina } from "@/lib/admin/fecha"
 import { leerHistorialCierre } from "@/lib/admin/cierre-server"
@@ -20,25 +18,23 @@ import { esMes, fechaCierre, finDeMes, type EstadoCierre } from "@/lib/admin/cie
  */
 
 export const GET = ruta("cierre GET", async () => {
-  const sinPermiso = await exigirModulo("administracion")
-  if (sinPermiso) return sinPermiso
+  // El permiso y si es admin, de la misma lectura del token: antes eran dos.
+  const s = await exigirModuloConUsuario(["administracion"])
+  if (s.error) return s.error
 
-  const {
-    data: { user },
-  } = await (await createSupabaseServer()).auth.getUser()
   const historial = await leerHistorialCierre()
 
   const estado: EstadoCierre = {
     hasta: historial[0]?.hasta ?? null,
     historial,
-    puedeReabrir: accesoDeUsuario(user).admin,
+    puedeReabrir: s.admin,
   }
   return NextResponse.json(estado)
 })
 
 export const POST = ruta("cierre POST", async (req: Request) => {
-  const sinPermiso = await exigirModulo("administracion")
-  if (sinPermiso) return sinPermiso
+  const s = await exigirModuloConUsuario(["administracion"])
+  if (s.error) return s.error
 
   const cuerpo = (await req.json().catch(() => ({}))) as { mes?: unknown; motivo?: unknown }
   if (!esMes(cuerpo.mes)) {
@@ -66,16 +62,13 @@ export const POST = ruta("cierre POST", async (req: Request) => {
     )
   }
 
-  const {
-    data: { user },
-  } = await (await createSupabaseServer()).auth.getUser()
   const motivo = typeof cuerpo.motivo === "string" ? cuerpo.motivo.trim().slice(0, 500) : ""
 
   const { error } = await supabase.from("cierres_periodo").insert({
     hasta,
     accion: "cierre",
     motivo: motivo || null,
-    created_by: user?.id ?? null,
+    created_by: s.usuarioId,
   })
   if (error) throw error
 

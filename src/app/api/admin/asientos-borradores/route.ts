@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
 
-import { exigirModulo } from "@/lib/guard-api"
+import { exigirModulo, exigirModuloConUsuario } from "@/lib/guard-api"
 import { ruta } from "@/lib/admin/ruta"
-import { createSupabaseServer } from "@/lib/supabase-server"
 import { TIPOS_BORRADOR, type TipoBorrador } from "@/lib/admin/asientos-borradores"
 import {
   ErrorBorrador,
@@ -22,13 +21,13 @@ export const GET = ruta("borradores GET", async (req: Request) => {
 })
 
 export const POST = ruta("borradores POST", async (req: Request) => {
-  const sinPermiso = await exigirModulo("administracion")
-  if (sinPermiso) return sinPermiso
+  // Con el id de quien carga, de la misma lectura del token que el permiso.
+  const s = await exigirModuloConUsuario(["administracion"])
+  if (s.error) return s.error
   const datos = (await req.json().catch(() => null)) as DatosBorrador | null
   if (!datos) return NextResponse.json({ error: "Faltan los datos del asiento" }, { status: 400 })
-  const usuario = await (await createSupabaseServer()).auth.getUser()
   try {
-    return NextResponse.json(await guardarBorrador(datos, usuario.data.user?.id ?? null), { status: 201 })
+    return NextResponse.json(await guardarBorrador(datos, s.usuarioId), { status: 201 })
   } catch (e) {
     if (e instanceof ErrorBorrador) return NextResponse.json({ error: e.message }, { status: 400 })
     throw e

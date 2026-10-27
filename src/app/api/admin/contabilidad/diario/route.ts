@@ -72,23 +72,40 @@ export const GET = ruta("diario GET", async (req: Request) => {
    */
   const tope = completo ? TOPE_COMPLETO : TOPE
   const asc = completo
-  for (let inicio = 0; ; inicio += PAGINA) {
-    const { data, error } = await consulta()
-      .order("fecha", { ascending: asc })
-      .order("numero", { ascending: asc })
-      .order("asiento_id", { ascending: asc })
-      .order("orden", { ascending: true })
-      .order("linea_id", { ascending: true })
-      .range(inicio, Math.min(inicio + PAGINA, tope) - 1)
-    if (error) {
-      console.error("[diario]", error)
-      return NextResponse.json({ error: "No se pudo cargar el libro diario" }, { status: 500 })
-    }
-    filas.push(...(data ?? []))
-    if (!data || data.length < Math.min(PAGINA, tope - inicio)) break
-    if (filas.length >= tope) {
-      truncado = true
-      break
+  /*
+   * Al bajar el libro las páginas se piden de a cuatro a la vez: un ejercicio
+   * entero son varias páginas, y una detrás de la otra la descarga tardaba un
+   * viaje a la base por cada mil líneas. Se recorren en orden y se corta en la
+   * primera incompleta, así el resultado es el mismo que pidiéndolas en fila
+   * (a lo sumo se piden de más unas páginas vacías al final). La pantalla
+   * sigue de a una: casi siempre le alcanza con la primera.
+   */
+  const ola = completo ? 4 : 1
+  paginas: for (let inicio = 0; ; inicio += ola * PAGINA) {
+    const desdes: number[] = []
+    for (let k = 0; k < ola && inicio + k * PAGINA < tope; k++) desdes.push(inicio + k * PAGINA)
+    const respuestas = await Promise.all(
+      desdes.map((d) =>
+        consulta()
+          .order("fecha", { ascending: asc })
+          .order("numero", { ascending: asc })
+          .order("asiento_id", { ascending: asc })
+          .order("orden", { ascending: true })
+          .order("linea_id", { ascending: true })
+          .range(d, Math.min(d + PAGINA, tope) - 1)
+      )
+    )
+    for (const [k, { data, error }] of respuestas.entries()) {
+      if (error) {
+        console.error("[diario]", error)
+        return NextResponse.json({ error: "No se pudo cargar el libro diario" }, { status: 500 })
+      }
+      filas.push(...(data ?? []))
+      if (!data || data.length < Math.min(PAGINA, tope - desdes[k])) break paginas
+      if (filas.length >= tope) {
+        truncado = true
+        break paginas
+      }
     }
   }
 
@@ -108,8 +125,20 @@ export const GET = ruta("diario GET", async (req: Request) => {
     ...new Set(filas.filter((f) => f.auxiliar_tipo === "proveedor" && f.auxiliar_id).map((f) => f.auxiliar_id as string)),
   ]
 
+  /*
+   * Los nombres, la numeración por ejercicio y (al bajar el libro) de qué lado
+   * está cada comprobante salen todos de las líneas, no uno del otro: van a la
+   * vez.
+   */
+  const idsComprobante = completo
+    ? [
+        ...new Set(
+          filas.filter((f) => f.origen === "comprobante" && f.origen_id).map((f) => f.origen_id as string)
+        ),
+      ]
+    : []
   const nombres = new Map<string, string>()
-  await Promise.all([
+  const [, , numeracion, tiposLeidos] = await Promise.all([
     idsCliente.length
       ? supabase
           .from("clientes")
@@ -124,7 +153,14 @@ export const GET = ruta("diario GET", async (req: Request) => {
           .in("id", idsProveedor)
           .then(({ data }) => data?.forEach((p) => nombres.set(p.id as string, p.razon_social as string)))
       : null,
+    // El número que se muestra es el del ejercicio 1/9–31/8 (ver ejercicios-server).
+    numeracionPorEjercicio(filas.map((f) => f.asiento_id as string)),
+    leerTiposDeComprobante(idsComprobante),
   ])
+  if (tiposLeidos.error) {
+    console.error("[diario] tipos de comprobante", tiposLeidos.error)
+    return NextResponse.json({ error: "No se pudo cargar el libro diario" }, { status: 500 })
+  }
 
   /* ── De líneas sueltas a asientos ─────────────────────────────────────── */
 
@@ -174,8 +210,6 @@ export const GET = ruta("diario GET", async (req: Request) => {
 
   const asientos = [...porAsiento.values()]
 
-  // El número que se muestra es el del ejercicio 1/9–31/8 (ver ejercicios-server).
-  const numeracion = await numeracionPorEjercicio(asientos.map((a) => a.id))
   for (const a of asientos) {
     const n = numeracion.get(a.id)
     if (n) {
@@ -190,21 +224,7 @@ export const GET = ruta("diario GET", async (req: Request) => {
    * comprobante. Sólo hace falta al bajar el libro, no en la pantalla.
    */
   if (completo) {
-    const idsComprobante = [
-      ...new Set(asientos.filter((a) => a.origen === "comprobante" && a.origenId).map((a) => a.origenId as string)),
-    ]
-    const tipos = new Map<string, "compra" | "venta">()
-    for (let i = 0; i < idsComprobante.length; i += 300) {
-      const { data, error } = await supabase
-        .from("comprobantes")
-        .select("id, tipo")
-        .in("id", idsComprobante.slice(i, i + 300))
-      if (error) {
-        console.error("[diario] tipos de comprobante", error)
-        return NextResponse.json({ error: "No se pudo cargar el libro diario" }, { status: 500 })
-      }
-      data?.forEach((c) => tipos.set(c.id as string, c.tipo as "compra" | "venta"))
-    }
+    const tipos = tiposLeidos.tipos
     for (const a of asientos) {
       const tipo = a.origenId ? tipos.get(a.origenId) : undefined
       if (a.origen === "comprobante" && tipo) a.comprobanteTipo = tipo
@@ -217,3 +237,27 @@ export const GET = ruta("diario GET", async (req: Request) => {
     cantidad: asientos.length,
   })
 })
+
+/**
+ * Compra o venta de cada comprobante, en lotes de 300 pedidos a la vez.
+ * Devuelve el error en vez de tirarlo para que la ruta conteste lo mismo que
+ * cuando esto se leía en fila.
+ */
+async function leerTiposDeComprobante(
+  ids: string[]
+): Promise<{ tipos: Map<string, "compra" | "venta">; error: unknown }> {
+  const tipos = new Map<string, "compra" | "venta">()
+  const respuestas = await Promise.all(
+    Array.from({ length: Math.ceil(ids.length / 300) }, (_, k) =>
+      supabase
+        .from("comprobantes")
+        .select("id, tipo")
+        .in("id", ids.slice(k * 300, k * 300 + 300))
+    )
+  )
+  for (const { data, error } of respuestas) {
+    if (error) return { tipos, error }
+    data?.forEach((c) => tipos.set(c.id as string, c.tipo as "compra" | "venta"))
+  }
+  return { tipos, error: null }
+}

@@ -106,7 +106,7 @@ export function EjerciciosPanel() {
 }
 
 function CambiarFechas({ ejercicio, onCerrar }: { ejercicio: Ejercicio; onCerrar: () => void }) {
-  const invalidar = useInvalidarAdmin()
+  const invalidar = useInvalidarAdmin({ maestros: true })
   const [paso, setPaso] = useState(0)
   const [campo, setCampo] = useState<"inicio" | "fin">("inicio")
   const [fecha, setFecha] = useState("")
@@ -138,7 +138,7 @@ function CambiarFechas({ ejercicio, onCerrar }: { ejercicio: Ejercicio; onCerrar
     setTrabajando(true)
     try {
       await enviar(true)
-      await invalidar()
+      void invalidar()
       toast.success(`Ejercicio ${proyeccion?.despues.find((e) => e.id === ejercicio.id)?.nombre} actualizado`)
       onCerrar()
     } catch (e) {

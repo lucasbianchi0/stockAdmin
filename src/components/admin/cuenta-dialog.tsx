@@ -35,6 +35,7 @@ const TIPOS = [
   { valor: "banco", etiqueta: "Banco" },
   { valor: "caja", etiqueta: "Caja" },
   { valor: "billetera", etiqueta: "Billetera" },
+  { valor: "tarjeta", etiqueta: "Tarjeta de crédito" },
 ] as const
 
 type Estado = {
@@ -99,7 +100,7 @@ export function CuentaDialog({
   const [f, setF] = useState<Estado>(VACIA)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const invalidar = useInvalidarAdmin()
+  const invalidar = useInvalidarAdmin({ maestros: true })
 
   useEffect(() => {
     if (!abierto) return

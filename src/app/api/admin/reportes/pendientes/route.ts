@@ -28,20 +28,35 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
   const tipo = url.searchParams.get("tipo") === "compra" ? "compra" : "venta"
   const esVenta = tipo === "venta"
 
-  const { data, error } = await supabase
-    .from("comprobantes_vigentes")
-    .select(
-      `id, clase, punto_venta, numero, fecha, fecha_vencimiento, fecha_estimada_pago,
-       moneda, tc, total, imputado, saldo, detalle, signo,
-       iva, percepcion_iva, percepcion_iibb_bsas, percepcion_iibb_caba, otros_impuestos,
-       cliente:clientes (id, razon_social),
-       proveedor:proveedores (id, razon_social)`
-    )
-    .eq("tipo", tipo)
-    .gt("saldo", 0)
-    .order("fecha_vencimiento", { ascending: true, nullsFirst: false })
-    .order("fecha", { ascending: true })
-    .limit(TOPE)
+  /*
+   * Las tres lecturas del reporte —los comprobantes con saldo, los pagos a
+   * cuenta sin aplicar y la cotización de hoy— no dependen una de otra: van a
+   * la vez y el reporte tarda lo que la más lenta, no la suma de las tres. Lo
+   * que explica cada una está más abajo, donde se usa.
+   */
+  const [{ data, error }, { ordenes, pagoDe }, { data: cot }] = await Promise.all([
+    supabase
+      .from("comprobantes_vigentes")
+      .select(
+        `id, clase, punto_venta, numero, fecha, fecha_vencimiento, fecha_estimada_pago,
+         moneda, tc, total, imputado, saldo, detalle, signo,
+         iva, percepcion_iva, percepcion_iibb_bsas, percepcion_iibb_caba, otros_impuestos,
+         cliente:clientes (id, razon_social),
+         proveedor:proveedores (id, razon_social)`
+      )
+      .eq("tipo", tipo)
+      .gt("saldo", 0)
+      .order("fecha_vencimiento", { ascending: true, nullsFirst: false })
+      .order("fecha", { ascending: true })
+      .limit(TOPE),
+    ordenesACuenta(esVenta),
+    supabase
+      .from("cotizaciones")
+      .select("venta, fecha, created_at")
+      .order("fecha", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
 
   if (error) {
     console.error("[reportes pendientes]", error)
@@ -50,7 +65,7 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
 
   const hoy = new Date().toISOString().slice(0, 10)
 
-  const filas = (data ?? []).map((f) => {
+  const filas: Array<Record<string, unknown> & { saldoArs: number; vencida: boolean }> = (data ?? []).map((f) => {
     const cliente = f.cliente as unknown as { id: string; razon_social: string } | null
     const proveedor = f.proveedor as unknown as { id: string; razon_social: string } | null
     const tc = f.tc === null ? null : Number(f.tc)
@@ -144,8 +159,57 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
        */
       vencida:
         signo === 1 && Boolean(f.fecha_vencimiento && (f.fecha_vencimiento as string) < hoy),
+      /** Un pago o cobro a cuenta sin aplicar, no un comprobante. */
+      aCuenta: false,
     }
   })
+
+  /*
+   * Los pagos (o cobros) a cuenta que todavía tienen saldo sin aplicar.
+   *
+   * Lo pidió el estudio: «tiene que traer todo saldo diferente a cero, así sea a
+   * favor del proveedor». Un anticipo que no se terminó de aplicar —Solution
+   * Box: se pagó $5.850.740,93 y se facturaron $5.817.274,41— es saldo de la
+   * cuenta corriente igual que una factura, con el signo al revés. Sin estas
+   * filas, la ficha decía «-$ 33.466,52» y este reporte no lo mostraba en
+   * ningún lado. (Se leen arriba, en `ordenesACuenta`.)
+   */
+  for (const o of ordenes) {
+    const pago = pagoDe.get(o.pago_id as string) as
+      | { tc: number | null; observaciones: string | null; cliente: unknown; proveedor: unknown }
+      | undefined
+    const nombre = (esVenta ? pago?.cliente : pago?.proveedor) as { razon_social: string } | null
+    const moneda = (o.moneda === "USD" ? "USD" : "ARS") as "ARS" | "USD"
+    const tc = pago?.tc === null || pago?.tc === undefined ? null : Number(pago.tc)
+    // Crédito a favor nuestro (o del cliente): resta, como una nota de crédito.
+    const saldo = -redondear(Number(o.saldo))
+    const saldoArs = moneda === "ARS" ? saldo : redondear(saldo * (tc ?? 0))
+    filas.push({
+      id: `a-cuenta-${o.pago_id}`,
+      entidad: nombre?.razon_social ?? "—",
+      clase: esVenta ? "COBRO A CTA" : "PAGO A CTA",
+      numero: "",
+      fecha: o.fecha as string,
+      fechaVencimiento: null,
+      fechaEstimadaPago: null,
+      moneda,
+      tc,
+      signo: -1,
+      neto: saldo,
+      impuestos: 0,
+      totalUsd: moneda === "USD" ? saldo : null,
+      tcEmision: moneda === "USD" ? tc : null,
+      totalArs: saldoArs,
+      total: saldo,
+      imputado: 0,
+      saldo,
+      saldoArs,
+      saldoUsd: moneda === "USD" ? saldo : tc && tc > 0 ? redondear(saldo / tc) : null,
+      detalle: pago?.observaciones ?? null,
+      vencida: false,
+      aCuenta: true,
+    })
+  }
 
   /*
    * La cotización de hoy, para el total.
@@ -154,15 +218,9 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
    * cada factura se valúa al suyo —el del día que se emitió— y recién la suma
    * de todas se lleva a dólares de hoy, que es la pregunta "cuánto es esto en
    * dólares si lo cobrara ahora". Por eso viaja también cuándo se actualizó:
-   * un número que cambia solo tiene que decir de cuándo es.
+   * un número que cambia solo tiene que decir de cuándo es. (Se lee arriba,
+   * junto con lo demás.)
    */
-  const { data: cot } = await supabase
-    .from("cotizaciones")
-    .select("venta, fecha, created_at")
-    .order("fecha", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
   const dolarHoy = Number(cot?.venta) || 0
 
   /*
@@ -192,3 +250,28 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
 
   return NextResponse.json({ filas, totales })
 })
+
+/**
+ * Los pagos (o cobros) a cuenta con saldo, y el recibo de cada uno.
+ *
+ * Son dos consultas en cadena —la segunda necesita los ids de la primera—,
+ * así que van juntas en una función para que el resto del reporte las pueda
+ * esperar en paralelo con las otras lecturas.
+ */
+async function ordenesACuenta(esVenta: boolean) {
+  const { data: ordenes } = await supabase
+    .from("ordenes_a_cuenta")
+    .select("pago_id, entidad_id, fecha, moneda, saldo")
+    .eq("entidad_tipo", esVenta ? "cliente" : "proveedor")
+    .gt("saldo", 0)
+    .order("fecha", { ascending: true })
+  const idsOrdenes = (ordenes ?? []).map((o) => o.pago_id as string)
+  const { data: pagosOrdenes } = idsOrdenes.length
+    ? await supabase
+        .from("pagos")
+        .select("id, tc, observaciones, cliente:clientes (razon_social), proveedor:proveedores (razon_social)")
+        .in("id", idsOrdenes)
+    : { data: [] as Record<string, unknown>[] }
+  const pagoDe = new Map((pagosOrdenes ?? []).map((p) => [p.id as string, p as unknown]))
+  return { ordenes: ordenes ?? [], pagoDe }
+}

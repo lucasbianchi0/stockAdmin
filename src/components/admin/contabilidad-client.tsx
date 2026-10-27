@@ -80,7 +80,14 @@ export function ContabilidadClient({ vista }: { vista: VistaContable }) {
   // una alerta que solo se ve entrando a la pantalla donde está el problema no
   // sirve de nada. Sin pendientes no se dibuja: un cartel permanente entrena a
   // no mirarlo.
-  const pendientes = usePendientes().data?.cantidad ?? 0
+  // Para el cartel alcanza con la cantidad: `?solo=cantidad` cuenta en la base
+  // en vez de traer y detallar cada documento en todas las vistas.
+  const pendientes =
+    useQuery({
+      queryKey: claves.url(`${URL_PENDIENTES}?solo=cantidad`),
+      queryFn: ({ signal }) =>
+        pedirJson<{ cantidad?: number }>(`${URL_PENDIENTES}?solo=cantidad`, { signal }),
+    }).data?.cantidad ?? 0
 
   return (
     <>

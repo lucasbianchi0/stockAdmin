@@ -45,7 +45,7 @@ export type FilaExtracto = {
 export type CabeceraExtracto = {
   id: string
   nombre: string
-  tipo: "caja" | "banco" | "billetera"
+  tipo: "caja" | "banco" | "billetera" | "tarjeta"
   moneda: Moneda
   banco: string | null
   numeroCuenta: string | null

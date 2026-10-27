@@ -169,7 +169,6 @@ export function validarComprobante(
     clase,
     fecha,
     fecha_vencimiento: fechaVencimiento,
-    fecha_estimada_pago: fechaONull(raw.fechaEstimadaPago),
     punto_venta: entero(raw.puntoVenta),
     numero: entero(raw.numero),
     cuenta_contable_id: cuentaDeCabecera,
@@ -207,6 +206,21 @@ export function validarComprobante(
     if (raw[campo] !== undefined) fila[columna] = importes[campo]
   }
 
+  /*
+   * El pago estimado se edita desde Pendientes y no desde el formulario de la
+   * factura, que no lo manda. Escribirlo siempre lo dejaba en null cada vez que
+   * alguien corregía el detalle de una factura: se planificaba la cobranza y
+   * se borraba sola. Ahora, solo si el pedido lo trae.
+   */
+  // La marca VISA: solo en compras y solo si el pedido la trae, para que la
+  // importación y la lectura de PDFs no la pisen ni dependan de la migración.
+  if (tipo === "compra" && typeof raw.tarjetaVisa === "boolean") {
+    fila.tarjeta_visa = raw.tarjetaVisa
+  }
+
+  if (raw.fechaEstimadaPago !== undefined) {
+    fila.fecha_estimada_pago = fechaONull(raw.fechaEstimadaPago)
+  }
   // El estado solo se acepta si el formulario lo mandó explícitamente. Sin él la
   // fila conserva el que ya tenía —o el default `confirmado` en un alta—, que es
   // lo que hace que nada de lo existente cambie de comportamiento.
@@ -217,8 +231,12 @@ export function validarComprobante(
   if (tipo === "venta") {
     fila.cliente_id = entidadId
     fila.proveedor_id = null
-    fila.vendedor_id =
-      typeof raw.vendedorId === "string" && raw.vendedorId ? raw.vendedorId : null
+    // Lo mismo con el vendedor: lo pone el alta desde un presupuesto y el
+    // formulario de edición no lo tiene. Sin la clave, se conserva.
+    if (raw.vendedorId !== undefined) {
+      fila.vendedor_id =
+        typeof raw.vendedorId === "string" && raw.vendedorId ? raw.vendedorId : null
+    }
   } else {
     fila.proveedor_id = entidadId
     fila.cliente_id = null
@@ -349,6 +367,8 @@ export function aComprobante(fila: FilaCompleta): Comprobante {
     cuentaContableNombre: fila.cuenta ? `${fila.cuenta.codigo} · ${fila.cuenta.nombre}` : null,
     detalle: (fila.detalle as string | null) ?? null,
     estado: (fila.estado as Comprobante["estado"]) ?? "confirmado",
+    // Sin la migración 20261026_02 la columna no viene: false.
+    tarjetaVisa: fila.tarjeta_visa === true,
     confirmadoAt: (fila.confirmado_at as string | null) ?? null,
     moneda: fila.moneda as Comprobante["moneda"],
     tc: numONull(fila.tc),

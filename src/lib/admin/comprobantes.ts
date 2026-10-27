@@ -380,6 +380,8 @@ export type Comprobante = {
    *   anulado     dejó de valer, pero conserva su número
    */
   estado: EstadoComprobante
+  /** Compra pagada con la tarjeta VISA: se cancela desde «Pago de tarjetas VISA». */
+  tarjetaVisa: boolean
   /** Cuándo se confirmó, que no es lo mismo que cuándo se cargó. */
   confirmadoAt: string | null
   moneda: Moneda

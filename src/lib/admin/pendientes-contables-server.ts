@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase"
 import type { DocumentoSinAsiento } from "@/lib/admin/asientos"
 import { TABLA_DE_TIPO, recordarCuentaEnFicha } from "@/lib/admin/entidad-de-comprobante"
 import { respuestaPeriodoCerrado } from "@/lib/admin/cierre-server"
+import { traerTodo } from "@/lib/admin/paginar"
 
 /**
  * La lista de trabajo de lo que no llegó al mayor, y cómo arreglarlo.
@@ -34,30 +35,59 @@ export type FiltroPendientes = {
 
 /* ── Listado ──────────────────────────────────────────────────────────────── */
 
+type FilaVista = {
+  origen: string
+  id: string
+  fecha: string
+  referencia: string
+  importe_ars: number | null
+  motivo: string
+}
+
 export async function listarPendientesContables(filtro: FiltroPendientes = {}) {
-  let consulta = supabase
-    .from("documentos_sin_asiento")
-    .select("origen, id, fecha, referencia, importe_ars, motivo")
-
-  if (filtro.origen) consulta = consulta.eq("origen", filtro.origen)
-
-  const { data, error } = await consulta
-    .order("fecha", { ascending: false })
-    .limit(LIMITE)
-
-  if (error) {
-    console.error("[pendientes contables]", error)
-    return NextResponse.json({ error: "No se pudieron cargar los pendientes" }, { status: 500 })
+  const armar = () => {
+    let consulta = supabase
+      .from("documentos_sin_asiento")
+      .select("origen, id, fecha, referencia, importe_ars, motivo")
+    if (filtro.origen) consulta = consulta.eq("origen", filtro.origen)
+    return consulta
   }
 
-  const filas = (data ?? []) as {
-    origen: string
-    id: string
-    fecha: string
-    referencia: string
-    importe_ars: number | null
-    motivo: string
-  }[]
+  let filas: FilaVista[]
+
+  if (!filtro.tipo) {
+    const { data, error } = await armar().order("fecha", { ascending: false }).limit(LIMITE)
+    if (error) {
+      console.error("[pendientes contables]", error)
+      return NextResponse.json({ error: "No se pudieron cargar los pendientes" }, { status: 500 })
+    }
+    filas = (data ?? []) as FilaVista[]
+  } else {
+    /*
+     * Con circuito, el tope va DESPUÉS de filtrar y no antes.
+     *
+     * La vista no expone si el documento es de compra o de venta, así que el
+     * filtro se aplica afuera. Antes se cortaba en 500 y recién ahí se
+     * filtraba: con muchos pendientes de un circuito, los del otro quedaban
+     * fuera de los primeros 500 y la pantalla decía que no había ninguno. Ahora
+     * se lee todo en páginas, se filtra y se corta.
+     */
+    const { filas: todas, error } = await traerTodo(() =>
+      armar()
+        .order("fecha", { ascending: false })
+        .order("origen", { ascending: true })
+        .order("id", { ascending: true })
+    )
+    let delCircuito: Set<string>
+    try {
+      if (error) throw error
+      delCircuito = await idsDelCircuito(todas as FilaVista[], filtro.tipo)
+    } catch (e) {
+      console.error("[pendientes contables]", e)
+      return NextResponse.json({ error: "No se pudieron cargar los pendientes" }, { status: 500 })
+    }
+    filas = (todas as FilaVista[]).filter((f) => delCircuito.has(f.id)).slice(0, LIMITE)
+  }
 
   // El detalle se busca en una consulta por tipo de origen, no una por fila: son
   // dos consultas para cualquier cantidad de pendientes.
@@ -97,14 +127,91 @@ export async function listarPendientesContables(filtro: FiltroPendientes = {}) {
     }
   })
 
-  // El filtro por circuito se aplica acá y no en la consulta: la vista no expone
-  // el tipo del documento, y traerlo hasta el detalle es más simple que
-  // reescribir la vista para una pantalla.
+  // El filtro por circuito ya se aplicó arriba, antes del tope. Se repite acá
+  // contra el detalle por si un documento cambió de circuito entre las dos
+  // lecturas: lo que se muestra tiene que coincidir con lo que dice la fila.
   if (filtro.tipo) {
     documentos = documentos.filter((d) => d.tipo === filtro.tipo)
   }
 
   return NextResponse.json({ documentos, cantidad: documentos.length })
+}
+
+/* ── Sólo la cantidad ─────────────────────────────────────────────────────── */
+
+/**
+ * Cuántos pendientes hay, sin armar la lista.
+ *
+ * Los carteles de aviso de cada pantalla sólo muestran el número, y para eso
+ * pedían la lista entera con el detalle de cada documento —tres consultas más
+ * por cartel—. Sin circuito alcanza con un `count` sobre la vista; con
+ * circuito hay que mirar el tipo de cada documento (la vista no lo tiene), pero
+ * sólo el id y sin el detalle.
+ */
+export async function contarPendientesContables(filtro: FiltroPendientes = {}) {
+  if (!filtro.tipo) {
+    let consulta = supabase
+      .from("documentos_sin_asiento")
+      .select("id", { count: "exact", head: true })
+    if (filtro.origen) consulta = consulta.eq("origen", filtro.origen)
+    const { count, error } = await consulta
+    if (error) {
+      console.error("[pendientes contables cantidad]", error)
+      return NextResponse.json({ error: "No se pudieron cargar los pendientes" }, { status: 500 })
+    }
+    return NextResponse.json({ cantidad: count ?? 0 })
+  }
+
+  const tipo = filtro.tipo
+  const { filas, error } = await traerTodo(() => {
+    let consulta = supabase
+      .from("documentos_sin_asiento")
+      .select("origen, id")
+      // Un movimiento no tiene circuito: con `tipo` nunca cuenta.
+      .neq("origen", "movimiento")
+    if (filtro.origen) consulta = consulta.eq("origen", filtro.origen)
+    return consulta.order("origen", { ascending: true }).order("id", { ascending: true })
+  })
+  try {
+    if (error) throw error
+    const delCircuito = await idsDelCircuito(filas as { origen: string; id: string }[], tipo)
+    return NextResponse.json({ cantidad: delCircuito.size })
+  } catch (e) {
+    console.error("[pendientes contables cantidad]", e)
+    return NextResponse.json({ error: "No se pudieron cargar los pendientes" }, { status: 500 })
+  }
+}
+
+/**
+ * De esos documentos, los que son del circuito pedido. Con la misma regla que
+ * el detalle: un comprobante de compra es compra y cualquier otro venta; un
+ * recibo de tipo `pago` es compra y cualquier otro venta. Un movimiento no es
+ * de ninguno. Los lotes van a la vez.
+ */
+async function idsDelCircuito(
+  filas: { origen: string; id: string }[],
+  tipo: "compra" | "venta"
+): Promise<Set<string>> {
+  const lotes = (ids: string[]) => {
+    const out: string[][] = []
+    for (let i = 0; i < ids.length; i += 200) out.push(ids.slice(i, i + 200))
+    return out
+  }
+  const leer = (tabla: "comprobantes" | "pagos", lote: string[]) => {
+    const valor = tabla === "comprobantes" ? "compra" : "pago"
+    const q = supabase.from(tabla).select("id").in("id", lote)
+    return (tipo === "compra" ? q.eq("tipo", valor) : q.neq("tipo", valor)).then(({ data, error }) => {
+      if (error) throw error
+      return (data ?? []).map((r) => r.id as string)
+    })
+  }
+  const comprobantes = filas.filter((f) => f.origen === "comprobante").map((f) => f.id)
+  const pagos = filas.filter((f) => f.origen === "pago").map((f) => f.id)
+  const resultados = await Promise.all([
+    ...lotes(comprobantes).map((l) => leer("comprobantes", l)),
+    ...lotes(pagos).map((l) => leer("pagos", l)),
+  ])
+  return new Set(resultados.flat())
 }
 
 type Extra = {

@@ -3,17 +3,7 @@
 import { useCallback, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  ArrowLeftRight,
-  ChevronRight,
-  FileInput,
-  Landmark,
-  Loader2,
-  Pencil,
-  Plus,
-  Receipt,
-  Wallet,
-} from "lucide-react"
+import { ArrowLeftRight, ChevronRight, CreditCard, FileInput, Landmark, Loader2, Pencil, Plus, Receipt, Wallet } from "lucide-react"
 import { toast } from "sonner"
 
 import { AvisoSinAsiento } from "@/components/admin/aviso-sin-asiento"
@@ -52,12 +42,14 @@ const ICONO = {
   caja: Wallet,
   banco: Landmark,
   billetera: Wallet,
+  tarjeta: CreditCard,
 } as const
 
 const TIPO_LABEL = {
   caja: "Caja",
   banco: "Banco",
   billetera: "Billetera",
+  tarjeta: "Tarjeta",
 } as const
 
 // `todas=1`: las dadas de baja también. Es la única lista que las muestra, y sin

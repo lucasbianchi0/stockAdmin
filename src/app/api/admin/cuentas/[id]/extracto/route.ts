@@ -45,53 +45,6 @@ export const GET = ruta("extracto GET", async (req: Request, ctx: { params: Prom
   const conciliado = url.searchParams.get("conciliado") ?? ""
   const q = url.searchParams.get("q")?.trim() ?? ""
 
-  /* ── La cuenta ────────────────────────────────────────────────────────── */
-
-  const { data: cuenta, error: errCuenta } = await supabase
-    .from("cuentas_saldo")
-    .select("id, nombre, tipo, moneda, banco, numero_cuenta, cbu, alias, saldo, saldo_inicial")
-    .eq("id", id)
-    .maybeSingle()
-
-  if (errCuenta) {
-    console.error("[extracto cuenta]", errCuenta)
-    return NextResponse.json({ error: "No se pudo cargar la cuenta" }, { status: 500 })
-  }
-  if (!cuenta) return NextResponse.json({ error: "La cuenta no existe" }, { status: 404 })
-
-  /* ── Lo que había antes del período ───────────────────────────────────── */
-
-  // El arranque del saldo corrido. Sin el `desde` no hay nada anterior y el
-  // arranque es el saldo inicial de la cuenta a secas.
-  let arranque = Number(cuenta.saldo_inicial ?? 0)
-
-  if (desde) {
-    // Todos, en páginas: Supabase corta en mil filas y el saldo de arranque
-    // de una cuenta con mucho movimiento quedaba mal sin avisar.
-    const { filas: previos, error: errPrevios } = await traerTodo(() =>
-      supabase
-        .from("movimientos")
-        .select("importe, signo")
-        .eq("cuenta_id", id)
-        .lt("fecha", desde)
-        .order("id", { ascending: true })
-    )
-
-    if (errPrevios) {
-      console.error("[extracto previos]", errPrevios)
-      return NextResponse.json({ error: "No se pudo calcular el saldo inicial" }, { status: 500 })
-    }
-
-    arranque = (previos ?? []).reduce(
-      (acc, m) => acc + Number(m.importe) * Number(m.signo),
-      arranque
-    )
-  }
-
-  arranque = redondear(arranque)
-
-  /* ── Las filas del período ────────────────────────────────────────────── */
-
   const armar = () => {
     let query = supabase
       .from("movimientos")
@@ -126,8 +79,63 @@ export const GET = ruta("extracto GET", async (req: Request, ctx: { params: Prom
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
   }
-  const { filas: data, truncado, error } = await traerTodo(armar, TOPE)
 
+  /*
+   * La cuenta, lo anterior al período y las filas del período, a la vez: las
+   * tres lecturas sólo dependen de los parámetros, y en fila el extracto
+   * tardaba la suma de las tres. Los errores se revisan en el mismo orden de
+   * antes.
+   */
+  const [resCuenta, resPrevios, resFilas] = await Promise.all([
+    /* ── La cuenta ──────────────────────────────────────────────────────── */
+    supabase
+      .from("cuentas_saldo")
+      .select("id, nombre, tipo, moneda, banco, numero_cuenta, cbu, alias, saldo, saldo_inicial")
+      .eq("id", id)
+      .maybeSingle(),
+
+    /* ── Lo que había antes del período ─────────────────────────────────── */
+    // Todos, en páginas: Supabase corta en mil filas y el saldo de arranque
+    // de una cuenta con mucho movimiento quedaba mal sin avisar. Sin el
+    // `desde` no hay nada anterior.
+    desde
+      ? traerTodo(() =>
+          supabase
+            .from("movimientos")
+            .select("importe, signo")
+            .eq("cuenta_id", id)
+            .lt("fecha", desde)
+            .order("id", { ascending: true })
+        )
+      : null,
+
+    /* ── Las filas del período ──────────────────────────────────────────── */
+    traerTodo(armar, TOPE),
+  ])
+
+  const { data: cuenta, error: errCuenta } = resCuenta
+  if (errCuenta) {
+    console.error("[extracto cuenta]", errCuenta)
+    return NextResponse.json({ error: "No se pudo cargar la cuenta" }, { status: 500 })
+  }
+  if (!cuenta) return NextResponse.json({ error: "La cuenta no existe" }, { status: 404 })
+
+  // El arranque del saldo corrido: el saldo inicial de la cuenta más todo lo
+  // anterior al período.
+  let arranque = Number(cuenta.saldo_inicial ?? 0)
+  if (resPrevios) {
+    if (resPrevios.error) {
+      console.error("[extracto previos]", resPrevios.error)
+      return NextResponse.json({ error: "No se pudo calcular el saldo inicial" }, { status: 500 })
+    }
+    arranque = resPrevios.filas.reduce(
+      (acc, m) => acc + Number(m.importe) * Number(m.signo),
+      arranque
+    )
+  }
+  arranque = redondear(arranque)
+
+  const { filas: data, truncado, error } = resFilas
   if (error) {
     console.error("[extracto movimientos]", error)
     return NextResponse.json({ error: "No se pudo cargar el extracto" }, { status: 500 })

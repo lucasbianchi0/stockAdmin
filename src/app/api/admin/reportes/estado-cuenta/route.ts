@@ -4,6 +4,7 @@ import { exigirModulo } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
 import { redondear } from "@/lib/admin/moneda"
+import { traerTodo } from "@/lib/admin/paginar"
 
 /**
  * Estado de cuenta de un cliente o un proveedor.
@@ -78,57 +79,70 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
   const tipoComprobante = esCliente ? "venta" : "compra"
   const tipoPago = esCliente ? "cobro" : "pago"
 
-  /* La ficha, para la cabecera del reporte. */
-  const { data: entidad } = await supabase
-    .from(tablaEntidad)
-    .select("id, razon_social, cuit")
-    .eq("id", entidadId)
-    .maybeSingle()
+  /*
+   * La ficha, los comprobantes y los pagos, a la vez.
+   *
+   * Son tres consultas que no dependen una de otra: en fila sumaban tres viajes
+   * a la base por reporte. Los dos listados van paginados con `traerTodo`
+   * porque Supabase corta en mil filas sin avisar, y un cliente con historia
+   * larga tenía un estado de cuenta que terminaba a mitad de camino con un
+   * saldo que no era el suyo. El orden por fecha e id es el que pide
+   * `traerTodo` para que las páginas no se pisen; el de la pantalla se arma
+   * más abajo.
+   */
+  const [{ data: entidad }, resComp, resPagos] = await Promise.all([
+    supabase
+      .from(tablaEntidad)
+      .select("id, razon_social, cuit")
+      .eq("id", entidadId)
+      .maybeSingle(),
+
+    /* Comprobantes.
+     *
+     * Sale de `comprobantes_vigentes` y no de la tabla por dos motivos. Trae el
+     * `saldo` —total menos lo imputado—, que es lo que dice si la factura está
+     * impaga. Y filtra por estado: un borrador no es deuda de nadie y estaba
+     * entrando al saldo corrido como si lo fuera. */
+    traerTodo(() => {
+      let q = supabase
+        .from("comprobantes_vigentes")
+        .select(
+          "id, clase, punto_venta, numero, fecha, moneda, tc, total, total_ars, total_usd, saldo, signo, detalle, observaciones"
+        )
+        .eq("tipo", tipoComprobante)
+        .eq(campo, entidadId)
+      if (desde) q = q.gte("fecha", desde)
+      if (hasta) q = q.lte("fecha", hasta)
+      return q.order("fecha", { ascending: true }).order("id", { ascending: true })
+    }),
+
+    /* Pagos, con sus imputaciones para saber cuánto aplicó a este circuito. */
+    traerTodo(() => {
+      let q = supabase
+        .from("pagos")
+        .select(
+          "id, fecha, moneda, tc, a_cuenta, observaciones, imputaciones (importe, comprobante:comprobantes (moneda, tc, signo))"
+        )
+        .eq("tipo", tipoPago)
+        .eq(campo, entidadId)
+      if (desde) q = q.gte("fecha", desde)
+      if (hasta) q = q.lte("fecha", hasta)
+      return q.order("fecha", { ascending: true }).order("id", { ascending: true })
+    }),
+  ])
 
   if (!entidad) return NextResponse.json({ error: "No encontrado" }, { status: 404 })
 
-  /* Comprobantes.
-   *
-   * Sale de `comprobantes_vigentes` y no de la tabla por dos motivos. Trae el
-   * `saldo` —total menos lo imputado—, que es lo que dice si la factura está
-   * impaga. Y filtra por estado: un borrador no es deuda de nadie y estaba
-   * entrando al saldo corrido como si lo fuera. */
-  let qComp = supabase
-    .from("comprobantes_vigentes")
-    .select(
-      "id, clase, punto_venta, numero, fecha, moneda, tc, total, total_ars, total_usd, saldo, signo, detalle, observaciones"
-    )
-    .eq("tipo", tipoComprobante)
-    .eq(campo, entidadId)
-
-  if (desde) qComp = qComp.gte("fecha", desde)
-  if (hasta) qComp = qComp.lte("fecha", hasta)
-
-  const { data: comprobantes, error: errComp } = await qComp
-
-  if (errComp) {
-    console.error("[estado-cuenta comprobantes]", errComp)
+  if (resComp.error) {
+    console.error("[estado-cuenta comprobantes]", resComp.error)
     return NextResponse.json({ error: "No se pudo armar el estado de cuenta" }, { status: 500 })
   }
-
-  /* Pagos, con sus imputaciones para saber cuánto aplicó a este circuito. */
-  let qPagos = supabase
-    .from("pagos")
-    .select(
-      "id, fecha, moneda, tc, a_cuenta, observaciones, imputaciones (importe, comprobante:comprobantes (moneda, tc, signo))"
-    )
-    .eq("tipo", tipoPago)
-    .eq(campo, entidadId)
-
-  if (desde) qPagos = qPagos.gte("fecha", desde)
-  if (hasta) qPagos = qPagos.lte("fecha", hasta)
-
-  const { data: pagos, error: errPagos } = await qPagos
-
-  if (errPagos) {
-    console.error("[estado-cuenta pagos]", errPagos)
+  if (resPagos.error) {
+    console.error("[estado-cuenta pagos]", resPagos.error)
     return NextResponse.json({ error: "No se pudo armar el estado de cuenta" }, { status: 500 })
   }
+  const comprobantes = resComp.filas
+  const pagos = resPagos.filas
 
   /* ── Armado de las filas ──────────────────────────────────────────────── */
 
@@ -209,9 +223,13 @@ export const GET = ruta("estado de cuenta", async (req: Request) => {
     const aCuentaArs =
       p.moneda === "ARS" ? aCuenta : redondear(aCuenta * (Number(p.tc) || 0))
 
+    // Un recibo que no movió plata —aplica facturas contra un anticipo o contra
+    // notas de crédito— no es un pago: es una APLICACIÓN, como la llama el
+    // estudio. Mostrarlo como «PAGO $ 0,00» hacía pensar que faltaba el importe.
+    const esAplicacion = redondear(enPesos + aCuentaArs) === 0
     filas.push({
       fecha: p.fecha as string,
-      tipo: esCliente ? "COBRO" : "PAGO",
+      tipo: esAplicacion ? "APLICACIÓN" : esCliente ? "COBRO" : "PAGO",
       comprobante: null,
       detalle: null,
       observaciones: (p.observaciones as string | null) ?? null,

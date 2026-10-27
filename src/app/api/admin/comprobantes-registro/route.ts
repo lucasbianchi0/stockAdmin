@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server"
 
-import { exigirModulo } from "@/lib/guard-api"
+import { exigirModulo, exigirModuloConUsuario } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
 import { ruta } from "@/lib/admin/ruta"
-import { createSupabaseServer } from "@/lib/supabase-server"
 import { respuestaPeriodoCerrado } from "@/lib/admin/cierre-server"
 
 /**
@@ -28,8 +27,9 @@ export const GET = ruta("registro GET", async (req: Request) => {
 })
 
 export const PUT = ruta("registro PUT", async (req: Request) => {
-  const sinPermiso = await exigirModulo("administracion")
-  if (sinPermiso) return sinPermiso
+  // Con el id de quien carga, de la misma lectura del token que el permiso.
+  const s = await exigirModuloConUsuario(["administracion"])
+  if (s.error) return s.error
   const { comprobanteId, fechaRegistro } = (await req.json().catch(() => ({}))) as {
     comprobanteId?: string
     fechaRegistro?: string | null
@@ -51,12 +51,11 @@ export const PUT = ruta("registro PUT", async (req: Request) => {
     return NextResponse.json({ error: "La fecha de registro no es válida" }, { status: 400 })
   }
 
-  const usuario = await (await createSupabaseServer()).auth.getUser()
   const { error } = await supabase.from("comprobante_registro").upsert({
     comprobante_id: comprobanteId,
     fecha_registro: fechaRegistro,
     updated_at: new Date().toISOString(),
-    updated_by: usuario.data.user?.id ?? null,
+    updated_by: s.usuarioId,
   })
   // Mover la fecha de registro mueve la factura de período: el cierre lo
   // frena si la de antes o la de después están cerradas.

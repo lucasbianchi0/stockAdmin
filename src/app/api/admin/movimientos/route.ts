@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
 
-import { exigirModulo } from "@/lib/guard-api"
+import { exigirModulo, exigirModuloConUsuario } from "@/lib/guard-api"
 import { supabase } from "@/lib/supabase"
-import { createSupabaseServer } from "@/lib/supabase-server"
 import { ruta } from "@/lib/admin/ruta"
 import { respuestaPeriodoCerrado } from "@/lib/admin/cierre-server"
 import { POR_PAGINA_MAX, escaparParaOr } from "@/lib/admin/entidades-server"
@@ -95,8 +94,9 @@ export const GET = ruta("movimientos GET", async (req: Request) => {
  *    peor que ninguna: hace desaparecer plata.
  */
 export const POST = ruta("movimientos POST", async (req: Request) => {
-  const sinPermiso = await exigirModulo("administracion")
-  if (sinPermiso) return sinPermiso
+  // Con el id de quien carga, de la misma lectura del token que el permiso.
+  const s = await exigirModuloConUsuario(["administracion"])
+  if (s.error) return s.error
 
   let body: unknown
   try {
@@ -114,11 +114,7 @@ export const POST = ruta("movimientos POST", async (req: Request) => {
   const fecha = esFechaISO(raw.fecha) ? raw.fecha : null
   if (!fecha) return NextResponse.json({ error: "La fecha es obligatoria" }, { status: 400 })
 
-  const supabaseUsuario = await createSupabaseServer()
-  const {
-    data: { user },
-  } = await supabaseUsuario.auth.getUser()
-  const creador = user?.id ?? null
+  const creador = s.usuarioId
 
   /* ── Transferencia entre cuentas propias ──────────────────────────────── */
 

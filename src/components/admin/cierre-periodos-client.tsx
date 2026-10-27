@@ -78,7 +78,7 @@ function EstadoActual({ estado }: { estado: EstadoCierre }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mes }),
       })
-      await invalidar()
+      void invalidar()
       toast.success(`Cerrado hasta ${nombreMes(mes)}`)
       setConfirmando(false)
     } catch (e) {
@@ -205,7 +205,7 @@ function Reabrir({ hasta, onCerrar }: { hasta: string; onCerrar: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ desde: desde === "todo" ? null : desde, motivo }),
       })
-      await invalidar()
+      void invalidar()
       toast.success(desde === "todo" ? "Se reabrieron todos los períodos" : `Reabierto desde ${nombreMes(desde)}`)
       onCerrar()
     } catch (e) {

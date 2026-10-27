@@ -108,10 +108,16 @@ async function enPaginas<T>(armar: (desde: number, hasta: number) => PromiseLike
   }
 }
 
+/**
+ * Los lotes van todos a la vez y no uno detrás del otro: cada uno es una
+ * consulta independiente, y en fila un subdiario de un año pagaba un viaje a
+ * la base por cada 200 comprobantes. `Promise.all` respeta el orden de los
+ * lotes, así que el resultado es el mismo que antes.
+ */
 async function enLotes<T>(ids: string[], leer: (lote: string[]) => Promise<T[]>): Promise<T[]> {
-  const out: T[] = []
-  for (let i = 0; i < ids.length; i += 200) out.push(...(await leer(ids.slice(i, i + 200))))
-  return out
+  const lotes: string[][] = []
+  for (let i = 0; i < ids.length; i += 200) lotes.push(ids.slice(i, i + 200))
+  return (await Promise.all(lotes.map(leer))).flat()
 }
 
 export const GET = ruta("subdiario GET", async (req: Request) => {
@@ -132,9 +138,13 @@ export const GET = ruta("subdiario GET", async (req: Request) => {
    * vista `comprobantes_fecha_registro` la resuelve —la del comprobante salvo
    * que se haya cargado otra—, y recién después se leen esas facturas.
    */
-  let comprobantes: Comprobante[]
+  /*
+   * Las facturas del período y los cobros con retenciones no dependen unas de
+   * otros: van a la vez. Cada una conserva su propio mensaje en el log para
+   * saber cuál falló.
+   */
   const registroDe = new Map<string, string>()
-  try {
+  const leerComprobantes = async (): Promise<Comprobante[]> => {
     const registros = await enPaginas<{ comprobante_id: string; fecha_registro: string }>((i, j) =>
       supabase
         .from("comprobantes_fecha_registro")
@@ -146,7 +156,7 @@ export const GET = ruta("subdiario GET", async (req: Request) => {
     )
     for (const r of registros) registroDe.set(r.comprobante_id, r.fecha_registro)
 
-    comprobantes = await enLotes([...registroDe.keys()], async (lote) => {
+    return enLotes([...registroDe.keys()], async (lote) => {
       const { data, error } = await supabase
         .from("comprobantes")
         .select(
@@ -161,9 +171,6 @@ export const GET = ruta("subdiario GET", async (req: Request) => {
       if (error) throw error
       return (data ?? []) as Comprobante[]
     })
-  } catch (error) {
-    console.error("[subdiario]", error)
-    return NextResponse.json({ error: "No se pudo armar el subdiario" }, { status: 500 })
   }
 
   /*
@@ -171,29 +178,36 @@ export const GET = ruta("subdiario GET", async (req: Request) => {
    * recibo y la que usa el estudio. Solo en ventas; en compras las retenciones
    * son las que practica Accedra y no van en este libro.
    */
-  let cobros: Cobro[] = []
-  if (tipo === "venta") {
-    try {
-      cobros = await enPaginas<Cobro>((i, j) =>
-        supabase
-          .from("pagos")
-          .select(
-            `id, fecha, moneda, tc, cliente_id,
-             retenciones:pago_retenciones (id, tipo, jurisdiccion, importe, numero_certificado)`
-          )
-          .eq("tipo", "cobro")
-          .gte("fecha", desde)
-          .lte("fecha", hasta)
-          .order("id")
-          .range(i, j)
-          .returns<Cobro[]>()
-      )
-      cobros = cobros.filter((c) => (c.retenciones ?? []).length > 0)
-    } catch (error) {
-      console.error("[subdiario retenciones]", error)
-      return NextResponse.json({ error: "No se pudo armar el subdiario" }, { status: 500 })
-    }
+  const leerCobros = async (): Promise<Cobro[]> => {
+    if (tipo !== "venta") return []
+    const todos = await enPaginas<Cobro>((i, j) =>
+      supabase
+        .from("pagos")
+        .select(
+          `id, fecha, moneda, tc, cliente_id,
+           retenciones:pago_retenciones (id, tipo, jurisdiccion, importe, numero_certificado)`
+        )
+        .eq("tipo", "cobro")
+        .gte("fecha", desde)
+        .lte("fecha", hasta)
+        .order("id")
+        .range(i, j)
+        .returns<Cobro[]>()
+    )
+    return todos.filter((c) => (c.retenciones ?? []).length > 0)
   }
+
+  const [resComprobantes, resCobros] = await Promise.allSettled([leerComprobantes(), leerCobros()])
+  if (resComprobantes.status === "rejected") {
+    console.error("[subdiario]", resComprobantes.reason)
+    return NextResponse.json({ error: "No se pudo armar el subdiario" }, { status: 500 })
+  }
+  if (resCobros.status === "rejected") {
+    console.error("[subdiario retenciones]", resCobros.reason)
+    return NextResponse.json({ error: "No se pudo armar el subdiario" }, { status: 500 })
+  }
+  const comprobantes = resComprobantes.value
+  const cobros = resCobros.value
 
   const ids = comprobantes.map((c) => c.id)
   const tabla = tipo === "venta" ? "clientes" : "proveedores"

@@ -204,6 +204,7 @@ const GRUPOS: Grupo[] = [
           },
           { name: "Facturas de compras", href: "/admin/compras", available: true },
           { name: "Pago de facturas", href: "/admin/pagos", available: true },
+          { name: "Pago de tarjetas VISA", href: "/admin/pagos/visa", available: true },
           {
             name: "Pendientes de pago",
             href: "/admin/proveedores/pendientes",

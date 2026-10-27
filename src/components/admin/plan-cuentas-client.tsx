@@ -69,7 +69,7 @@ export function PlanCuentasClient() {
   const archivo = useRef<HTMLInputElement>(null)
 
   const qc = useQueryClient()
-  const invalidar = useInvalidarAdmin()
+  const invalidar = useInvalidarAdmin({ maestros: true })
 
   // No comparte caché con `usePlanCuentas`: los selectores piden solo lo activo
   // e imputable, y acá hace falta el plan entero. Cualquier escritura invalida
@@ -119,7 +119,7 @@ export function PlanCuentasClient() {
           ? "El plan ya estaba al día"
           : `${r.altas} cuentas nuevas y ${r.cambios} actualizadas`
       )
-      await invalidar()
+      void invalidar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo importar")
     } finally {

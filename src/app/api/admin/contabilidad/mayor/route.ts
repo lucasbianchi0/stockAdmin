@@ -35,81 +35,98 @@ export const GET = ruta("mayor GET", async (req: Request) => {
     return NextResponse.json({ error: "Falta la cuenta" }, { status: 400 })
   }
 
-  /* ── La cuenta ────────────────────────────────────────────────────────── */
+  /*
+   * La cuenta, lo anterior al período y las líneas del período, a la vez: las
+   * tres lecturas sólo dependen de los parámetros, y en fila el mayor tardaba
+   * la suma de las tres. Los errores se revisan después en el mismo orden de
+   * antes, así la respuesta ante un problema es la misma.
+   */
+  const [resCuenta, resPrevios, resLineas] = await Promise.all([
+    /* ── La cuenta ──────────────────────────────────────────────────────── */
+    supabase
+      .from("plan_cuentas")
+      .select("id, codigo, nombre, tipo")
+      .eq("id", cuentaId)
+      .maybeSingle(),
 
-  const { data: cuenta, error: errCuenta } = await supabase
-    .from("plan_cuentas")
-    .select("id, codigo, nombre, tipo")
-    .eq("id", cuentaId)
-    .maybeSingle()
+    /* ── Lo anterior al período ─────────────────────────────────────────── */
+    // Todas: el saldo inicial de una cuenta con mucho movimiento (Caja,
+    // Créditos por ventas) pasa de mil líneas y se cortaba sin avisar.
+    // (La función `saldo_cuenta_hasta` de la migración 20261026_01 lo resuelve
+    // con una suma en la base; cuando esté aplicada, esto puede pasar a usarla.)
+    desde
+      ? traerTodo(() => {
+          let previos = supabase
+            .from("libro_diario")
+            .select("debe_ars, haber_ars")
+            .eq("cuenta_id", cuentaId)
+            .lt("fecha", desde)
+          if (auxiliar) previos = previos.eq("auxiliar_id", auxiliar)
+          return previos.order("linea_id", { ascending: true })
+        })
+      : null,
 
+    /* ── Las líneas del período ─────────────────────────────────────────── */
+    traerTodo(() => {
+      let query = supabase
+        .from("libro_diario")
+        .select(
+          `asiento_id, fecha, numero, origen, descripcion, detalle,
+           debe_ars, haber_ars, auxiliar_tipo, auxiliar_id`
+        )
+        .eq("cuenta_id", cuentaId)
+      if (desde) query = query.gte("fecha", desde)
+      if (hasta) query = query.lte("fecha", hasta)
+      if (auxiliar) query = query.eq("auxiliar_id", auxiliar)
+      return query
+        .order("fecha", { ascending: true })
+        .order("numero", { ascending: true })
+        .order("orden", { ascending: true })
+        .order("linea_id", { ascending: true })
+    }, TOPE),
+  ])
+
+  const { data: cuenta, error: errCuenta } = resCuenta
   if (errCuenta) {
     console.error("[mayor cuenta]", errCuenta)
     return NextResponse.json({ error: "No se pudo cargar la cuenta" }, { status: 500 })
   }
   if (!cuenta) return NextResponse.json({ error: "La cuenta no existe" }, { status: 404 })
 
-  /* ── Lo anterior al período ───────────────────────────────────────────── */
-
   let saldoInicial = 0
-
-  if (desde) {
-    // Todas: el saldo inicial de una cuenta con mucho movimiento (Caja,
-    // Créditos por ventas) pasa de mil líneas y se cortaba sin avisar.
-    const { filas: data, error } = await traerTodo(() => {
-      let previos = supabase
-        .from("libro_diario")
-        .select("debe_ars, haber_ars")
-        .eq("cuenta_id", cuentaId)
-        .lt("fecha", desde)
-      if (auxiliar) previos = previos.eq("auxiliar_id", auxiliar)
-      return previos.order("linea_id", { ascending: true })
-    })
-    if (error) {
-      console.error("[mayor previos]", error)
+  if (resPrevios) {
+    if (resPrevios.error) {
+      console.error("[mayor previos]", resPrevios.error)
       return NextResponse.json({ error: "No se pudo calcular el saldo inicial" }, { status: 500 })
     }
     saldoInicial = redondear(
-      (data ?? []).reduce((a, l) => a + Number(l.debe_ars) - Number(l.haber_ars), 0)
+      resPrevios.filas.reduce((a, l) => a + Number(l.debe_ars) - Number(l.haber_ars), 0)
     )
   }
 
-  /* ── Las líneas del período ───────────────────────────────────────────── */
-
-  const { filas: filasCrudas, truncado, error } = await traerTodo(() => {
-    let query = supabase
-      .from("libro_diario")
-      .select(
-        `asiento_id, fecha, numero, origen, descripcion, detalle,
-         debe_ars, haber_ars, auxiliar_tipo, auxiliar_id`
-      )
-      .eq("cuenta_id", cuentaId)
-    if (desde) query = query.gte("fecha", desde)
-    if (hasta) query = query.lte("fecha", hasta)
-    if (auxiliar) query = query.eq("auxiliar_id", auxiliar)
-    return query
-      .order("fecha", { ascending: true })
-      .order("numero", { ascending: true })
-      .order("orden", { ascending: true })
-      .order("linea_id", { ascending: true })
-  }, TOPE)
-
+  const { filas: filasCrudas, truncado, error } = resLineas
   if (error) {
     console.error("[mayor]", error)
     return NextResponse.json({ error: "No se pudo cargar el mayor" }, { status: 500 })
   }
 
-  /* ── Nombres del submayor ─────────────────────────────────────────────── */
+  /* ── Nombres del submayor y numeración por ejercicio ──────────────────── */
 
+  // Las dos salen de las líneas y no una de la otra: van juntas.
   const nombres = new Map<string, string>()
   const ids = [...new Set(filasCrudas.filter((f) => f.auxiliar_id).map((f) => f.auxiliar_id as string))]
-
-  if (ids.length) {
-    const tipo = filasCrudas.find((f) => f.auxiliar_id)?.auxiliar_tipo
-    const tabla = tipo === "proveedor" ? "proveedores" : "clientes"
-    const { data: ents } = await supabase.from(tabla).select("id, razon_social").in("id", ids)
-    ents?.forEach((e) => nombres.set(e.id as string, e.razon_social as string))
-  }
+  const tipoAux = filasCrudas.find((f) => f.auxiliar_id)?.auxiliar_tipo
+  const [ents, numeracion] = await Promise.all([
+    ids.length
+      ? supabase
+          .from(tipoAux === "proveedor" ? "proveedores" : "clientes")
+          .select("id, razon_social")
+          .in("id", ids)
+          .then((r) => r.data)
+      : null,
+    numeracionPorEjercicio(filasCrudas.map((l) => l.asiento_id as string)),
+  ])
+  ents?.forEach((e) => nombres.set(e.id as string, e.razon_social as string))
 
   let corrido = saldoInicial
   let debe = 0
@@ -136,7 +153,6 @@ export const GET = ruta("mayor GET", async (req: Request) => {
     }
   })
 
-  const numeracion = await numeracionPorEjercicio(filas.map((f) => f.asientoId))
   for (const f of filas) {
     const n = numeracion.get(f.asientoId)
     if (n) {

@@ -1,3 +1,4 @@
+import type { User } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
 import { createSupabaseServer } from "@/lib/supabase-server"
@@ -21,6 +22,35 @@ import { accesoDeUsuario, type Modulo } from "@/lib/permisos"
  *     ...
  *   }
  */
+/**
+ * Quién hace el pedido, leído del token y no del servidor de autenticación.
+ *
+ * `getClaims` y no `getUser`, por lo mismo que en lib/sesion-server.ts: las
+ * sesiones van firmadas con claves asimétricas (ES256), así que la firma se
+ * verifica acá con la clave pública —que queda en memoria— sin el viaje de
+ * red de `getUser`, un cuarto de segundo desde Argentina en CADA pedido de
+ * Administración. Los permisos salen del mismo `app_metadata` que miraba
+ * antes, que viaja adentro del token.
+ *
+ * Lo que se resigna, y se aceptó: un cambio de módulos o una baja tarda en
+ * notarse hasta que el token se renueva (una hora como mucho). Si el proyecto
+ * volviera a firmar con una clave simétrica, `getClaims` cae solo en `getUser`
+ * y esto sigue andando, nomás más lento.
+ */
+async function usuarioDelToken(): Promise<User | null> {
+  const supabase = await createSupabaseServer()
+  const { data, error } = await supabase.auth.getClaims()
+  const claims = data?.claims
+  if (error || !claims?.sub) return null
+  // Lo justo para `accesoDeUsuario` y para firmar lo que se escribe.
+  return {
+    id: claims.sub,
+    email: claims.email,
+    app_metadata: claims.app_metadata ?? {},
+    user_metadata: claims.user_metadata ?? {},
+  } as unknown as User
+}
+
 export async function exigirModulo(modulo: Modulo): Promise<NextResponse | null> {
   return exigirAlgunModulo([modulo])
 }
@@ -34,21 +64,48 @@ export async function exigirModulo(modulo: Modulo): Promise<NextResponse | null>
 export async function exigirAlgunModulo(
   modulos: Modulo[]
 ): Promise<NextResponse | null> {
-  const supabase = await createSupabaseServer()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const r = await exigirModuloConUsuario(modulos)
+  return r.error
+}
+
+/**
+ * El chequeo de módulo y el id de quien pide, de una sola lectura del token.
+ *
+ * Las altas necesitan el id para el `created_by`, y antes lo sacaban con un
+ * segundo `getUser()` después del chequeo: dos preguntas por la misma
+ * persona. `admin` viaja para las pantallas que muestran o esconden algo según
+ * quién mira (reabrir un período cerrado).
+ *
+ *   const s = await exigirModuloConUsuario(["administracion"])
+ *   if (s.error) return s.error
+ *   ... created_by: s.usuarioId
+ */
+export async function exigirModuloConUsuario(
+  modulos: Modulo[]
+): Promise<
+  | { error: NextResponse; usuarioId: null; admin: false }
+  | { error: null; usuarioId: string; admin: boolean }
+> {
+  const user = await usuarioDelToken()
 
   if (!user) {
-    return NextResponse.json({ error: "No autenticado" }, { status: 401 })
+    return {
+      error: NextResponse.json({ error: "No autenticado" }, { status: 401 }),
+      usuarioId: null,
+      admin: false,
+    }
   }
 
   const acceso = accesoDeUsuario(user)
   if (!acceso.admin && !modulos.some((m) => acceso.modulos.includes(m))) {
-    return NextResponse.json({ error: "Sin permiso para este módulo" }, { status: 403 })
+    return {
+      error: NextResponse.json({ error: "Sin permiso para este módulo" }, { status: 403 }),
+      usuarioId: null,
+      admin: false,
+    }
   }
 
-  return null
+  return { error: null, usuarioId: user.id, admin: acceso.admin }
 }
 
 /**
@@ -64,10 +121,7 @@ export async function exigirAdmin(
 ): Promise<
   { error: NextResponse; usuarioId: null } | { error: null; usuarioId: string }
 > {
-  const supabase = await createSupabaseServer()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await usuarioDelToken()
 
   if (!user) {
     return { error: NextResponse.json({ error: "No autenticado" }, { status: 401 }), usuarioId: null }

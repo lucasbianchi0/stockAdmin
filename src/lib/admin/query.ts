@@ -21,7 +21,11 @@ import { useCallback } from "react"
 /** Cuánto se considera fresco un dato. Dentro de esta ventana, volver a una
  *  pantalla la muestra al instante sin pedir nada; pasada, la muestra igual y
  *  la refresca por detrás. */
-const FRESCO_MS = 30_000
+// Dos minutos y no treinta segundos: los reportes contables (sumas y saldos, el
+// mayor, los subdiarios) son consultas pesadas, y con 30 s cada vuelta a la
+// pestaña los volvía a pedir aunque nadie hubiera cargado nada. Lo que sí cambia
+// por una carga propia se refresca igual: lo invalida la escritura.
+const FRESCO_MS = 2 * 60_000
 
 function crearCliente() {
   return new QueryClient({
@@ -85,22 +89,45 @@ export const claves = {
   cotizacion: ["admin", "cotizacion"] as const,
 }
 
-/** Todo lo del administrador menos la cotización: el dólar viene de afuera y
- *  ninguna escritura nuestra lo mueve. */
-const filtroInvalidacion = {
-  queryKey: claves.todo,
-  predicate: (q: { queryKey: readonly unknown[] }) => q.queryKey[1] !== claves.cotizacion[1],
-}
+/**
+ * Los maestros que una carga del día a día no mueve: el plan de cuentas y los
+ * ejercicios. Invalidarlos en cada factura o recibo los volvía a pedir enteros
+ * —el plan son 224 cuentas— sin que nada hubiera cambiado. Se refrescan solo
+ * cuando se los edita, con `{ maestros: true }`.
+ */
+const esMaestro = (k: readonly unknown[]) =>
+  k[1] === claves.planCuentas[1] ||
+  (k[1] === "url" &&
+    typeof k[2] === "string" &&
+    // La lista de ejercicios, no la ficha de uno: esa trae los totales del
+    // mes, que sí cambian con cada carga.
+    (k[2].startsWith("/api/admin/plan-cuentas") ||
+      k[2] === "/api/admin/ejercicios" ||
+      k[2].startsWith("/api/admin/ejercicios?")))
 
-/** Para después de guardar, anular o borrar: todo el administrador a refrescar. */
-export function useInvalidarAdmin(): () => Promise<void> {
+/** Todo lo del administrador menos la cotización —el dólar viene de afuera y
+ *  ninguna escritura nuestra lo mueve— y, salvo que se pida, los maestros. */
+const filtroInvalidacion = (maestros: boolean) => ({
+  queryKey: claves.todo,
+  predicate: (q: { queryKey: readonly unknown[] }) =>
+    q.queryKey[1] !== claves.cotizacion[1] && (maestros || !esMaestro(q.queryKey)),
+})
+
+/**
+ * Para después de guardar, anular o borrar: todo el administrador a refrescar.
+ * No hace falta esperarla: devuelve una promesa por si alguien la necesita,
+ * pero cerrar un diálogo después de `await invalidar()` lo dejaba trabado hasta
+ * que volvieran todas las consultas en pantalla.
+ */
+export function useInvalidarAdmin(opciones?: { maestros?: boolean }): () => Promise<void> {
   const qc = useQueryClient()
-  return useCallback(() => qc.invalidateQueries(filtroInvalidacion), [qc])
+  const maestros = Boolean(opciones?.maestros)
+  return useCallback(() => qc.invalidateQueries(filtroInvalidacion(maestros)), [qc, maestros])
 }
 
 /** Lo mismo, fuera de un componente. */
-export function invalidarAdmin(): Promise<void> {
-  return getQueryClient().invalidateQueries(filtroInvalidacion)
+export function invalidarAdmin(opciones?: { maestros?: boolean }): Promise<void> {
+  return getQueryClient().invalidateQueries(filtroInvalidacion(Boolean(opciones?.maestros)))
 }
 
 /* ── Los otros módulos ──────────────────────────────────────────────────────

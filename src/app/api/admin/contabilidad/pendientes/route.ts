@@ -1,6 +1,7 @@
 import { exigirModulo } from "@/lib/guard-api"
 import { ruta } from "@/lib/admin/ruta"
 import {
+  contarPendientesContables,
   listarPendientesContables,
   type FiltroPendientes,
 } from "@/lib/admin/pendientes-contables-server"
@@ -19,6 +20,10 @@ import {
  * Los filtros son para los carteles de cada módulo: la pantalla de facturas de
  * compra pregunta sólo por lo suyo, y así el aviso que muestra habla de lo que
  * el usuario está mirando en vez de un total que mezcla circuitos.
+ *
+ * `?solo=cantidad` contesta `{ cantidad }` y nada más: es lo único que usan
+ * esos carteles, y armar la lista con el detalle de cada documento para
+ * mostrar un número eran cuatro consultas donde alcanza con una.
  */
 export const GET = ruta("pendientes contables GET", async (req: Request) => {
   const sinPermiso = await exigirModulo("administracion")
@@ -34,5 +39,6 @@ export const GET = ruta("pendientes contables GET", async (req: Request) => {
   }
   if (tipo === "compra" || tipo === "venta") filtro.tipo = tipo
 
+  if (params.get("solo") === "cantidad") return contarPendientesContables(filtro)
   return listarPendientesContables(filtro)
 })

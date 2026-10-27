@@ -6,7 +6,7 @@ import {
   type Retencion,
   type RetencionDetalle,
 } from "@/lib/admin/cobros"
-import type { Moneda } from "@/lib/admin/moneda"
+import { redondear, type Moneda } from "@/lib/admin/moneda"
 
 /**
  * Mapeo de un recibo entre la base y la UI.
@@ -24,7 +24,10 @@ export const SELECT_COBRO = `
   *,
   cliente:clientes (id, razon_social),
   proveedor:proveedores (id, razon_social),
-  movimientos (id, cuenta_id, importe, moneda, referencia, cuenta:cuentas_financieras (id, nombre)),
+  movimientos (
+    id, cuenta_id, importe, moneda, importe_origen, moneda_origen, referencia,
+    cuenta:cuentas_financieras (id, nombre)
+  ),
   imputaciones (
     id, importe, comprobante_id, tc_aplicado,
     comprobante:comprobantes (id, clase, punto_venta, numero, moneda)
@@ -47,6 +50,8 @@ type Fila = Record<string, unknown> & {
     cuenta_id: string
     importe: number | string
     moneda: string
+    importe_origen: number | string | null
+    moneda_origen: string | null
     referencia: string | null
     cuenta?: { id: string; nombre: string } | null
   }[]
@@ -99,6 +104,9 @@ export function aCobro(fila: Fila): Cobro {
     cuentaNombre: m.cuenta?.nombre ?? null,
     importe: num(m.importe),
     moneda: m.moneda as Moneda,
+    importeOrigen:
+      m.importe_origen === null || m.importe_origen === undefined ? null : Number(m.importe_origen),
+    monedaOrigen: (m.moneda_origen as Moneda | null) ?? null,
     referencia: m.referencia,
   }))
 
@@ -135,7 +143,11 @@ export function aCobro(fila: Fila): Cobro {
     tc: fila.tc === null || fila.tc === undefined ? null : Number(fila.tc),
     retenciones,
     totalRetenciones: sumaRetenciones(retenciones),
-    totalMedios: medios.reduce((a, m) => a + m.importe, 0),
+    // En la moneda del recibo, que es como se muestra y como cuadra: un cobro
+    // en dólares acreditado en una cuenta en pesos guarda los pesos en
+    // `importe` y los dólares en `importe_origen`. Sumar `importe` mezclaba
+    // monedas y daba un total en "USD" que en realidad eran pesos.
+    totalMedios: redondear(medios.reduce((a, m) => a + (m.importeOrigen ?? m.importe), 0)),
     // Con signo: lo que el recibo cancela de verdad es la factura menos la nota
     // de crédito que se le aplicó, no la suma de las dos.
     totalImputado: imputaciones.reduce((a, i) => a + signoDeClase(i.clase) * i.importe, 0),

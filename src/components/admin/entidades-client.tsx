@@ -38,6 +38,7 @@ import {
 import { formatearCuit } from "@/lib/admin/cuit"
 import { RESUMEN_VACIO, type EntidadConResumen } from "@/lib/admin/detalle"
 import {
+  PROVINCIAS,
   type CategoriaEntidad,
   type Cliente,
   type TipoEntidad,
@@ -104,15 +105,17 @@ export function EntidadesClient({
 
   const [estado, setEstado] = useState<Estado>("activos")
   const [categoriaId, setCategoriaId] = useState("")
+  const [provincia, setProvincia] = useState("")
   const [conDeuda, setConDeuda] = useState(false)
 
   const filtros = useMemo(
     () => ({
       estado,
       categoriaId: categoriaId || undefined,
+      provincia: provincia || undefined,
       conDeuda: !esProveedor && conDeuda ? "1" : undefined,
     }),
-    [esProveedor, estado, categoriaId, conDeuda]
+    [esProveedor, estado, categoriaId, provincia, conDeuda]
   )
 
   const tabla = useTablaAdmin<EntidadConResumen>({
@@ -261,6 +264,24 @@ export function EntidadesClient({
               </option>
             ))}
             <option value="sin">— Sin categoría —</option>
+          </select>
+
+          {/* Hay proveedores y clientes en varias provincias, y la pregunta
+              «¿a quién le compramos en Mendoza?» importa para las percepciones
+              y retenciones de IIBB de cada jurisdicción. La API ya filtraba;
+              faltaba el selector. */}
+          <select
+            value={provincia}
+            onChange={(e) => setProvincia(e.target.value)}
+            aria-label="Filtrar por provincia"
+            className="h-9 max-w-[220px] rounded-lg border border-line-strong bg-surface px-3 text-[12.5px] text-ink"
+          >
+            <option value="">Todas las provincias</option>
+            {PROVINCIAS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
           </select>
 
           {!esProveedor && (
@@ -508,8 +529,12 @@ function Fila({
             </Badge>
           )}
         </div>
-        {c.cuit && (
-          <span className="num text-[11.5px] text-ink-muted">{formatearCuit(c.cuit)}</span>
+        {(c.cuit || c.provincia) && (
+          <span className="text-[11.5px] text-ink-muted">
+            {c.cuit && <span className="num">{formatearCuit(c.cuit)}</span>}
+            {c.cuit && c.provincia && " · "}
+            {c.provincia}
+          </span>
         )}
       </TableCell>
 

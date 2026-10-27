@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, FileText, Loader2, Plus, Trash2, X } from "lucide-react"
-import { toast } from "sonner"
 
 import { CampoMoneda } from "@/components/admin/campo-moneda"
 import { MarcoFormulario } from "@/components/admin/marco-formulario"
@@ -32,7 +31,7 @@ import {
   numeroEditable,
   type Moneda,
 } from "@/lib/admin/moneda"
-import { sumarDias } from "@/lib/admin/fecha"
+import { hoyArgentina, sumarDias } from "@/lib/admin/fecha"
 import type { Impacto } from "@/lib/admin/impacto"
 import { useInvalidarAdmin } from "@/lib/admin/query"
 import { useCotizacion } from "@/lib/admin/use-cotizacion"
@@ -69,6 +68,7 @@ type Borrador = {
   entidadId: string
   clienteNombre: string
   clase: string
+  tarjetaVisa: boolean
   fecha: string
   /** Vacía = la misma que `fecha`. Se guarda aparte (ver comprobantes-registro). */
   fechaRegistro: string
@@ -96,7 +96,9 @@ type Borrador = {
   observaciones: string
 }
 
-const hoyISO = () => new Date().toISOString().slice(0, 10)
+// En Argentina: con `toISOString` después de las 21 h la fecha propuesta era
+// la de mañana.
+const hoyISO = () => hoyArgentina()
 
 /** Importe · alícuota · IVA · cuenta. La cuenta es la más ancha porque su
  *  rótulo es texto («809 · Ventas de Servicios») y los importes no. No gravado y
@@ -108,6 +110,7 @@ const VACIO = (): Borrador => ({
   entidadId: "",
   clienteNombre: "",
   clase: "FCA",
+  tarjetaVisa: false,
   fecha: hoyISO(),
   fechaRegistro: "",
   fechaVencimiento: "",
@@ -171,6 +174,17 @@ function aBorrador(c: Comprobante): Borrador {
   if (sinCuentaPropia && c.cuentaContableId) {
     netos[0] = { ...netos[0], cuentaContableId: c.cuentaContableId }
   }
+  /*
+   * Y los renglones que sí quedaron sin cuenta, con la de la cabecera, que es a
+   * la que van hoy. En una factura mixta —un renglón con cuenta propia y otro
+   * sin— guardar sin tocar nada cambiaba la cabecera por la del renglón con
+   * cuenta, y el otro renglón pasaba a imputarse ahí sin que nadie lo eligiera.
+   */
+  if (c.cuentaContableId) {
+    for (let i = 0; i < netos.length; i++) {
+      if (!netos[i].cuentaContableId) netos[i] = { ...netos[i], cuentaContableId: c.cuentaContableId }
+    }
+  }
 
   return {
     // Un comprobante tiene cliente o proveedor, nunca los dos: el que no
@@ -180,6 +194,7 @@ function aBorrador(c: Comprobante): Borrador {
     entidadId: c.clienteId ?? c.proveedorId ?? "",
     clienteNombre: c.clienteNombre ?? c.proveedorNombre ?? "",
     clase: c.clase,
+    tarjetaVisa: c.tarjetaVisa,
     fecha: c.fecha,
     fechaRegistro: "",
     fechaVencimiento: c.fechaVencimiento ?? "",
@@ -189,9 +204,11 @@ function aBorrador(c: Comprobante): Borrador {
     tc: c.moneda === "USD" ? numeroEditable(c.tc) : "",
     netos,
     noGravado: String(c.noGravado || ""),
-    cuentaNoGravadoId: c.cuentaNoGravadoId ?? "",
+    // Sin cuenta propia iban a la de la cabecera: se deja escrita para que
+    // seguir yendo ahí no dependa de cuál quede primera al guardar.
+    cuentaNoGravadoId: c.cuentaNoGravadoId ?? (c.noGravado ? (c.cuentaContableId ?? "") : ""),
     exento: String(c.exento || ""),
-    cuentaExentoId: c.cuentaExentoId ?? "",
+    cuentaExentoId: c.cuentaExentoId ?? (c.exento ? (c.cuentaContableId ?? "") : ""),
     percepcionIva: String(c.percepcionIva || ""),
     percepcionIibbBsas: String(c.percepcionIibbBsas || ""),
     percepcionIibbCaba: String(c.percepcionIibbCaba || ""),
@@ -210,6 +227,8 @@ export function ComprobanteDialog({
   tipo,
   comprobante,
   embebido = false,
+  registroInicial,
+  claseInicial,
   onCerrar,
   onGuardado,
 }: {
@@ -222,14 +241,34 @@ export function ComprobanteDialog({
    *  pantalla: sin fondo, sin cruz, y «Cancelar» pasa a ser «Limpiar» porque no
    *  hay nada atrás a donde volver. Ver `MarcoFormulario`. */
   embebido?: boolean
+  /** La fecha de registro con la que arranca un alta. La pantalla de carga le
+   *  pasa la última que se usó: las facturas se cargan en tanda y casi todas
+   *  van al mismo mes del subdiario. */
+  registroInicial?: string | null
+  /** La clase con la que arranca un alta: «EXA» en el gasto bancario de
+   *  Otros movimientos. */
+  claseInicial?: string
   onCerrar: () => void
   /** El tercer argumento es el resumen de lo que se movió en otros módulos.
    *  Llega sólo cuando el alta quedó confirmada: un borrador no mueve nada. */
-  onGuardado: (c: Comprobante, esNuevo: boolean, impacto: Impacto | null) => void
+  onGuardado: (
+    c: Comprobante,
+    esNuevo: boolean,
+    impacto: Impacto | null,
+    /** La fecha de registro elegida, o null si siguió a la de la factura. */
+    registro: string | null
+  ) => void
 }) {
   const [f, setF] = useState<Borrador>(VACIO)
   /** La fecha de registro que ya tenía, para saber si hay que borrarla. */
   const [registroOriginal, setRegistroOriginal] = useState<string | null>(null)
+  /**
+   * Si la fecha de registro la eligió alguien o sigue a la del comprobante.
+   * El campo muestra siempre la fecha que define el mes del subdiario: antes
+   * arrancaba vacío y, guardada la factura, volvía a quedar vacío, que se leía
+   * como «se borró la fecha de carga».
+   */
+  const [registroPropio, setRegistroPropio] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -243,7 +282,13 @@ export function ComprobanteDialog({
 
   useEffect(() => {
     if (!abierto) return
-    setF(comprobante ? aBorrador(comprobante) : VACIO())
+    const inicial = !comprobante && registroInicial ? registroInicial : ""
+    setF(
+      comprobante
+        ? aBorrador(comprobante)
+        : { ...VACIO(), fechaRegistro: inicial, ...(claseInicial && { clase: claseInicial }) }
+    )
+    setRegistroPropio(Boolean(inicial))
     setError(null)
     setRegistroOriginal(null)
     if (!comprobante) return
@@ -254,12 +299,16 @@ export function ComprobanteDialog({
       .then((d: { fechaRegistro: string | null } | null) => {
         if (!vigente || !d?.fechaRegistro) return
         setRegistroOriginal(d.fechaRegistro)
-        setF((prev) => ({ ...prev, fechaRegistro: d.fechaRegistro ?? "" }))
+        // Si alguien ya tipeó una fecha mientras llegaba esta, gana la tipeada.
+        setRegistroPropio(true)
+        setF((prev) => (prev.fechaRegistro ? prev : { ...prev, fechaRegistro: d.fechaRegistro ?? "" }))
       })
       .catch(() => {})
     return () => {
       vigente = false
     }
+    // `registroInicial` se lee solo al abrir: cambiarlo no reinicia el formulario.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierto, comprobante])
 
   useEffect(() => {
@@ -386,8 +435,30 @@ export function ComprobanteDialog({
     setError(null)
 
     const { puntoVenta, numero } = parsearNumero(f.numeroCompleto)
+    // Solo la que alguien eligió: si sigue a la de la factura no hace falta
+    // guardarla aparte (la API ignora la igual a la del comprobante).
+    const registroEnviado = registroPropio && f.fechaRegistro ? f.fechaRegistro : null
 
     try {
+      /*
+       * Al editar, la fecha de registro se guarda ANTES que la factura. Un
+       * borrador de un mes cerrado que se confirma con una fecha de registro
+       * nueva necesita esa fecha puesta para que el cierre lo deje pasar; al
+       * revés, la confirmación rebotaba y la fecha nunca llegaba a guardarse.
+       * En el alta viaja dentro del POST (ver `crearComprobante`).
+       */
+      if (editando && comprobante && registroEnviado !== registroOriginal) {
+        const r = await fetch("/api/admin/comprobantes-registro", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ comprobanteId: comprobante.id, fechaRegistro: registroEnviado }),
+        })
+        if (!r.ok) {
+          const motivo = ((await r.json().catch(() => ({}))) as { error?: string }).error
+          throw new Error(motivo ?? "No se pudo guardar la fecha de registro")
+        }
+      }
+
       const res = await fetch(
         editando ? `/api/admin/${recurso}/${comprobante.id}` : `/api/admin/${recurso}`,
         {
@@ -423,45 +494,26 @@ export function ComprobanteDialog({
             cuentaNoGravadoId: f.cuentaNoGravadoId || null,
             cuentaExentoId: f.cuentaExentoId || null,
             condicionPago: f.condicionPago,
+            ...(esCompra && { tarjetaVisa: f.tarjetaVisa }),
             observaciones: f.observaciones,
             // En el alta viaja con la factura: si su fecha cae en un mes
             // cerrado, la API la confirma recién después de guardarle esta
             // fecha (ver `crearComprobante`). El PUT de abajo queda igual.
-            ...(!editando && { fechaRegistro: f.fechaRegistro || null }),
+            ...(!editando && { fechaRegistro: registroEnviado }),
           }),
         }
       )
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "No se pudo guardar")
 
-      // La fecha de registro va aparte y después: guardarla no toca la factura,
-      // así que no le regenera el asiento. Si falla, la factura ya quedó bien
-      // guardada y se avisa sin deshacer nada.
-      const idGuardado = (data.comprobante as Comprobante | undefined)?.id
-      if (idGuardado && (f.fechaRegistro || registroOriginal)) {
-        const r = await fetch("/api/admin/comprobantes-registro", {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ comprobanteId: idGuardado, fechaRegistro: f.fechaRegistro || null }),
-        })
-        if (!r.ok) {
-          // Un 409 es el cierre de períodos: su mensaje dice qué pasó y es lo
-          // que la persona tiene que leer.
-          const motivo = r.status === 409 ? ((await r.json().catch(() => ({}))) as { error?: string }).error : null
-          toast.error(
-            motivo
-              ? `La factura se guardó, pero no la fecha de registro. ${motivo}`
-              : "La factura se guardó, pero no la fecha de registro. Volvé a abrirla para cargarla."
-          )
-        }
-      }
       // Acá y no en cada pantalla que abre el formulario: una factura mueve la
       // cuenta corriente, los pendientes de cobro y el mayor.
       void invalidar()
       onGuardado(
         data.comprobante as Comprobante,
         !editando,
-        (data.impacto as Impacto | null) ?? null
+        (data.impacto as Impacto | null) ?? null,
+        registroEnviado
       )
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar")
@@ -509,7 +561,30 @@ export function ComprobanteDialog({
 
       <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
         {/* ── Quién y qué ──────────────────────────────────────────────── */}
-        <Seccion titulo="Comprobante">
+        <Seccion
+          titulo="Comprobante"
+          accion={
+            esCompra && (
+              // Arriba a la derecha, donde la marcó el estudio en su boceto: se
+              // decide antes de cargar nada y cambia por dónde se paga después.
+              <button
+                type="button"
+                aria-pressed={f.tarjetaVisa}
+                onClick={() => set("tarjetaVisa", !f.tarjetaVisa)}
+                disabled={guardando}
+                title="Se paga desde «Pago de tarjetas VISA», cuando se debita el resumen"
+                className={cn(
+                  "rounded-md border px-3 py-1 text-[12px] font-semibold tracking-[0.04em] transition-colors",
+                  f.tarjetaVisa
+                    ? "border-brand-600 bg-brand-600 text-white"
+                    : "border-line bg-surface text-ink-muted hover:border-line-strong hover:text-ink"
+                )}
+              >
+                {f.tarjetaVisa ? "✓ VISA" : "VISA"}
+              </button>
+            )
+          }
+        >
           <SelectorEntidad
             id="cliente"
             tipo={esCompra ? "proveedor" : "cliente"}
@@ -625,14 +700,20 @@ export function ComprobanteDialog({
             <Campo
               id="fechaRegistro"
               rotulo="Fecha de registro"
-              opcional
-              ayuda="Si se registra en otro mes. Define en qué subdiario de IVA entra."
+              ayuda={
+                registroPropio
+                  ? "Define en qué mes del subdiario de IVA entra."
+                  : "La misma de la factura. Cambiala si se registra en otro mes."
+              }
             >
               <Input
                 id="fechaRegistro"
                 type="date"
-                value={f.fechaRegistro}
-                onChange={(e) => set("fechaRegistro", e.target.value)}
+                value={registroPropio ? f.fechaRegistro : f.fecha}
+                onChange={(e) => {
+                  setRegistroPropio(Boolean(e.target.value))
+                  set("fechaRegistro", e.target.value)
+                }}
                 className="num"
                 disabled={guardando}
               />
@@ -1126,10 +1207,22 @@ export function ComprobanteDialog({
 
 /* ── Piezas ───────────────────────────────────────────────────────────────── */
 
-function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+function Seccion({
+  titulo,
+  accion,
+  children,
+}: {
+  titulo: string
+  /** Algo a la derecha del título, como la marca VISA. */
+  accion?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
     <section className="space-y-4">
-      <p className="eyebrow">{titulo}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="eyebrow">{titulo}</p>
+        {accion}
+      </div>
       {children}
     </section>
   )

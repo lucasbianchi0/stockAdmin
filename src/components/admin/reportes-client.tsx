@@ -77,6 +77,8 @@ type Pendiente = {
   vencida: boolean
   /** Cuándo se calcula que se va a cobrar (o pagar). Se edita desde acá mismo. */
   fechaEstimadaPago: string | null
+  /** Un pago o cobro a cuenta con saldo sin aplicar: crédito, va en negativo. */
+  aCuenta?: boolean
 }
 
 type Totales = {
@@ -238,10 +240,16 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
               <TableRow key={f.id} className={cn(f.vencida && "bg-danger-soft/40")}>
                 <TableCell className="font-medium text-ink">{f.entidad}</TableCell>
                 <TableCell>
-                  <Badge tone={f.signo === -1 ? "warning" : "neutral"} size="sm">
+                  <Badge tone={f.aCuenta ? "success" : f.signo === -1 ? "warning" : "neutral"} size="sm">
                     {f.clase}
                   </Badge>
-                  <span className="num ml-2 text-[12px] text-ink-secondary">{f.numero}</span>
+                  {f.aCuenta ? (
+                    <span className="ml-2 text-[11.5px] text-ink-muted" title={f.detalle ?? undefined}>
+                      saldo a favor sin aplicar
+                    </span>
+                  ) : (
+                    <span className="num ml-2 text-[12px] text-ink-secondary">{f.numero}</span>
+                  )}
                 </TableCell>
                 <TableCell className="num text-ink-secondary">{fechaCorta(f.fecha)}</TableCell>
                 <TableCell>
@@ -276,11 +284,15 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
                   )}
                 </TableCell>
                 <TableCell>
-                  <CeldaPagoEstimado
-                    id={f.id}
-                    recurso={esVenta ? "ventas" : "compras"}
-                    valor={f.fechaEstimadaPago}
-                  />
+                  {f.aCuenta ? (
+                    <span className="text-[12px] text-ink-faint">—</span>
+                  ) : (
+                    <CeldaPagoEstimado
+                      id={f.id}
+                      recurso={esVenta ? "ventas" : "compras"}
+                      valor={f.fechaEstimadaPago}
+                    />
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -342,7 +354,7 @@ function CeldaPagoEstimado({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ fechaEstimadaPago: v || null }),
       })
-      await invalidar()
+      void invalidar()
     } catch {
       setFallo(true)
       setLocal(valor ?? "")

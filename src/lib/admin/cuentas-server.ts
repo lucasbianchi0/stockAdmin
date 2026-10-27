@@ -47,7 +47,7 @@ export function aCuentaDetalle(fila: Fila, tieneMovimientos: boolean): CuentaFin
   }
 }
 
-const TIPOS = ["caja", "banco", "billetera"] as const
+const TIPOS = ["caja", "banco", "billetera", "tarjeta"] as const
 
 const texto = (v: unknown, max = 120): string | null => {
   if (typeof v !== "string") return null

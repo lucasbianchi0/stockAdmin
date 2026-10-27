@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr"
+import type { User } from "@supabase/supabase-js"
 import { NextResponse, type NextRequest } from "next/server"
 
 import { accesoDeUsuario, esPublica, homeDe, puede } from "@/lib/permisos"
@@ -69,7 +70,27 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  const { data: { user } } = await supabase.auth.getUser()
+  /*
+   * `getClaims` y no `getUser`: la firma del token se verifica acá con la clave
+   * pública (ES256, ver lib/sesion-server.ts), sin el viaje al servidor de
+   * autenticación que `getUser` hacía en CADA pedido —páginas y API—.
+   *
+   * La cookie se sigue renovando: `getClaims` pasa por `getSession`, que
+   * refresca el token cuando está por vencer y lo escribe con el `setAll` de
+   * arriba. Lo que se resigna es lo mismo que en lib/guard-api.ts: un cambio de
+   * módulos o una sesión revocada se notan recién cuando el token se renueva
+   * (una hora como mucho).
+   */
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims()
+  const claims = claimsError ? null : claimsData?.claims
+  const user: User | null = claims?.sub
+    ? ({
+        id: claims.sub,
+        email: claims.email,
+        app_metadata: claims.app_metadata ?? {},
+        user_metadata: claims.user_metadata ?? {},
+      } as unknown as User)
+    : null
   const esApi = pathname.startsWith("/api/")
 
   // ── 1. Sesión ────────────────────────────────────────────────────────────

@@ -108,7 +108,7 @@ export type ImputacionCobro = {
 export type CuentaFinanciera = {
   id: string
   nombre: string
-  tipo: "caja" | "banco" | "billetera"
+  tipo: "caja" | "banco" | "billetera" | "tarjeta"
   moneda: Moneda
   saldo?: number
   banco?: string | null
@@ -135,7 +135,7 @@ export type CuentaFinanciera = {
 export type CuentaFinancieraDetalle = {
   id: string
   nombre: string
-  tipo: "caja" | "banco" | "billetera"
+  tipo: "caja" | "banco" | "billetera" | "tarjeta"
   moneda: Moneda
   banco: string | null
   numeroCuenta: string | null
@@ -221,8 +221,15 @@ export type Cobro = {
     id: string
     cuentaId: string
     cuentaNombre: string | null
+    /** En la moneda de la cuenta, que es lo que se movió en el banco. */
     importe: number
     moneda: Moneda
+    /** Lo que se cargó en el recibo, en la moneda del recibo, cuando la cuenta
+     *  está en otra. Es lo que el formulario tiene que volver a mostrar al
+     *  editar: precargar `importe` en un recibo en dólares cobrado en pesos
+     *  ponía los pesos en el campo de dólares. `null` sin conversión. */
+    importeOrigen: number | null
+    monedaOrigen: Moneda | null
     referencia: string | null
   }[]
   /** De qué órdenes a cuenta salió lo que este recibo no pagó en efectivo. */

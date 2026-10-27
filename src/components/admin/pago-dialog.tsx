@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { formatearNumero } from "@/lib/admin/comprobantes"
+import { formatearNumero, signoDeClase } from "@/lib/admin/comprobantes"
 import {
   JURISDICCIONES,
   JURISDICCION_LABEL,
@@ -38,9 +38,8 @@ import {
   numeroEditable,
   type Moneda,
 } from "@/lib/admin/moneda"
-import { formatearFecha } from "@/lib/admin/fecha"
+import { formatearFecha, hoyArgentina } from "@/lib/admin/fecha"
 import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
-import { hoyArgentina } from "@/lib/admin/fecha"
 import { useCotizacion } from "@/lib/admin/use-cotizacion"
 import { cn } from "@/lib/utils"
 
@@ -76,6 +75,13 @@ type RenglonRetencion = {
   jurisdiccion: Jurisdiccion | null
   importe: string
   numeroCertificado: string
+  /** Lo que el formulario no muestra pero el renglón trae de la base: si no
+   *  viaja de ida y vuelta, editar el recibo lo borra —la cuenta contable de la
+   *  provincia, la base imponible del certificado—. Se vacían solo cuando cambia
+   *  el impuesto o la jurisdicción, porque ahí dejan de corresponder. */
+  base: number | null
+  alicuota: number | null
+  cuentaContableId: string | null
 }
 
 export function PagoDialog({
@@ -168,10 +174,52 @@ export function PagoDialog({
     enabled: abierto && urlPendientes !== null,
     refetchOnWindowFocus: false,
   })
-  // Un error se muestra como lista vacía, igual que antes.
-  const pendientes =
+  const pendientesCargados =
     (urlPendientes && pendientesQuery.data?.pendientes) || SIN_PENDIENTES
   const cargandoPendientes = urlPendientes !== null && pendientesQuery.isLoading
+  /**
+   * Si la lista no llegó, no se puede guardar.
+   *
+   * Antes un error se mostraba como lista vacía, y al editar eso era peligroso:
+   * las imputaciones salen de esta lista, así que guardar mandaba cero facturas y
+   * el recibo pasaba entero a "a cuenta" sin que nadie lo pidiera.
+   */
+  const errorPendientes = urlPendientes !== null && pendientesQuery.isError
+
+  /** Al editar, el recibo sigue siendo de la misma ficha que cuando se cargó. Si
+   *  se cambió el cliente, lo imputado antes ya no tiene nada que ver. */
+  const mismaFicha = Boolean(cobro) && pedidoPendientes?.entidadId === cobro?.clienteId
+
+  /**
+   * Las facturas que este recibo ya cancelaba, aunque la lista no las traiga.
+   *
+   * `incluirPago` hace que el servidor las devuelva, pero si por cualquier
+   * motivo falta una —se anuló, cambió de ficha, la consulta vino recortada—, el
+   * renglón desaparecía de la pantalla y guardar lo borraba en silencio. Se
+   * arma con lo que el recibo sabe de ella; el servidor la vuelve a validar.
+   */
+  const pendientes = useMemo(() => {
+    if (!cobro || !mismaFicha || pendientesQuery.isLoading) return pendientesCargados
+    const presentes = new Set(pendientesCargados.map((p) => p.id))
+    const faltantes: Pendiente[] = cobro.imputaciones
+      .filter((i) => !presentes.has(i.comprobanteId))
+      .map((i) => ({
+        id: i.comprobanteId,
+        clase: i.clase,
+        puntoVenta: i.puntoVenta,
+        numero: i.numero,
+        fecha: "",
+        fechaVencimiento: null,
+        moneda: i.moneda,
+        tc: i.tcAplicado,
+        total: i.importe,
+        imputado: 0,
+        saldo: i.importe,
+        detalle: null,
+        signo: signoDeClase(i.clase),
+      }))
+    return faltantes.length > 0 ? [...pendientesCargados, ...faltantes] : pendientesCargados
+  }, [cobro, mismaFicha, pendientesQuery.isLoading, pendientesCargados])
 
   /**
    * Las órdenes de pago a cuenta con saldo, en la moneda de este recibo.
@@ -181,13 +229,37 @@ export function PagoDialog({
    * después saber si cada entrega quedó facturada, que con un saldo único —una
    * bolsa— no se podía contestar.
    */
-  const ordenes = useMemo(
-    () => (pendientesQuery.data?.ordenes ?? []).filter((o) => o.moneda === moneda),
-    [pendientesQuery.data, moneda]
-  )
-
   /** Cuánto se toma de cada orden, por id. */
   const [aplicado, setAplicado] = useState<Record<string, string>>({})
+
+  /*
+   * Las de otra moneda se esconden, salvo que ya tengan algo aplicado: al editar
+   * un recibo y cambiarle la moneda, filtrarlas hacía que lo que tomaba de esas
+   * órdenes desapareciera del envío sin aviso. Quedan a la vista y frenan el
+   * guardado hasta que se quiten o se vuelva a la moneda original. Lo mismo con
+   * las que el recibo aplicaba y la lista no trajo.
+   */
+  const ordenes = useMemo(() => {
+    const cargadas = pendientesQuery.data?.ordenes ?? []
+    const presentes = new Set(cargadas.map((o) => o.id))
+    const faltantes: OrdenACuenta[] =
+      cobro && mismaFicha && !pendientesQuery.isLoading
+        ? (cobro.aplicaciones ?? [])
+            .filter((a) => !presentes.has(a.pagoOrigenId))
+            .map((a) => ({
+              id: a.pagoOrigenId,
+              fecha: a.fecha,
+              moneda: cobro.moneda,
+              importe: a.importe,
+              saldo: a.importe,
+            }))
+        : []
+    return [...cargadas, ...faltantes].filter(
+      (o) => o.moneda === moneda || (parsearImporte(aplicado[o.id] ?? "") ?? 0) > 0
+    )
+  }, [pendientesQuery.data, pendientesQuery.isLoading, cobro, mismaFicha, moneda, aplicado])
+
+  const hayAplicacionEnOtraMoneda = ordenes.some((o) => o.moneda !== moneda)
 
   const totalAplicado = useMemo(
     () =>
@@ -218,6 +290,7 @@ export function PagoDialog({
       setPedidoPendientes(null)
       setImputado({})
       setTcFactura({})
+      setAplicado({})
       setMedios([{ cuentaId: "", importe: "", referencia: "" }])
       setRetenciones([])
       setObservaciones("")
@@ -249,7 +322,10 @@ export function PagoDialog({
       cobro.medios.length > 0
         ? cobro.medios.map((m) => ({
             cuentaId: m.cuentaId,
-            importe: numeroEditable(m.importe),
+            // En la moneda del recibo, que es como el formulario lee el campo.
+            // `importe` está en la de la cuenta: en un recibo en dólares
+            // acreditado en pesos, precargarlo ponía pesos donde van dólares.
+            importe: numeroEditable(m.importeOrigen ?? m.importe),
             referencia: m.referencia ?? "",
           }))
         : [{ cuentaId: "", importe: "", referencia: "" }]
@@ -260,6 +336,9 @@ export function PagoDialog({
         jurisdiccion: r.jurisdiccion,
         importe: numeroEditable(r.importe),
         numeroCertificado: r.numeroCertificado ?? "",
+        base: r.base ?? null,
+        alicuota: r.alicuota ?? null,
+        cuentaContableId: r.cuentaContableId ?? null,
       }))
     )
     setObservaciones(cobro.observaciones ?? "")
@@ -417,7 +496,14 @@ export function PagoDialog({
    */
   const haceAlgo = hayImputaciones || totalMedios > 0 || totalRetenciones > 0
   const puedeGuardar =
-    Boolean(cliente) && haceAlgo && balance.cuadra && !faltaTc && !guardando
+    Boolean(cliente) &&
+    haceAlgo &&
+    balance.cuadra &&
+    !faltaTc &&
+    !errorPendientes &&
+    !cargandoPendientes &&
+    !hayAplicacionEnOtraMoneda &&
+    !guardando
 
   /* ── Acciones ────────────────────────────────────────────────────────────── */
 
@@ -459,6 +545,9 @@ export function PagoDialog({
               jurisdiccion: r.tipo === "iibb" ? r.jurisdiccion : null,
               importe: parsearImporte(r.importe) ?? 0,
               numeroCertificado: r.numeroCertificado || null,
+              base: r.base,
+              alicuota: r.alicuota,
+              cuentaContableId: r.cuentaContableId,
             })),
           imputaciones: pendientes
             .map((p) => ({
@@ -548,7 +637,13 @@ export function PagoDialog({
             disabled={guardando}
             onElegir={(c) => {
               setCliente(c)
+              // Todo lo que estaba atado a la ficha anterior: sus facturas, el
+              // TC de cada una y sus órdenes a cuenta. Dejarlo armaba un envío
+              // con ids de otro cliente, o un TC propio que reaparecía si la
+              // misma factura volvía a la lista.
               setImputado({})
+              setTcFactura({})
+              setAplicado({})
               cargarPendientes(c.id)
             }}
           />
@@ -629,12 +724,29 @@ export function PagoDialog({
             <div className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-[12.5px] text-ink-muted">
               Elegí un {rotuloEntidad.toLowerCase()} para ver sus comprobantes pendientes
             </div>
+          ) : errorPendientes ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger-line bg-danger-soft px-4 py-3">
+              <p className="flex items-start gap-2 text-[12.5px] text-danger-text">
+                <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                No se pudieron cargar los comprobantes pendientes. Sin ellos no se
+                puede guardar: {editando ? "se perderían las imputaciones del recibo" : "el recibo quedaría a cuenta"}.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void pendientesQuery.refetch()}
+                disabled={pendientesQuery.isFetching}
+              >
+                {pendientesQuery.isFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Reintentar
+              </Button>
+            </div>
           ) : cargandoPendientes ? (
             <div className="flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-8 text-[12.5px] text-ink-muted">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Buscando pendientes…
             </div>
-          ) : pendientes.length === 0 ? (
+          ) : pendientes.length === 0 && ordenes.length === 0 ? (
             <div className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-[12.5px] text-ink-muted">
               {cliente.razonSocial} no tiene comprobantes pendientes.
               {/* No es un callejón sin salida: el recibo se puede guardar igual
@@ -695,7 +807,15 @@ export function PagoDialog({
               onClick={() =>
                 setRetenciones((prev) => [
                   ...prev,
-                  { tipo: "ganancias", jurisdiccion: null, importe: "", numeroCertificado: "" },
+                  {
+                    tipo: "ganancias",
+                    jurisdiccion: null,
+                    importe: "",
+                    numeroCertificado: "",
+                    base: null,
+                    alicuota: null,
+                    cuentaContableId: null,
+                  },
                 ])
               }
               disabled={guardando}
@@ -736,9 +856,15 @@ export function PagoDialog({
                           const tipo = e.target.value as Retencion
                           // Al dejar de ser IIBB la jurisdicción no aplica, y
                           // dejarla puesta haría que el servidor la rechace.
+                          // La cuenta contable y la alícuota eran las del impuesto
+                          // anterior: se vacían para que el servidor ponga las
+                          // que correspondan en vez de asentar contra otra.
                           cambiar({
                             tipo,
                             jurisdiccion: tipo === "iibb" ? (r.jurisdiccion ?? "caba") : null,
+                            base: null,
+                            alicuota: null,
+                            cuentaContableId: null,
                           })
                         }}
                         disabled={guardando}
@@ -760,7 +886,12 @@ export function PagoDialog({
                           id={`ret-jur-${i}`}
                           value={r.jurisdiccion ?? "caba"}
                           onChange={(e) =>
-                            cambiar({ jurisdiccion: e.target.value as Jurisdiccion })
+                            cambiar({
+                              jurisdiccion: e.target.value as Jurisdiccion,
+                              // Cada provincia tiene su cuenta y su alícuota.
+                              alicuota: null,
+                              cuentaContableId: null,
+                            })
                           }
                           disabled={guardando}
                           className="h-8 w-full rounded-lg border border-line-strong bg-surface px-2 text-[12px] text-ink"
@@ -983,6 +1114,16 @@ export function PagoDialog({
             )}
           </span>
         </div>
+
+        {hayAplicacionEnOtraMoneda && (
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-warning-line bg-warning-soft px-3 py-2">
+            <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0 text-warning-text" />
+            <p className="text-[12px] text-warning-text">
+              Hay pagos a cuenta aplicados en otra moneda que la del recibo. Quitá esas
+              aplicaciones o volvé a la moneda original para poder guardar.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="mb-3 flex items-start gap-2 rounded-lg border border-danger-line bg-danger-soft px-3 py-2">

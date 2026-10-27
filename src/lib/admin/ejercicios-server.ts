@@ -14,11 +14,18 @@ export async function numeracionPorEjercicio(
 ): Promise<Map<string, { numero: number; ejercicio: string }>> {
   const mapa = new Map<string, { numero: number; ejercicio: string }>()
   const unicos = [...new Set(ids)]
-  for (let i = 0; i < unicos.length; i += 300) {
-    const { data, error } = await supabase
-      .from("asientos_por_ejercicio")
-      .select("asiento_id, numero, ejercicio")
-      .in("asiento_id", unicos.slice(i, i + 300))
+  // Los lotes van a la vez: un diario exportado entero son decenas de lotes, y
+  // en fila cada uno sumaba su viaje a la base. Se recorren después en orden,
+  // así un error corta en el mismo punto que antes.
+  const respuestas = await Promise.all(
+    Array.from({ length: Math.ceil(unicos.length / 300) }, (_, k) =>
+      supabase
+        .from("asientos_por_ejercicio")
+        .select("asiento_id, numero, ejercicio")
+        .in("asiento_id", unicos.slice(k * 300, k * 300 + 300))
+    )
+  )
+  for (const { data, error } of respuestas) {
     if (error) {
       console.error("[numeración por ejercicio]", error)
       return mapa
