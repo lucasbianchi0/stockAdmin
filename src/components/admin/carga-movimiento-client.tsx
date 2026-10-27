@@ -177,7 +177,9 @@ export function CargaMovimientoClient() {
  */
 function GastoConIva({ cuentas, onListo }: { cuentas: CuentaFinanciera[]; onListo: () => void }) {
   const invalidar = useInvalidarAdmin()
-  const enPesos = cuentas.filter((c) => c.moneda === "ARS")
+  // La tarjeta no: lo que se carga a la tarjeta se marca VISA y lo cancela el
+  // débito del resumen, no un débito propio.
+  const enPesos = cuentas.filter((c) => c.moneda === "ARS" && c.tipo !== "tarjeta")
   const [cuentaId, setCuentaId] = useState(
     () => enPesos.find((c) => /galicia/i.test(c.nombre))?.id ?? enPesos[0]?.id ?? ""
   )
@@ -189,9 +191,14 @@ function GastoConIva({ cuentas, onListo }: { cuentas: CuentaFinanciera[]; onList
     total: number
     clase: string
     estado: string
+    tarjetaVisa: boolean
   }) => {
     if (c.estado !== "confirmado") {
       toast.success("Quedó en borrador. El débito se registra al pagarlo desde Pagos.")
+      return onListo()
+    }
+    if (c.tarjetaVisa) {
+      toast.success("Quedó marcado VISA: se cancela con el débito del resumen, en Pago de tarjetas VISA.")
       return onListo()
     }
     const cuenta = cuentas.find((x) => x.id === cuentaId)
@@ -241,7 +248,8 @@ function GastoConIva({ cuentas, onListo }: { cuentas: CuentaFinanciera[]; onList
         </select>
         <p className="text-[11.5px] text-ink-muted">
           Proveedor: el banco (si no está, se crea desde el buscador). Cada importe con su cuenta;
-          el IVA y los impuestos van a las suyas y el gasto entra en IVA Compras.
+          el IVA y los impuestos van a las suyas y el gasto entra en IVA Compras. Los gastos del
+          resumen de la tarjeta (como «BANCO GALICIA TC») se marcan VISA y no se debitan acá.
         </p>
       </div>
       <ComprobanteDialog

@@ -1,7 +1,6 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { CreditCard, Loader2 } from "lucide-react"
 import { toast } from "sonner"
@@ -30,9 +29,11 @@ import { cn } from "@/lib/utils"
  *  2. Una transferencia del banco a la tarjeta por el total. En el extracto del
  *     Galicia es una sola línea, y la tarjeta vuelve a cero.
  *
- * Solo facturas en pesos: el resumen se debita en pesos, y una factura en
- * dólares necesita decidir a qué cambio se canceló. Esas se ven pero se pagan
- * desde «Pago de facturas».
+ * Las facturas en dólares van igual, marcadas VISA. El banco las debita en un
+ * segundo débito, pesificado al tipo de cambio del resumen: por eso piden ese
+ * TC, se cancelan a ese cambio (la diferencia con el de la factura va a
+ * diferencia de cambio, como en cualquier pago) y salen en una segunda
+ * transferencia, separada de la de pesos.
  */
 
 type FacturaVisa = {
@@ -70,12 +71,22 @@ export function PagoVisaClient() {
   const [bancoId, setBancoId] = useState("")
   const banco = bancoId || bancos.find((c) => /galicia/i.test(c.nombre))?.id || bancos[0]?.id || ""
   const [fecha, setFecha] = useState(hoyArgentina())
+  const [tcTexto, setTcTexto] = useState("")
   const [fuera, setFuera] = useState<Set<string>>(new Set())
   const [trabajando, setTrabajando] = useState(false)
 
   const facturas = useMemo(() => facturasQ.data?.facturas ?? [], [facturasQ.data])
-  const elegidas = facturas.filter((f) => f.moneda === "ARS" && !fuera.has(f.id))
-  const total = redondear(elegidas.reduce((a, f) => a + f.saldo, 0))
+  const elegidas = facturas.filter((f) => !fuera.has(f.id))
+  const tc = Number(tcTexto.replace(",", "."))
+  const tcValido = Number.isFinite(tc) && tc > 0
+  const enDolares = elegidas.filter((f) => f.moneda === "USD")
+  const totalArs = redondear(elegidas.filter((f) => f.moneda === "ARS").reduce((a, f) => a + f.saldo, 0))
+  const totalUsd = redondear(enDolares.reduce((a, f) => a + f.saldo, 0))
+  // Cada factura se pesifica por separado, que es como lo convierte el recibo.
+  const usdEnPesos = (lista: FacturaVisa[]) =>
+    redondear(lista.filter((f) => f.moneda === "USD").reduce((a, f) => a + redondear(f.saldo * tc), 0))
+  const faltaTc = enDolares.length > 0 && !tcValido
+  const hayDolares = facturas.some((f) => f.moneda === "USD")
 
   const porProveedor = useMemo(() => {
     const m = new Map<string, FacturaVisa[]>()
@@ -92,20 +103,23 @@ export function PagoVisaClient() {
     })
 
   const registrar = async () => {
-    if (!tarjeta || !banco || !elegidas.length) return
+    if (!tarjeta || !banco || !elegidas.length || faltaTc) return
     setTrabajando(true)
     const grupos = new Map<string, FacturaVisa[]>()
     for (const f of elegidas) {
       if (!f.proveedorId) continue
       grupos.set(f.proveedorId, [...(grupos.get(f.proveedorId) ?? []), f])
     }
-    let pagado = 0
+    let pagadoArs = 0
+    let pagadoUsd = 0
     const fallas: string[] = []
     try {
       // Uno por proveedor: el recibo es de una ficha, y así cada uno ve el
       // suyo en su cuenta corriente.
       for (const [proveedorId, lista] of grupos) {
-        const importe = redondear(lista.reduce((a, f) => a + f.saldo, 0))
+        const enPesos = redondear(lista.filter((f) => f.moneda === "ARS").reduce((a, f) => a + f.saldo, 0))
+        const pesificado = usdEnPesos(lista)
+        const importe = redondear(enPesos + pesificado)
         try {
           await pedirJson("/api/admin/pagos", {
             method: "POST",
@@ -116,22 +130,28 @@ export function PagoVisaClient() {
               moneda: "ARS",
               tc: null,
               retenciones: [],
-              imputaciones: lista.map((f) => ({ comprobanteId: f.id, importe: f.saldo, tcAplicado: null })),
+              imputaciones: lista.map((f) => ({
+                comprobanteId: f.id,
+                importe: f.saldo,
+                tcAplicado: f.moneda === "USD" ? tc : null,
+              })),
               aplicaciones: [],
               medios: [{ cuentaId: tarjeta.id, importe, referencia: "Resumen VISA" }],
               observaciones: `Pago con tarjeta VISA · ${lista.map((f) => `${f.clase} ${f.numero}`).join(", ")}`,
             }),
           })
-          pagado = redondear(pagado + importe)
+          pagadoArs = redondear(pagadoArs + enPesos)
+          pagadoUsd = redondear(pagadoUsd + pesificado)
         } catch (e) {
           fallas.push(`${lista[0].proveedor}: ${mensajeError(e)}`)
         }
       }
 
-      // El único débito del banco: por lo que efectivamente se pagó, para que
+      // Los débitos del banco, como los hace el banco: uno por los pesos y otro
+      // por los dólares pesificados. Por lo que efectivamente se pagó, para que
       // la tarjeta quede en cero aunque algún proveedor haya fallado.
-      if (pagado > 0) {
-        await pedirJson("/api/admin/movimientos", {
+      const debitar = (importe: number, referencia: string, detalle: string) =>
+        pedirJson("/api/admin/movimientos", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -139,22 +159,31 @@ export function PagoVisaClient() {
             fecha,
             cuentaOrigenId: banco,
             cuentaDestinoId: tarjeta.id,
-            importeOrigen: pagado,
-            importeDestino: pagado,
+            importeOrigen: importe,
+            importeDestino: importe,
             monedaOrigen: "ARS",
             monedaDestino: "ARS",
             tc: 1,
-            referencia: "Resumen VISA",
-            detalle: "Débito del resumen de la tarjeta VISA",
+            referencia,
+            detalle,
           }),
         })
+      if (pagadoArs > 0) await debitar(pagadoArs, "Resumen VISA", "Débito del resumen de la tarjeta VISA")
+      if (pagadoUsd > 0) {
+        await debitar(
+          pagadoUsd,
+          "Resumen VISA USD",
+          `Débito del resumen VISA en dólares, pesificado a ${tc.toLocaleString("es-AR")}`
+        )
       }
+      const pagado = redondear(pagadoArs + pagadoUsd)
       if (fallas.length) {
         toast.error(`Quedaron sin pagar: ${fallas.join(" · ")}`)
       } else {
         toast.success(`Resumen registrado: ${formatearImporte(pagado)} debitados del banco`)
       }
       setFuera(new Set())
+      setTcTexto("")
     } catch (e) {
       toast.error(
         `Los pagos se registraron pero no el débito del banco: ${mensajeError(e)}. Cargalo como transferencia del banco a la tarjeta.`
@@ -209,17 +238,43 @@ export function PagoVisaClient() {
             ))}
           </select>
         </label>
+        {hayDolares && (
+          <label className="block">
+            <span className="mb-1 block text-[12px] text-ink-muted">TC del débito en dólares</span>
+            <Input
+              inputMode="decimal"
+              placeholder="Ej. 1450,50"
+              value={tcTexto}
+              onChange={(e) => setTcTexto(e.target.value)}
+              className={cn("w-[150px]", faltaTc && "border-warning-line")}
+            />
+          </label>
+        )}
         <div className="ml-auto text-right">
           <p className="eyebrow">Total del resumen</p>
-          <p className="num text-[20px] font-bold tracking-[-0.02em] text-brand-600">{formatearImporte(total)}</p>
+          <p className="num text-[20px] font-bold tracking-[-0.02em] text-brand-600">
+            {formatearImporte(totalArs)}
+          </p>
+          {totalUsd > 0 && (
+            <p className="num text-[12px] text-ink-secondary">
+              + {formatearImporte(totalUsd, "USD")}
+              {tcValido ? ` = ${formatearImporte(usdEnPesos(elegidas))} (2º débito)` : ""}
+            </p>
+          )}
           <p className="text-[11.5px] text-ink-muted">
             {elegidas.length} factura{elegidas.length === 1 ? "" : "s"}
           </p>
         </div>
-        <Button onClick={registrar} disabled={!tarjeta || !banco || !elegidas.length || trabajando}>
+        <Button onClick={registrar} disabled={!tarjeta || !banco || !elegidas.length || faltaTc || trabajando}>
           {trabajando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
           Registrar el débito
         </Button>
+        {faltaTc && (
+          <p className="w-full text-[12px] text-warning-text">
+            Cargá el tipo de cambio al que el banco pesificó los dólares, o destildá las facturas en
+            dólares.
+          </p>
+        )}
         {!tarjeta && (
           <p className="w-full text-[12px] text-danger-text">
             Falta la cuenta «TARJETA VISA GALICIA» en Caja y bancos (la crea la migración 20261026_02).
@@ -241,20 +296,14 @@ export function PagoVisaClient() {
               <p className="mb-1.5 text-[12.5px] font-semibold text-ink">{proveedor}</p>
               <ul className="space-y-1">
                 {lista.map((f) => {
-                  const enDolares = f.moneda === "USD"
-                  const marcada = !enDolares && !fuera.has(f.id)
+                  const marcada = !fuera.has(f.id)
                   return (
                     <li key={f.id}>
-                      <label
-                        className={cn(
-                          "flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-[12.5px] hover:bg-surface-muted",
-                          enDolares && "cursor-not-allowed opacity-60"
-                        )}
-                      >
+                      <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-[12.5px] hover:bg-surface-muted">
                         <input
                           type="checkbox"
                           checked={marcada}
-                          disabled={enDolares || trabajando}
+                          disabled={trabajando}
                           onChange={() => alternar(f.id)}
                         />
                         <span className="num w-[78px] text-ink-muted">{fechaCorta(f.fecha)}</span>
@@ -264,15 +313,6 @@ export function PagoVisaClient() {
                         <span className="min-w-0 flex-1 truncate text-ink-secondary">{f.detalle}</span>
                         <span className="num font-semibold text-ink">{formatearImporte(f.saldo, f.moneda)}</span>
                       </label>
-                      {enDolares && (
-                        <p className="pl-9 text-[11px] text-ink-muted">
-                          En dólares: pagala desde{" "}
-                          <Link href="/admin/pagos" className="font-semibold text-brand-700 hover:underline">
-                            Pago de facturas
-                          </Link>{" "}
-                          eligiendo la tarjeta como medio.
-                        </p>
-                      )}
                     </li>
                   )
                 })}

@@ -286,7 +286,10 @@ export function ComprobanteDialog({
     setF(
       comprobante
         ? aBorrador(comprobante)
-        : { ...VACIO(), fechaRegistro: inicial, ...(claseInicial && { clase: claseInicial }) }
+        : conNumeroDeExtracto(
+            { ...VACIO(), fechaRegistro: inicial, ...(claseInicial && { clase: claseInicial }) },
+            ""
+          )
     )
     setRegistroPropio(Boolean(inicial))
     setError(null)
@@ -666,7 +669,12 @@ export function ComprobanteDialog({
                 id="fecha"
                 type="date"
                 value={f.fecha}
-                onChange={(e) => set("fecha", e.target.value)}
+                onChange={(e) => {
+                  const fecha = e.target.value
+                  setF((prev) =>
+                    comprobante ? { ...prev, fecha } : conNumeroDeExtracto({ ...prev, fecha }, prev.fecha)
+                  )
+                }}
                 className="num"
                 disabled={guardando}
               />
@@ -1299,4 +1307,21 @@ function Select({
       ))}
     </select>
   )
+}
+
+/**
+ * El extracto bancario no tiene número propio: el estudio lo numera con la
+ * fecha del extracto, «EX A-0001-30092026». Se propone ese número mientras el
+ * campo siga vacío o con el que se había propuesto para la fecha anterior, así
+ * nunca pisa uno que se haya escrito a mano.
+ */
+function numeroDeExtracto(fecha: string): string {
+  const [a, m, d] = fecha.split("-")
+  return a && m && d ? `1-${d}${m}${a}` : ""
+}
+
+function conNumeroDeExtracto(b: Borrador, fechaAnterior: string): Borrador {
+  if (!b.clase.startsWith("EX")) return b
+  const propuesto = b.numeroCompleto === "" || b.numeroCompleto === numeroDeExtracto(fechaAnterior)
+  return propuesto ? { ...b, numeroCompleto: numeroDeExtracto(b.fecha) } : b
 }
