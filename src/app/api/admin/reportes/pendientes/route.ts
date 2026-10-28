@@ -161,6 +161,8 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
         signo === 1 && Boolean(f.fecha_vencimiento && (f.fecha_vencimiento as string) < hoy),
       /** Un pago o cobro a cuenta sin aplicar, no un comprobante. */
       aCuenta: false,
+      /** Vencida, pero ya cubierta por un pago o cobro a cuenta sin aplicar. */
+      cubierta: false,
     }
   })
 
@@ -208,7 +210,42 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
       detalle: pago?.observaciones ?? null,
       vencida: false,
       aCuenta: true,
+      cubierta: false,
     })
+  }
+
+  /*
+   * Las facturas que el saldo a cuenta ya cubre.
+   *
+   * Es una forma de trabajar del cliente, no un descuido: con Andreani cobran
+   * con muchos cheques que se acreditan de a uno, los cargan a cuenta y aplican
+   * todo junto al final, para tener un solo asiento y una cuenta corriente
+   * prolija. Mientras tanto esas facturas no se deben: ya se cobraron. Se
+   * marcan y salen del total vencido —que es el número para salir a cobrar—,
+   * sin tocar el total general, que ya resta las filas a cuenta.
+   *
+   * El saldo a cuenta de cada ficha se reparte por fecha de vencimiento, de la
+   * más vieja en adelante, y una factura cuenta como cubierta solo si alcanza
+   * para todo su saldo.
+   */
+  const aFavor = new Map<string, number>()
+  for (const f of filas) {
+    const ficha = String(f.entidad)
+    if (f.aCuenta) aFavor.set(ficha, redondear((aFavor.get(ficha) ?? 0) - f.saldoArs))
+  }
+  if (aFavor.size) {
+    const porVencer = filas
+      .filter((f) => !f.aCuenta && f.signo === 1 && aFavor.has(String(f.entidad)))
+      .sort((a, b) =>
+        String(a.fechaVencimiento ?? "9999").localeCompare(String(b.fechaVencimiento ?? "9999"))
+      )
+    for (const f of porVencer) {
+      const ficha = String(f.entidad)
+      const disponible = aFavor.get(ficha) ?? 0
+      if (disponible + 0.01 < f.saldoArs) continue
+      aFavor.set(ficha, redondear(disponible - f.saldoArs))
+      f.cubierta = f.vencida
+    }
   }
 
   /*
@@ -239,10 +276,13 @@ export const GET = ruta("reportes pendientes", async (req: Request) => {
     usdHoy: dolarHoy > 0 ? redondear(totalArs / dolarHoy) : null,
     dolar: dolarHoy > 0 ? dolarHoy : null,
     dolarActualizado: (cot?.created_at as string | null) ?? null,
-    vencidas: filas.filter((f) => f.vencida).length,
+    vencidas: filas.filter((f) => f.vencida && !f.cubierta).length,
     vencidoArs: redondear(
-      filas.filter((f) => f.vencida).reduce((a, f) => a + f.saldoArs, 0)
+      filas.filter((f) => f.vencida && !f.cubierta).reduce((a, f) => a + f.saldoArs, 0)
     ),
+    /** Las vencidas que ya están cubiertas por un saldo a cuenta. */
+    cubiertas: filas.filter((f) => f.cubierta).length,
+    cubiertoArs: redondear(filas.filter((f) => f.cubierta).reduce((a, f) => a + f.saldoArs, 0)),
     /** Se avisa cuando el reporte se cortó: un total truncado presentado como
      *  completo es peor que no tenerlo. */
     truncado: filas.length >= TOPE,

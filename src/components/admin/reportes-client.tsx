@@ -79,6 +79,8 @@ type Pendiente = {
   fechaEstimadaPago: string | null
   /** Un pago o cobro a cuenta con saldo sin aplicar: crédito, va en negativo. */
   aCuenta?: boolean
+  /** Vencida, pero ya cubierta por un saldo a cuenta sin aplicar de la ficha. */
+  cubierta?: boolean
 }
 
 type Totales = {
@@ -91,6 +93,8 @@ type Totales = {
   dolarActualizado: string | null
   vencidas: number
   vencidoArs: number
+  cubiertas?: number
+  cubiertoArs?: number
   truncado: boolean
 }
 
@@ -190,6 +194,16 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
               </span>
             </div>
           )}
+          {(totales.cubiertas ?? 0) > 0 && (
+            <div className="flex items-center gap-2">
+              <Badge tone="success" size="md">
+                {totales.cubiertas} cubierta{totales.cubiertas !== 1 ? "s" : ""} a cuenta
+              </Badge>
+              <span className="num text-[12px] text-ink-muted">
+                {formatearImporte(totales.cubiertoArs ?? 0, "ARS")} · falta aplicar
+              </span>
+            </div>
+          )}
 
           <Button variant="outline" size="sm" onClick={exportar} className="ml-auto">
             <Download className="h-3.5 w-3.5" />
@@ -237,7 +251,7 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
           </TableHeader>
           <TableBody>
             {paginado.visibles.map((f) => (
-              <TableRow key={f.id} className={cn(f.vencida && "bg-danger-soft/40")}>
+              <TableRow key={f.id} className={cn(f.vencida && !f.cubierta && "bg-danger-soft/40")}>
                 <TableCell className="font-medium text-ink">{f.entidad}</TableCell>
                 <TableCell>
                   <Badge tone={f.aCuenta ? "success" : f.signo === -1 ? "warning" : "neutral"} size="sm">
@@ -253,7 +267,16 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
                 </TableCell>
                 <TableCell className="num text-ink-secondary">{fechaCorta(f.fecha)}</TableCell>
                 <TableCell>
-                  <SemaforoVencimiento fecha={f.fechaVencimiento} />
+                  {f.cubierta ? (
+                    <span
+                      className="whitespace-nowrap text-[11.5px] text-success-text"
+                      title={`Venció el ${fechaCorta(f.fechaVencimiento ?? "")}. El saldo a cuenta de la ficha alcanza: falta la aplicación.`}
+                    >
+                      Cubierta a cuenta
+                    </span>
+                  ) : (
+                    <SemaforoVencimiento fecha={f.fechaVencimiento} />
+                  )}
                 </TableCell>
                 <TableCell className="num whitespace-nowrap text-right text-ink-secondary">
                   {formatearImporte(f.impuestos, f.moneda)}
