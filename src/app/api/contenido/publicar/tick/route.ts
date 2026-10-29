@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto"
 
 import { exigirModulo } from "@/lib/guard-api"
 import { tickDePublicacion } from "@/lib/publicar/publicar-server"
+import { registrarCorrida } from "@/lib/calendario-equipo-server"
 
 /**
  * El tick de publicación: saca de la cola lo que ya venció y lo publica.
@@ -50,6 +51,17 @@ export async function POST(req: Request) {
   try {
     const resultados = await tickDePublicacion()
 
+    // Sólo los ticks del cron van al Calendario (clave `publicar-contenido`):
+    // son los que dicen si el proceso está vivo.
+    if (esCron) {
+      const fallidas = resultados.filter((r) => !r.ok).length
+      await registrarCorrida({
+        clave: "publicar-contenido",
+        ok: fallidas === 0,
+        detalle: `${resultados.length - fallidas} publicadas${fallidas ? `, ${fallidas} fallidas` : ""}`,
+      })
+    }
+
     return NextResponse.json({
       publicadas: resultados.filter((r) => r.ok).length,
       fallidas: resultados.filter((r) => !r.ok).length,
@@ -58,6 +70,7 @@ export async function POST(req: Request) {
   } catch (e) {
     const mensaje = e instanceof Error ? e.message : "Error al publicar"
     console.error("[publicar tick]", mensaje)
+    if (esCron) await registrarCorrida({ clave: "publicar-contenido", ok: false, detalle: mensaje })
     return NextResponse.json({ error: mensaje }, { status: 500 })
   }
 }

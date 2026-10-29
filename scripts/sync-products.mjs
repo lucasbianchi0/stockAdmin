@@ -87,9 +87,28 @@ async function main() {
   }
 
   console.log(`[sync] done — ${rows.length} products saved at ${now}`)
+  return rows.length
 }
 
-main().catch((err) => {
-  console.error("[sync] fatal error:", err)
-  process.exit(1)
-})
+// La corrida queda anotada en el Calendario (clave `sync-productos`). Anotar no
+// puede romper el sync: si falla, se avisa en el log y nada más.
+async function anotarCorrida(ok, detalle, inicio) {
+  const { error } = await supabase.from("calendario_corridas").insert({
+    clave: "sync-productos",
+    ok,
+    detalle: detalle.slice(0, 500),
+    inicio,
+    fin: new Date().toISOString(),
+    origen: process.env.GITHUB_ACTIONS ? "cron" : "manual",
+  })
+  if (error) console.error("[sync] no se pudo anotar la corrida:", error.message)
+}
+
+const inicio = new Date().toISOString()
+main()
+  .then((n) => anotarCorrida(true, `${n} productos`, inicio))
+  .catch(async (err) => {
+    console.error("[sync] fatal error:", err)
+    await anotarCorrida(false, err instanceof Error ? err.message : String(err), inicio)
+    process.exit(1)
+  })

@@ -71,6 +71,24 @@ export async function middleware(request: NextRequest) {
   }
 
   /*
+   * Donde los agentes y procesos avisan que corrieron (calendario): una rutina
+   * de Claude o un workflow no tienen sesión. Ruta exacta, y el handler exige
+   * `CRON_SECRET` y devuelve 404 sin él.
+   */
+  if (pathname === "/api/calendario/corridas") {
+    return response
+  }
+
+  /*
+   * La sincronización diaria de LinkedIn (Windsor.ai): la llama el cron de
+   * GitHub Actions, sin sesión. Una ruta exacta, y el handler pide el
+   * `CRON_SECRET` o, si no lo trae, una sesión con el módulo de marketing.
+   */
+  if (pathname === "/api/marketing/linkedin/sincronizar") {
+    return response
+  }
+
+  /*
    * `getClaims` y no `getUser`: la firma del token se verifica acá con la clave
    * pública (ES256, ver lib/sesion-server.ts), sin el viaje al servidor de
    * autenticación que `getUser` hacía en CADA pedido —páginas y API—.

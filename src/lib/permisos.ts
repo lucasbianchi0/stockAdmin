@@ -107,6 +107,10 @@ const RUTAS: { prefijo: string; modulos: Modulo[] }[] = [
   // módulo. Quien no tiene ninguno no entra a la app y tampoco acá.
   { prefijo: "/tickets", modulos: [...MODULOS] },
   { prefijo: "/api/tickets", modulos: [...MODULOS] },
+  // El calendario, por lo mismo: personas, agentes y procesos de todas las
+  // áreas en una grilla. Ver lo que hacen los demás es el punto.
+  { prefijo: "/calendario", modulos: [...MODULOS] },
+  { prefijo: "/api/calendario", modulos: [...MODULOS] },
   // El dólar lo necesitan el que arma precios, el que presupuesta y el que
   // carga una factura. Un endpoint por módulo garantizaría que algún día tres
   // pantallas muestren tres cotizaciones distintas.

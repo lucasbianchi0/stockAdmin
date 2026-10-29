@@ -7,6 +7,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   Bot,
+  CalendarDays,
   ChevronRight,
   FileText,
   Globe,
@@ -128,6 +129,7 @@ const GRUPOS: Grupo[] = [
           { name: "Generar texto", href: "/contenido/texto", available: true },
           { name: "Historial y templates", href: "/contenido/historial", available: true },
           { name: "Banco de piezas", href: "/contenido/generacion", available: true },
+          { name: "Visualizador de Instagram", href: "/contenido/visualizador", available: true },
         ],
       },
       { name: "Calendario de contenido", href: "/contenido/agenda", available: true },
@@ -439,6 +441,32 @@ export function Sidebar({ mobile, modulos, usuario, admin, onAbrirAgentes, onAbr
             strokeWidth={1.85}
           />
           <span className="flex-1 truncate text-left">Ticketera</span>
+        </Link>
+        )}
+
+        {/* El calendario, al lado de la ticketera y por lo mismo: es del
+            equipo entero, y ahí conviven lo que hacen las personas y lo que
+            corren los agentes y procesos. */}
+        {modulos.length > 0 && (
+        <Link
+          href="/calendario"
+          className={cn(
+            "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13.5px] font-semibold tracking-[-0.005em] transition-colors duration-150",
+            pathname.startsWith("/calendario")
+              ? "bg-white/[0.09] text-white"
+              : "text-white/75 hover:bg-white/[0.05] hover:text-white"
+          )}
+        >
+          <CalendarDays
+            className={cn(
+              "h-[18px] w-[18px] shrink-0 transition-colors",
+              pathname.startsWith("/calendario")
+                ? "text-white/85"
+                : "text-white/50 group-hover:text-white/85"
+            )}
+            strokeWidth={1.85}
+          />
+          <span className="flex-1 truncate text-left">Calendario</span>
         </Link>
         )}
 
