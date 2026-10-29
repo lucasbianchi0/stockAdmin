@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server"
 
 import { ruta } from "@/lib/admin/ruta"
-import { exigirModulo } from "@/lib/guard-api"
+import { sesionConModulo } from "@/lib/sesion-server"
 import { supabase } from "@/lib/supabase"
-import { createSupabaseServer } from "@/lib/supabase-server"
-import { nombreDeUsuario } from "@/lib/usuario"
 import { esEstadoPropuesta } from "@/lib/agentes"
 import { COLUMNAS_TRABAJO, aTrabajo, crearNotaDesdePropuesta } from "@/lib/agentes-server"
 
@@ -17,8 +15,8 @@ import { COLUMNAS_TRABAJO, aTrabajo, crearNotaDesdePropuesta } from "@/lib/agent
  * persona.
  */
 export const PATCH = ruta("agentes PATCH", async (req, ctx: { params: Promise<{ id: string }> }) => {
-  const sinPermiso = await exigirModulo("marketing")
-  if (sinPermiso) return sinPermiso
+  const s = await sesionConModulo(["marketing"])
+  if ("respuesta" in s) return s.respuesta
 
   const { id } = await ctx.params
   const raw = (await req.json().catch(() => null)) as Record<string, unknown> | null
@@ -34,16 +32,12 @@ export const PATCH = ruta("agentes PATCH", async (req, ctx: { params: Promise<{ 
   const propuesta = trabajo.propuestas.find((p) => p.id === raw.propuestaId)
   if (!propuesta) return NextResponse.json({ error: "No existe esa propuesta" }, { status: 404 })
 
-  const supabaseUsuario = await createSupabaseServer()
-  const {
-    data: { user },
-  } = await supabaseUsuario.auth.getUser()
-  const nombre = nombreDeUsuario(user)
+  const nombre = s.sesion.nombre
 
   propuesta.estado = raw.estado
 
   if (trabajo.clave === "agente-blog" && raw.estado === "aprobada" && !propuesta.notaId) {
-    const nota = await crearNotaDesdePropuesta(propuesta, { id: user?.id ?? null, nombre })
+    const nota = await crearNotaDesdePropuesta(propuesta, { id: s.sesion.id, nombre })
     if ("error" in nota) {
       console.error("[agentes PATCH] nota", nota.error)
       return NextResponse.json({ error: "No se pudo crear la nota" }, { status: 500 })

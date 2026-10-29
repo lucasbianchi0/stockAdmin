@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import {
   AlertTriangle,
   ArrowLeft,
@@ -20,7 +21,7 @@ import { Formato } from "@/components/chatbot/formato"
 import { useChatbotOpcional } from "@/components/chatbot/provider"
 import { AvatarAgente, PildoraEstado, fechaCorta, fechaHora, relativo } from "@/components/agentes/comun"
 import { LectorPropuesta, etiquetaDe } from "@/components/agentes/propuesta"
-import { URL_EQUIPO } from "@/components/agentes/equipo"
+import { URL_EQUIPO, consultaDeFicha, urlDeFicha } from "@/components/agentes/consultas"
 import { claveDe, mensajeError, pedirJson } from "@/lib/admin/query"
 import {
   AGENTES,
@@ -56,13 +57,61 @@ type Item =
   | { tipo: "analisis"; id: string; trabajo: Trabajo }
   | { tipo: "propuesta"; id: string; trabajo: Trabajo; propuesta: Propuesta }
 
+type Decision = { trabajoId: string; propuestaId: string; estado: EstadoPropuesta }
+
 export function FichaDeAgente({ clave }: { clave: ClaveAgente }) {
   const ficha = AGENTES[clave]
-  const url = `${URL_EQUIPO}?clave=${clave}`
+  const url = urlDeFicha(clave)
   const qc = useQueryClient()
-  const query = useQuery({
-    queryKey: claveDe("marketing", url),
-    queryFn: ({ signal }) => pedirJson<{ agente: DetalleAgente }>(url, { signal }),
+  const query = useQuery(consultaDeFicha(clave))
+
+  /** Cambia una propuesta en la caché, sin tocar las demás. */
+  const poner = (trabajoId: string, propuestaId: string, cambio: (p: Propuesta) => Propuesta) =>
+    qc.setQueryData<{ agente: DetalleAgente }>(claveDe("marketing", url), (prev) =>
+      prev
+        ? {
+            agente: {
+              ...prev.agente,
+              trabajos: prev.agente.trabajos.map((t) =>
+                t.id === trabajoId
+                  ? { ...t, propuestas: t.propuestas.map((p) => (p.id === propuestaId ? cambio(p) : p)) }
+                  : t
+              ),
+            },
+          }
+        : prev
+    )
+
+  // Optimista: el estado cambia al clic y la bandeja sigue a la próxima. Los
+  // guardados van en fila (`scope`): el servidor reescribe la entrega entera, y
+  // dos decisiones seguidas sobre la misma en paralelo se pisarían.
+  const decidir = useMutation({
+    scope: { id: url },
+    mutationFn: (d: Decision) =>
+      pedirJson<{ trabajo: Trabajo }>(`/api/agentes/${d.trabajoId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ propuestaId: d.propuestaId, estado: d.estado }),
+      }),
+    onMutate: async (d) => {
+      await qc.cancelQueries({ queryKey: claveDe("marketing", url) })
+      const antes = qc
+        .getQueryData<{ agente: DetalleAgente }>(claveDe("marketing", url))
+        ?.agente.trabajos.find((t) => t.id === d.trabajoId)
+        ?.propuestas.find((p) => p.id === d.propuestaId)
+      poner(d.trabajoId, d.propuestaId, (p) => ({ ...p, estado: d.estado }))
+      return { antes }
+    },
+    onSuccess: ({ trabajo }, d) => {
+      const guardada = trabajo.propuestas.find((p) => p.id === d.propuestaId)
+      if (guardada) poner(d.trabajoId, d.propuestaId, () => guardada)
+    },
+    onError: (e, d, ctx) => {
+      if (ctx?.antes) poner(d.trabajoId, d.propuestaId, () => ctx.antes!)
+      toast.error(mensajeError(e, "No se pudo guardar"))
+    },
+    // La tarjeta del equipo cuenta los pendientes: que no quede vieja al volver.
+    onSettled: () => qc.invalidateQueries({ queryKey: claveDe("marketing", URL_EQUIPO) }),
   })
 
   if (query.isPending) return <LoadingState label={`Llamando a ${ficha.apodo}`} />
@@ -70,21 +119,13 @@ export function FichaDeAgente({ clave }: { clave: ClaveAgente }) {
 
   const detalle = query.data.agente
 
-  const alCambiar = (nuevo: Trabajo) => {
-    qc.setQueryData<{ agente: DetalleAgente }>(claveDe("marketing", url), (prev) =>
-      prev ? { agente: { ...prev.agente, trabajos: prev.agente.trabajos.map((t) => (t.id === nuevo.id ? nuevo : t)) } } : prev
-    )
-    // La tarjeta del equipo cuenta los pendientes: que no quede vieja al volver.
-    qc.invalidateQueries({ queryKey: claveDe("marketing", URL_EQUIPO) })
-  }
-
   return (
     <div className="pb-16">
       <Cabecera ficha={ficha} detalle={detalle} />
 
       <div className="mx-auto w-full max-w-[1400px] space-y-8 px-5 sm:px-8">
         {detalle.trabajos.length ? (
-          <Bandeja ficha={ficha} trabajos={detalle.trabajos} onCambio={alCambiar} />
+          <Bandeja ficha={ficha} trabajos={detalle.trabajos} onDecidir={(d) => decidir.mutate(d)} />
         ) : (
           <SinEntregas ficha={ficha} />
         )}
@@ -171,11 +212,11 @@ function Numero({ rotulo, valor, resaltar, ficha }: { rotulo: string; valor: str
 function Bandeja({
   ficha,
   trabajos,
-  onCambio,
+  onDecidir,
 }: {
   ficha: FichaAgente
   trabajos: Trabajo[]
-  onCambio: (t: Trabajo) => void
+  onDecidir: (d: Decision) => void
 }) {
   const cuenta = contarPropuestas(trabajos)
   const [filtro, setFiltro] = useState<Filtro>(cuenta.pendiente ? "pendiente" : "todas")
@@ -210,16 +251,16 @@ function Bandeja({
     setLeyendo(true)
   }
 
-  const alCambiar = (nuevo: Trabajo, decidida: boolean) => {
-    if (decidida && actual?.tipo === "propuesta") {
+  const alDecidir = (trabajo: Trabajo, propuesta: Propuesta, estado: EstadoPropuesta) => {
+    if (estado !== "pendiente") {
       // La siguiente pendiente después de la actual, en el orden de la lista.
-      const desde = items.findIndex((i) => i.id === actual.id)
+      const desde = items.findIndex((i) => i.id === propuesta.id)
       const siguiente = [...items.slice(desde + 1), ...items.slice(0, desde)].find(
         (i) => i.tipo === "propuesta" && i.propuesta.estado === "pendiente"
       )
-      setAbierto(siguiente?.id ?? actual.id)
+      setAbierto(siguiente?.id ?? propuesta.id)
     }
-    onCambio(nuevo)
+    onDecidir({ trabajoId: trabajo.id, propuestaId: propuesta.id, estado })
   }
 
   return (
@@ -293,7 +334,7 @@ function Bandeja({
               ficha={ficha}
               trabajo={actual.trabajo}
               propuesta={actual.propuesta}
-              onCambio={alCambiar}
+              onDecidir={(estado) => alDecidir(actual.trabajo, actual.propuesta, estado)}
             />
           )}
           {actual?.tipo === "analisis" && <LectorAnalisis key={actual.id} ficha={ficha} trabajo={actual.trabajo} />}

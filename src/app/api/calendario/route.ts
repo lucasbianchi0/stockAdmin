@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server"
 
 import { ruta } from "@/lib/admin/ruta"
-import { exigirAlgunModulo } from "@/lib/guard-api"
 import { MODULOS } from "@/lib/permisos"
 import { supabase } from "@/lib/supabase"
-import { createSupabaseServer } from "@/lib/supabase-server"
-import { nombreDeUsuario } from "@/lib/usuario"
+import { sesionConModulo } from "@/lib/sesion-server"
 import { listarEquipo } from "@/lib/tickets-server"
 import { esFecha, hoyArgentina, sumarDias, type Yo } from "@/lib/calendario-equipo"
 import {
@@ -36,8 +34,9 @@ const MAX_DIAS = 62
  * quedaría vacío al adelantar el calendario.
  */
 export const GET = ruta("calendario GET", async (req: Request) => {
-  const sinPermiso = await exigirAlgunModulo(PERMISO)
-  if (sinPermiso) return sinPermiso
+  // El permiso y quién mira, de una sola lectura del token.
+  const s = await sesionConModulo(PERMISO)
+  if ("respuesta" in s) return s.respuesta
 
   const url = new URL(req.url)
   const hoy = hoyArgentina()
@@ -48,36 +47,66 @@ export const GET = ruta("calendario GET", async (req: Request) => {
 
   const desdeCorridas = sumarDias(desde < hoy ? desde : hoy, -14)
 
-  const supabaseUsuario = await createSupabaseServer()
-  const {
-    data: { user },
-  } = await supabaseUsuario.auth.getUser()
+  // El equipo sale en paralelo con las lecturas: la primera vez va a la API de
+  // autenticación, después queda en memoria.
+  const equipo = listarEquipo()
 
-  const [entradas, corridas, equipo] = await Promise.all([
-    supabase.from("calendario_entradas").select(COLUMNAS_ENTRADA).order("fecha"),
-    supabase
-      .from("calendario_corridas")
-      .select(COLUMNAS_CORRIDA)
-      // Un día de margen en cada punta: el día de Argentina no coincide con el
-      // de UTC, y la corrida de las 22 h del último día quedaría afuera.
-      .gte("inicio", `${sumarDias(desdeCorridas, -1)}T00:00:00Z`)
-      .lte("inicio", `${sumarDias(hasta, 1)}T23:59:59Z`)
-      .order("inicio", { ascending: false })
-      .limit(2000),
-    listarEquipo(),
-  ])
-
-  if (entradas.error || corridas.error) {
-    console.error("[calendario GET]", entradas.error ?? corridas.error)
+  const entradas = await supabase.from("calendario_entradas").select(COLUMNAS_ENTRADA).order("fecha")
+  if (entradas.error) {
+    console.error("[calendario GET]", entradas.error)
     return NextResponse.json({ error: "No se pudo cargar el calendario" }, { status: 500 })
   }
 
-  const yo: Yo = { id: user?.id ?? null, nombre: nombreDeUsuario(user) }
+  // Las continuas (el publicador corre cada 15 minutos) dejaban miles de
+  // corridas en un mes y se comían el tope: no se dibujan en la grilla, y el
+  // panel y la ficha sólo muestran las últimas. De ésas viajan las últimas
+  // ocho; del resto, el rango entero.
+  const continuas = [
+    ...new Set(
+      (entradas.data ?? [])
+        .filter((e) => e.repeticion === "continua" && e.clave)
+        .map((e) => String(e.clave))
+    ),
+  ]
+  let delRango = supabase
+    .from("calendario_corridas")
+    .select(COLUMNAS_CORRIDA)
+    // Un día de margen en cada punta: el día de Argentina no coincide con el
+    // de UTC, y la corrida de las 22 h del último día quedaría afuera.
+    .gte("inicio", `${sumarDias(desdeCorridas, -1)}T00:00:00Z`)
+    .lte("inicio", `${sumarDias(hasta, 1)}T23:59:59Z`)
+    .order("inicio", { ascending: false })
+    .limit(2000)
+  if (continuas.length) delRango = delRango.not("clave", "in", `(${continuas.join(",")})`)
+
+  const [corridas, ...ultimas] = await Promise.all([
+    delRango,
+    ...continuas.map((clave) =>
+      supabase
+        .from("calendario_corridas")
+        .select(COLUMNAS_CORRIDA)
+        .eq("clave", clave)
+        .order("inicio", { ascending: false })
+        .limit(8)
+    ),
+  ])
+
+  const fallo = corridas.error ?? ultimas.find((u) => u.error)?.error
+  if (fallo) {
+    console.error("[calendario GET]", fallo)
+    return NextResponse.json({ error: "No se pudo cargar el calendario" }, { status: 500 })
+  }
+
+  const filas = [...(corridas.data ?? []), ...ultimas.flatMap((u) => u.data ?? [])].sort((a, b) =>
+    String(b.inicio).localeCompare(String(a.inicio))
+  )
+
+  const yo: Yo = { id: s.sesion.id, nombre: s.sesion.nombre }
 
   return NextResponse.json({
     entradas: (entradas.data ?? []).map(aEntrada),
-    corridas: (corridas.data ?? []).map(aCorrida),
-    usuarios: equipo,
+    corridas: filas.map(aCorrida),
+    usuarios: await equipo,
     yo,
   })
 })
@@ -85,8 +114,8 @@ export const GET = ruta("calendario GET", async (req: Request) => {
 /* ── POST · entrada nueva ─────────────────────────────────────────────────── */
 
 export const POST = ruta("calendario POST", async (req: Request) => {
-  const sinPermiso = await exigirAlgunModulo(PERMISO)
-  if (sinPermiso) return sinPermiso
+  const s = await sesionConModulo(PERMISO)
+  if ("respuesta" in s) return s.respuesta
 
   let body: unknown
   try {
@@ -101,14 +130,9 @@ export const POST = ruta("calendario POST", async (req: Request) => {
   const r = await normalizarEntrada(body as Record<string, unknown>)
   if ("error" in r) return NextResponse.json({ error: r.error }, { status: 400 })
 
-  const supabaseUsuario = await createSupabaseServer()
-  const {
-    data: { user },
-  } = await supabaseUsuario.auth.getUser()
-
   const { data, error } = await supabase
     .from("calendario_entradas")
-    .insert({ ...r.fila, autor_id: user?.id ?? null, autor_nombre: nombreDeUsuario(user) })
+    .insert({ ...r.fila, autor_id: s.sesion.id, autor_nombre: s.sesion.nombre })
     .select(COLUMNAS_ENTRADA)
     .single()
 

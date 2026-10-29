@@ -63,11 +63,15 @@ const esEstadoEntrada = (v: unknown): v is Exclude<EstadoEntrada, null> =>
 
 /**
  * El equipo: de cada agente, si corrió, cuánto espera decisión y su última
- * entrega. Las propuestas se cuentan sobre todas las entregas, no sólo la
- * última: una nota que quedó sin decidir hace dos domingos sigue pendiente.
+ * entrega. Las propuestas se cuentan sobre las mismas entregas que muestra su
+ * ficha, no sólo la última: una nota que quedó sin decidir hace dos domingos
+ * sigue pendiente.
+ *
+ * Una consulta por agente, con tope: leer la tabla entera traía todas las
+ * propuestas de la historia para contar las de medio año.
  */
 export async function resumenDelEquipo(): Promise<ResumenAgente[]> {
-  const [entradas, corridas, trabajos] = await Promise.all([
+  const [entradas, corridas, ...porAgente] = await Promise.all([
     supabase.from("calendario_entradas").select("clave, estado").in("clave", ORDEN),
     supabase
       .from("calendario_corridas")
@@ -75,14 +79,22 @@ export async function resumenDelEquipo(): Promise<ResumenAgente[]> {
       .in("clave", ORDEN)
       .order("inicio", { ascending: false })
       .limit(40),
-    supabase.from("agentes_trabajos").select("clave, titulo, propuestas, created_at").order("created_at", { ascending: false }),
+    ...ORDEN.map((clave) =>
+      supabase
+        .from("agentes_trabajos")
+        .select("titulo, propuestas, created_at")
+        .eq("clave", clave)
+        .order("created_at", { ascending: false })
+        .limit(HISTORIAL)
+    ),
   ])
-  if (trabajos.error) throw new Error(trabajos.error.message)
+  const fallo = porAgente.find((t) => t.error)?.error
+  if (fallo) throw new Error(fallo.message)
 
-  return ORDEN.map((clave) => {
+  return ORDEN.map((clave, i) => {
     const estado = (entradas.data ?? []).find((e) => e.clave === clave)?.estado
     const corrida = (corridas.data ?? []).find((c) => c.clave === clave)
-    const suyos = (trabajos.data ?? []).filter((t) => t.clave === clave)
+    const suyos = porAgente[i].data ?? []
     const pendientes = suyos
       .flatMap((t) => (Array.isArray(t.propuestas) ? t.propuestas : []))
       .filter((p: { estado?: string }) => (p.estado ?? "pendiente") === "pendiente").length

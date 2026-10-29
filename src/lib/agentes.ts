@@ -24,6 +24,10 @@ export function claveDeSlug(slug: string): ClaveAgente | null {
   return esClaveAgente(clave) ? clave : null
 }
 
+/** De dónde lee la pantalla: el equipo, y la ficha de cada uno. */
+export const URL_EQUIPO = "/api/agentes"
+export const urlDeFicha = (clave: ClaveAgente) => `${URL_EQUIPO}?clave=${clave}`
+
 /**
  * Los colores de cada agente, como clases enteras: Tailwind sólo genera las
  * que encuentra escritas tal cual en el código.

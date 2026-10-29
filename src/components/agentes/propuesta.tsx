@@ -6,7 +6,6 @@ import { ArrowUpRight, Check, Copy, Lightbulb, RotateCcw, Sparkles, Target, X } 
 
 import { Button } from "@/components/ui/button"
 import { AvatarAgente, fechaHora } from "@/components/agentes/comun"
-import { mensajeError, pedirJson } from "@/lib/admin/query"
 import type { EstadoPropuesta, FichaAgente, Propuesta, Trabajo } from "@/lib/agentes"
 import { cn } from "@/lib/utils"
 
@@ -33,38 +32,23 @@ export function etiquetaDe(p: Propuesta): string | null {
 /**
  * Una propuesta abierta en el lector, como un mail: de quién y cuándo arriba,
  * las acciones a mano, y el contenido entero debajo.
+ *
+ * Aprobar y descartar no esperan al servidor: la ficha cambia el estado en la
+ * caché al toque y lo deshace si el guardado falla.
  */
 export function LectorPropuesta({
   ficha,
   trabajo,
   propuesta: p,
-  onCambio,
+  onDecidir,
 }: {
   ficha: FichaAgente
   trabajo: Trabajo
   propuesta: Propuesta
-  onCambio: (trabajo: Trabajo, decidida: boolean) => void
+  onDecidir: (estado: EstadoPropuesta) => void
 }) {
-  const [guardando, setGuardando] = useState<EstadoPropuesta | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copiado, setCopiado] = useState(false)
-
-  const cambiar = async (estado: EstadoPropuesta) => {
-    setGuardando(estado)
-    setError(null)
-    try {
-      const { trabajo: nuevo } = await pedirJson<{ trabajo: Trabajo }>(`/api/agentes/${trabajo.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ propuestaId: p.id, estado }),
-      })
-      onCambio(nuevo, estado !== "pendiente")
-    } catch (e) {
-      setError(mensajeError(e, "No se pudo guardar"))
-    } finally {
-      setGuardando(null)
-    }
-  }
 
   const copiar = async () => {
     try {
@@ -85,10 +69,10 @@ export function LectorPropuesta({
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-6 py-3">
         {!decidida ? (
           <>
-            <Button size="sm" onClick={() => cambiar("aprobada")} disabled={guardando !== null}>
-              <Check /> {guardando === "aprobada" ? "Aprobando…" : "Aprobar"}
+            <Button size="sm" onClick={() => onDecidir("aprobada")}>
+              <Check /> Aprobar
             </Button>
-            <Button size="sm" variant="outline" onClick={() => cambiar("descartada")} disabled={guardando !== null}>
+            <Button size="sm" variant="outline" onClick={() => onDecidir("descartada")}>
               <X /> Descartar
             </Button>
           </>
@@ -103,10 +87,13 @@ export function LectorPropuesta({
               {p.estado === "aprobada" ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
               {p.estado === "aprobada" ? "Aprobada" : "Descartada"}
             </span>
-            <Button size="sm" variant="ghost" onClick={() => cambiar("pendiente")} disabled={guardando !== null}>
+            <Button size="sm" variant="ghost" onClick={() => onDecidir("pendiente")}>
               <RotateCcw /> Deshacer
             </Button>
           </>
+        )}
+        {ficha.clave === "agente-blog" && p.estado === "aprobada" && !p.notaId && (
+          <span className="text-[12px] text-ink-muted">Creando el borrador…</span>
         )}
         {p.notaId && (
           <Link

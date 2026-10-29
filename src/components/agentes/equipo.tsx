@@ -1,26 +1,22 @@
 "use client"
 
 import Link from "next/link"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowRight, CalendarClock, CheckCircle2, Inbox, XCircle } from "lucide-react"
 
 import { ErrorState, LoadingState } from "@/components/ui/states"
 import { AvatarAgente, PildoraEstado, relativo } from "@/components/agentes/comun"
-import { claveDe, mensajeError, pedirJson } from "@/lib/admin/query"
+import { consultaDeFicha, consultaDelEquipo } from "@/components/agentes/consultas"
+import { mensajeError } from "@/lib/admin/query"
 import { AGENTES, cuandoCorre, proximaCorrida, slugDeAgente, type ResumenAgente } from "@/lib/agentes"
 import { cn } from "@/lib/utils"
-
-export const URL_EQUIPO = "/api/agentes"
 
 /**
  * El equipo de agentes: una tarjeta por cada uno, con su cara, si está
  * trabajando y cuánto espera tu decisión. La tarjeta entera lleva a su ficha.
  */
 export function Equipo() {
-  const query = useQuery({
-    queryKey: claveDe("marketing", URL_EQUIPO),
-    queryFn: ({ signal }) => pedirJson<{ equipo: ResumenAgente[] }>(URL_EQUIPO, { signal }),
-  })
+  const query = useQuery(consultaDelEquipo())
 
   if (query.isPending) return <LoadingState label="Llamando al equipo" />
   if (query.isError) return <ErrorState message={mensajeError(query.error)} onRetry={() => query.refetch()} />
@@ -75,12 +71,17 @@ export function Equipo() {
 }
 
 function TarjetaAgente({ resumen: r }: { resumen: ResumenAgente }) {
+  const qc = useQueryClient()
   const ficha = AGENTES[r.clave]
   const proxima = proximaCorrida(ficha)
+  // La ficha se pide al pasar el mouse: el clic llega con la bandeja cargada.
+  const precargar = () => void qc.prefetchQuery(consultaDeFicha(r.clave))
 
   return (
     <Link
       href={`/agentes/${slugDeAgente(r.clave)}`}
+      onMouseEnter={precargar}
+      onFocus={precargar}
       className="group flex flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-e1 transition-all duration-300 hover:-translate-y-1 hover:shadow-e3"
     >
       <div className={cn("relative flex h-56 items-end justify-center overflow-hidden", ficha.tema.fondo)}>

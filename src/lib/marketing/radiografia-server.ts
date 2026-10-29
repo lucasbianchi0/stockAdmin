@@ -86,26 +86,26 @@ function vacio(): PorCanal {
 async function crudo(desde: string, hasta: string) {
   const { d1, d2 } = bordes(desde, hasta)
 
-  const sesiones = await todas<Sesion>((a, b) =>
-    supabase
-      .from("sessions")
-      .select("id, gclid, utm_source, referrer, landing_page, country, interactuo")
-      .gte("created_at", d1)
-      .lt("created_at", d2)
-      .eq("is_bot", false)
-      .eq("is_internal", false)
-      .or("interactuo.is.null,interactuo.eq.true")
-      .order("created_at")
-      .range(a, b)
-  )
-  const porId = new Map(sesiones.map((s) => [s.id, s]))
-
-  // Los eventos de las visitas del rango. El evento puede caer un rato después
-  // de medianoche del último día: se trae un día de margen y se filtra por visita.
+  // Las visitas, los clics y los leads no dependen entre sí: van a la vez. Lo
+  // único que espera es el detalle de los leads, que necesita sus ids.
   const margen = new Date(d2)
   margen.setUTCDate(margen.getUTCDate() + 1)
-  const clics = (
-    await todas<{ session_id: string }>((a, b) =>
+  const [sesiones, todosLosClics, leads] = await Promise.all([
+    todas<Sesion>((a, b) =>
+      supabase
+        .from("sessions")
+        .select("id, gclid, utm_source, referrer, landing_page, country, interactuo")
+        .gte("created_at", d1)
+        .lt("created_at", d2)
+        .eq("is_bot", false)
+        .eq("is_internal", false)
+        .or("interactuo.is.null,interactuo.eq.true")
+        .order("created_at")
+        .range(a, b)
+    ),
+    // Los eventos de las visitas del rango. El evento puede caer un rato después
+    // de medianoche del último día: se trae un día de margen y se filtra por visita.
+    todas<{ session_id: string }>((a, b) =>
       supabase
         .from("events")
         .select("session_id")
@@ -115,11 +115,13 @@ async function crudo(desde: string, hasta: string) {
         .lt("created_at", margen.toISOString())
         .order("created_at")
         .range(a, b)
-    )
-  ).filter((e) => porId.has(e.session_id))
+    ),
+    // `equipo` y `estado` salen de la función de leads, que ya sabe quién es nuestro.
+    leadsDelPeriodo(desde, hasta).then((l) => l.filter((x) => !x.equipo)),
+  ])
+  const porId = new Map(sesiones.map((s) => [s.id, s]))
+  const clics = todosLosClics.filter((e) => porId.has(e.session_id))
 
-  // `equipo` y `estado` salen de la función de leads, que ya sabe quién es nuestro.
-  const leads = (await leadsDelPeriodo(desde, hasta)).filter((l) => !l.equipo)
   const crudos = leads.length
     ? await todas<LeadCrudo>((a, b) =>
         supabase

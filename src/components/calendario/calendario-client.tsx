@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   AlertTriangle,
@@ -88,6 +88,44 @@ function quincenaDe(iso: string): [string, string] {
 }
 
 /**
+ * El rango visible. El mes arranca el lunes de su primera semana y son siempre
+ * seis filas, para que la grilla no salte de alto entre meses. La quincena
+ * completa sus semanas de lunes a domingo, con los días de afuera apagados,
+ * igual que el mes.
+ */
+function rangoVisible(vista: Vista, cursor: string): [string, string] {
+  if (vista === "semana") {
+    const l = lunesDe(cursor)
+    return [l, sumarDias(l, 6)]
+  }
+  if (vista === "quincena") {
+    const [i, f] = quincenaDe(cursor)
+    return [lunesDe(i), sumarDias(lunesDe(f), 6)]
+  }
+  const l = lunesDe(`${cursor.slice(0, 8)}01`)
+  return [l, sumarDias(l, 41)]
+}
+
+function urlDelRango(vista: Vista, cursor: string): string {
+  const [desde, hasta] = rangoVisible(vista, cursor)
+  return `/api/calendario?desde=${desde}&hasta=${hasta}`
+}
+
+/** El cursor del período anterior (`-1`) o siguiente (`1`). */
+function cursorVecino(vista: Vista, cursor: string, paso: number): string {
+  if (vista === "semana") return sumarDias(cursor, 7 * paso)
+  // Un día antes del inicio es la quincena anterior; uno después del fin, la
+  // siguiente.
+  if (vista === "quincena") {
+    const [inicio, fin] = quincenaDe(cursor)
+    return paso < 0 ? sumarDias(inicio, -1) : sumarDias(fin, 1)
+  }
+  const [a, m] = cursor.split("-").map(Number)
+  const d = new Date(Date.UTC(a, m - 1 + paso, 1))
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`
+}
+
+/**
  * El calendario.
  *
  * Se pide todo de una y se despliega en memoria, como en la ticketera: son
@@ -101,33 +139,18 @@ function quincenaDe(iso: string): [string, string] {
  */
 export function CalendarioClient() {
   const hoy = hoyArgentina()
-  const [vista, setVista] = useState<Vista>("mes")
+  const [vista, setVista] = useState<Vista>("semana")
   const [cursor, setCursor] = useState(hoy)
   const [capas, setCapas] = useState<Record<Tipo, boolean>>({ persona: true, agente: true, proceso: true })
   const [persona, setPersona] = useState<string>(TODOS)
 
   const [dialogo, setDialogo] = useState<{ entrada: Entrada | null; fecha: string; tipo: Tipo } | null>(null)
 
-  // El rango visible. El mes arranca el lunes de su primera semana y son
-  // siempre seis filas, para que la grilla no salte de alto entre meses. La
-  // quincena completa sus semanas de lunes a domingo, con los días de afuera
-  // apagados, igual que el mes.
-  const [desde, hasta] = useMemo(() => {
-    if (vista === "semana") {
-      const l = lunesDe(cursor)
-      return [l, sumarDias(l, 6)]
-    }
-    if (vista === "quincena") {
-      const [i, f] = quincenaDe(cursor)
-      return [lunesDe(i), sumarDias(lunesDe(f), 6)]
-    }
-    const l = lunesDe(`${cursor.slice(0, 8)}01`)
-    return [l, sumarDias(l, 41)]
-  }, [vista, cursor])
+  const [desde, hasta] = useMemo(() => rangoVisible(vista, cursor), [vista, cursor])
 
   const [inicioQuincena, finQuincena] = quincenaDe(cursor)
 
-  const url = `/api/calendario?desde=${desde}&hasta=${hasta}`
+  const url = urlDelRango(vista, cursor)
   const qc = useQueryClient()
   const query = useQuery({
     queryKey: claveDe("calendario", url),
@@ -136,6 +159,20 @@ export function CalendarioClient() {
     placeholderData: (prev) => prev,
   })
   const refrescar = useCallback(() => qc.invalidateQueries({ queryKey: ["calendario"] }), [qc])
+
+  // Con la grilla ya en pantalla, el período anterior y el siguiente se piden
+  // por detrás: las flechas cambian de mes sin esperar.
+  const listo = query.isSuccess && !query.isPlaceholderData
+  useEffect(() => {
+    if (!listo) return
+    for (const paso of [1, -1]) {
+      const vecina = urlDelRango(vista, cursorVecino(vista, cursor, paso))
+      void qc.prefetchQuery({
+        queryKey: claveDe("calendario", vecina),
+        queryFn: ({ signal }) => pedirJson<Datos>(vecina, { signal }),
+      })
+    }
+  }, [listo, vista, cursor, qc])
 
   const entradas = query.data?.entradas ?? SIN_ENTRADAS
   const corridas = query.data?.corridas ?? SIN_CORRIDAS
@@ -169,17 +206,7 @@ export function CalendarioClient() {
 
   const maquinas = useMemo(() => entradas.filter((e) => e.tipo !== "persona"), [entradas])
 
-  function mover(paso: number) {
-    if (vista === "semana") setCursor((c) => sumarDias(c, 7 * paso))
-    // Un día antes del inicio es la quincena anterior; uno después del fin, la
-    // siguiente.
-    else if (vista === "quincena") setCursor(paso < 0 ? sumarDias(inicioQuincena, -1) : sumarDias(finQuincena, 1))
-    else {
-      const [a, m] = cursor.split("-").map(Number)
-      const d = new Date(Date.UTC(a, m - 1 + paso, 1))
-      setCursor(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`)
-    }
-  }
+  const mover = (paso: number) => setCursor((c) => cursorVecino(vista, c, paso))
 
   const titulo =
     vista === "mes"
