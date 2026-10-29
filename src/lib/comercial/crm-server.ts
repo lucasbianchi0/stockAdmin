@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import type { Sesion } from "@/lib/sesion-server"
 import { listarEquipo } from "@/lib/tickets-server"
+import { conEmpresasDeClientes } from "@/lib/contactos-compartido-server"
 import { destinatarios, insertarContacto } from "@/lib/marketing/contactos-server"
 import {
   EQUIPO,
@@ -222,7 +223,7 @@ export async function opcionesContacto() {
       a.localeCompare(b, "es")
     )
   const opciones: OpcionesContacto = {
-    empresas: distintos((data ?? []).map((f) => f.empresa)),
+    empresas: await conEmpresasDeClientes(distintos((data ?? []).map((f) => f.empresa))),
     verticales: distintos((data ?? []).map((f) => f.vertical)),
     departamentos: distintos((data ?? []).map((f) => f.departamento)),
   }

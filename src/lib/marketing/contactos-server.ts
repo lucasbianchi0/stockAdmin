@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import type { Sesion } from "@/lib/sesion-server"
 import { listarEquipo } from "@/lib/tickets-server"
+import { conEmpresasDeClientes } from "@/lib/contactos-compartido-server"
 import { palabrasDeBusqueda } from "@/lib/busqueda"
 import {
   buscarCabecera,
@@ -293,7 +294,7 @@ export async function resumenContactos() {
   }
 
   const opciones: OpcionesContactos = {
-    empresas: distintos(livianas.map((f) => f.empresa)),
+    empresas: await conEmpresasDeClientes(distintos(livianas.map((f) => f.empresa))),
     verticales: distintos(livianas.map((f) => f.vertical)),
     departamentos: distintos(livianas.map((f) => f.departamento)),
   }

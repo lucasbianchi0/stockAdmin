@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 
 import { supabase } from "@/lib/supabase"
 import { palabrasDeBusqueda } from "@/lib/busqueda"
-import { clave } from "@/lib/marketing/contactos-import"
+import { clave, claveEmpresa } from "@/lib/marketing/contactos-import"
 import { esEstadoCrm, type EstadoCrm } from "@/lib/comercial/crm"
 import type { FichaEmpresa, PlantillaParaEnviar, Similar } from "@/lib/contactos-compartido"
 
@@ -67,6 +67,29 @@ export async function similares(req: Request) {
   return NextResponse.json({ similares: [...encontrados.values()].slice(0, 5) })
 }
 
+/* ── Empresas para sugerir ──────────────────────────────────────────────── */
+
+/**
+ * Las empresas de Contactos más las de Clientes que todavía no tienen a nadie
+ * cargado, para que al dar de alta a alguien de un cliente aparezca su razón
+ * social y la ficha encuentre sus presupuestos. Si ya está en Contactos (aunque
+ * escrita con "S.A." en vez de "SA"), queda como está escrita ahí.
+ */
+export async function conEmpresasDeClientes(empresas: string[]): Promise<string[]> {
+  const { data, error } = await supabase.from("clientes").select("razon_social").limit(2000)
+  if (error) throw error
+  const vistas = new Set(empresas.map(claveEmpresa))
+  const nuevas: string[] = []
+  for (const c of data ?? []) {
+    const r = String(c.razon_social ?? "").trim()
+    const k = claveEmpresa(r)
+    if (!r || vistas.has(k)) continue
+    vistas.add(k)
+    nuevas.push(r)
+  }
+  return [...empresas, ...nuevas].sort((a, b) => a.localeCompare(b, "es"))
+}
+
 /* ── La ficha de una empresa ──────────────────────────────────────────────── */
 
 /**
@@ -74,7 +97,10 @@ export async function similares(req: Request) {
  * qué etapa), y si ya es cliente, sus presupuestos.
  *
  * La empresa de un contacto es texto, no una ficha: se busca por nombre sin
- * mayúsculas ni acentos. El cliente se busca igual, por razón social.
+ * mayúsculas ni acentos. El cliente se busca por razón social, además sin
+ * puntos ni forma societaria: "ANDREANI LOGISTICA S.A." en Contactos es
+ * "ANDREANI LOGISTICA SA" en Clientes. Si no hay una igual, vale la única que
+ * empiece igual ("Andreani" → "Andreani Logística SA").
  */
 export async function fichaEmpresa(req: Request) {
   const nombre = (new URL(req.url).searchParams.get("nombre") ?? "").trim()
@@ -90,16 +116,16 @@ export async function fichaEmpresa(req: Request) {
 
   const [personas, clientes] = await Promise.all([
     qPersonas.limit(200),
-    supabase
-      .from("clientes")
-      .select("id, razon_social")
-      .ilike("razon_social", `%${nombre.replace(/[%_\\]/g, "\\$&")}%`)
-      .limit(10),
+    supabase.from("clientes").select("id, razon_social").limit(2000),
   ])
   if (personas.error) throw personas.error
 
   const deLaEmpresa = (personas.data ?? []).filter((f) => clave(String(f.empresa ?? "")) === k)
-  const cliente = (clientes.data ?? []).find((c) => clave(c.razon_social) === k) ?? clientes.data?.[0] ?? null
+  if (clientes.error) throw clientes.error
+  const ke = claveEmpresa(nombre)
+  const conClave = (clientes.data ?? []).map((c) => ({ ...c, k: claveEmpresa(c.razon_social) }))
+  const parecidos = conClave.filter((c) => c.k.startsWith(`${ke} `) || ke.startsWith(`${c.k} `))
+  const cliente = conClave.find((c) => c.k === ke) ?? (parecidos.length === 1 ? parecidos[0] : null)
 
   let presupuestos: FichaEmpresa["presupuestos"] = []
   if (cliente) {

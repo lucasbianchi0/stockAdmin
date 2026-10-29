@@ -27,6 +27,20 @@ export const clave = (s: string) =>
     .replace(/[^a-z0-9@.+]+/g, " ")
     .trim()
 
+/** Las formas societarias que se escriben de mil maneras ("S.A.", "SA", "S. A."). */
+const SOCIEDADES = new Set(["sa", "srl", "sas", "sau", "sac", "saic", "saci", "sacif", "sca", "scs", "sh", "ltda", "inc", "llc"])
+
+/**
+ * La clave de una empresa: como `clave`, pero sin puntos ni la forma
+ * societaria del final. "ANDREANI LOGISTICA S.A." y "Andreani Logística SA"
+ * dan lo mismo.
+ */
+export const claveEmpresa = (s: string) => {
+  const palabras = clave(s).replace(/[.@+]/g, "").replace(/\bsociedad anonima\b/g, "sa").replace(/\bsociedad de responsabilidad limitada\b/g, "srl").replace(/\b(s) (a|r l|a s|a u)\b/g, "$1$2").split(/\s+/).filter(Boolean)
+  while (palabras.length > 1 && SOCIEDADES.has(palabras[palabras.length - 1])) palabras.pop()
+  return palabras.join(" ")
+}
+
 /* ── Encabezados ──────────────────────────────────────────────────────────── */
 
 /**
