@@ -8,9 +8,15 @@
  * veces por año. A partir de acá los tokens se renuevan solos (ver lib/publicar/cuentas.ts).
  *
  *   node scripts/conectar-social.mjs instagram <token-corto>
+ *   node scripts/conectar-social.mjs facebook  <token-de-usuario|-> [nombre-o-id-de-pagina]
  *   node scripts/conectar-social.mjs linkedin  <code-de-oauth> [urn-de-organizacion]
+ *
+ * Correrlo en una terminal propia, no pegarle el token a nadie por chat. Con
+ * `-` (o sin token) lo lee del portapapeles en macOS, así no queda en el
+ * historial de la terminal.
  */
 
+import { execSync } from "node:child_process"
 import { createClient } from "@supabase/supabase-js"
 
 const SUPABASE_URL = process.env.SUPABASE_URL
@@ -23,7 +29,9 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-const [, , destino, valor, extra] = process.argv
+const [, , destino, argValor, extra] = process.argv
+const valor =
+  !argValor || argValor === "-" ? execSync("pbpaste", { encoding: "utf8" }).trim() : argValor
 
 async function guardar(fila) {
   const { error } = await supabase
@@ -72,6 +80,75 @@ async function instagram(tokenCorto) {
       ? new Date(Date.now() + cuerpo.expires_in * 1000).toISOString()
       : null,
   })
+}
+
+async function facebook(tokenUsuario, pagina = "Accedra") {
+  // Los tokens de usuario de Facebook empiezan con EAA. Si no, casi seguro el
+  // portapapeles tiene otra cosa (por ejemplo, el comando que se acaba de copiar).
+  if (!tokenUsuario.startsWith("EAA")) {
+    throw new Error("Eso no parece un token de Facebook (empiezan con EAA). Copiá el token del Explorer y volvé a correr.")
+  }
+  const appId = process.env.FACEBOOK_APP_ID
+  const secret = process.env.FACEBOOK_APP_SECRET
+  if (!appId || !secret) throw new Error("Faltan FACEBOOK_APP_ID y FACEBOOK_APP_SECRET")
+
+  // El token del Graph API Explorer dura una hora. Primero se lo lleva a uno de
+  // usuario de 60 días: el token de página que se pide CON ese no vence nunca,
+  // y por eso acá no hay renovación como en Instagram.
+  const canje = new URL("https://graph.facebook.com/v23.0/oauth/access_token")
+  canje.searchParams.set("grant_type", "fb_exchange_token")
+  canje.searchParams.set("client_id", appId)
+  canje.searchParams.set("client_secret", secret)
+  canje.searchParams.set("fb_exchange_token", tokenUsuario)
+
+  const res = await fetch(canje)
+  const cuerpo = await res.json()
+  if (!res.ok || !cuerpo.access_token) {
+    throw new Error(`No se pudo canjear el token: ${JSON.stringify(cuerpo)}`)
+  }
+
+  const paginasRes = await fetch(
+    `https://graph.facebook.com/v23.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&limit=100&access_token=${cuerpo.access_token}`
+  )
+  const paginas = await paginasRes.json()
+  if (!paginasRes.ok || !Array.isArray(paginas.data)) {
+    throw new Error(`No se pudieron leer las páginas: ${JSON.stringify(paginas)}`)
+  }
+
+  // La misma persona administra otras páginas (de otros negocios): se elige por
+  // nombre exacto o id, nunca "la primera", para no medir la página de otro.
+  const buscada = pagina.toLowerCase()
+  const elegida = paginas.data.find((p) => p.id === pagina || p.name.toLowerCase() === buscada)
+  if (!elegida) {
+    const nombres = paginas.data.map((p) => `${p.name} (${p.id})`).join(", ") || "ninguna"
+    throw new Error(`No aparece la página "${pagina}". Páginas que administrás: ${nombres}`)
+  }
+
+  await guardar({
+    destino: "facebook",
+    cuenta_id: String(elegida.id),
+    cuenta_nombre: elegida.name,
+    access_token: elegida.access_token,
+    refresh_token: null,
+    expira_at: null,
+  })
+
+  // Si la página tiene el Instagram vinculado, el mismo token de página sirve
+  // para sus métricas (ver lib/marketing/redes-server.ts): no hace falta un
+  // segundo login.
+  const ig = elegida.instagram_business_account
+  if (ig?.id) {
+    await guardar({
+      destino: "instagram",
+      cuenta_id: String(ig.id),
+      cuenta_nombre: ig.username ?? null,
+      access_token: elegida.access_token,
+      refresh_token: null,
+      expira_at: null,
+    })
+  } else {
+    console.log("  (la página no tiene un Instagram vinculado: Instagram queda sin conectar)")
+  }
 }
 
 async function linkedin(code, urnOrganizacion) {
@@ -132,10 +209,10 @@ async function linkedin(code, urnOrganizacion) {
   })
 }
 
-const acciones = { instagram, linkedin }
+const acciones = { instagram, facebook, linkedin }
 
 if (!acciones[destino] || !valor) {
-  console.error("Uso: node scripts/conectar-social.mjs <instagram|linkedin> <token-o-code> [urn]")
+  console.error("Uso: node scripts/conectar-social.mjs <instagram|facebook|linkedin> <token-o-code> [pagina|urn]")
   process.exit(1)
 }
 

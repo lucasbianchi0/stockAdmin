@@ -1,0 +1,24 @@
+name: Métricas de redes
+
+# Una vez por día, a las 7 de Argentina. Meta termina de cerrar las cifras de un
+# día hasta 48 horas después, así que cada corrida vuelve a pedir los últimos
+# cuatro días: correr más seguido no daría números más frescos.
+on:
+  schedule:
+    - cron: "0 10 * * *"
+  workflow_dispatch: # para forzar una corrida desde la pestaña Actions
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Instagram y Facebook
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        # --fail-with-body: un token vencido tiene que poner el workflow en rojo.
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 120 \
+            -X POST "$APP_URL/api/marketing/redes/sincronizar" \
+            -H "Authorization: Bearer $CRON_SECRET"

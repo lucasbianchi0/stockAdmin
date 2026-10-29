@@ -139,7 +139,7 @@ export function invalidarAdmin(opciones?: { maestros?: boolean }): Promise<void>
  * Nuestros Productos y Pedidos a la vez.
  */
 
-export type Modulo = "admin" | "productos" | "marketing" | "tickets" | "comercial"
+export type Modulo = "admin" | "productos" | "marketing" | "tickets" | "comercial" | "calendario"
 
 /** La clave de un GET dentro de un módulo. */
 export function claveDe(modulo: Modulo, url: string) {

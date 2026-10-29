@@ -9,7 +9,9 @@ import { ErrorState, LoadingState } from "@/components/ui/states"
 import { ResultadosCampanas } from "@/components/marketing/resultados-campanas"
 import { ResultadosLeads } from "@/components/marketing/resultados-leads"
 import { ResultadosLinkedin } from "@/components/marketing/resultados-linkedin"
+import { ResultadosRedSocial } from "@/components/marketing/resultados-red"
 import { ResultadosPaginas } from "@/components/marketing/resultados-paginas"
+import { ResultadosRadiografia } from "@/components/marketing/resultados-radiografia"
 import { ResultadosResumen } from "@/components/marketing/resultados-resumen"
 import { claveDe, mensajeError, pedirJson } from "@/lib/admin/query"
 import {
@@ -24,7 +26,7 @@ import { cn } from "@/lib/utils"
 const URL = "/api/marketing/resultados"
 
 /**
- * El panel entero: un período, cuatro vistas del mismo período.
+ * El panel entero: un período, una radiografía y el detalle de cada fuente.
  *
  * ── POR QUE UN SOLO PEDIDO PARA LAS CUATRO PESTAÑAS ──
  *
@@ -119,38 +121,60 @@ export function ResultadosClient() {
       )}
 
       {datos && (
-        <Tabs defaultValue="resumen" className="flex flex-col gap-4">
+        <Tabs defaultValue="radiografia" className="flex flex-col gap-4">
           <TabsList className="self-start">
-            <TabsTrigger value="resumen">Resumen</TabsTrigger>
-            <TabsTrigger value="campanas">
-              Campañas
-              <span className="num text-ink-faint">{datos.ads.campanas.length}</span>
-            </TabsTrigger>
-            <TabsTrigger value="paginas">
-              Páginas
-              <span className="num text-ink-faint">{datos.sitio.paginas.length}</span>
-            </TabsTrigger>
+            <TabsTrigger value="radiografia">Radiografía</TabsTrigger>
             <TabsTrigger value="leads">
               Leads
               <span className="num text-ink-faint">{datos.leads.filter((l) => !l.equipo).length}</span>
             </TabsTrigger>
-            <TabsTrigger value="linkedin">LinkedIn</TabsTrigger>
+            <TabsTrigger value="avanzado">Datos avanzados</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="resumen" className="mt-0">
-            <ResultadosResumen datos={datos} />
-          </TabsContent>
-          <TabsContent value="campanas" className="mt-0">
-            <ResultadosCampanas datos={datos} />
-          </TabsContent>
-          <TabsContent value="paginas" className="mt-0">
-            <ResultadosPaginas datos={datos} />
+          <TabsContent value="radiografia" className="mt-0">
+            <ResultadosRadiografia datos={datos} periodo={periodo} />
           </TabsContent>
           <TabsContent value="leads" className="mt-0">
             <ResultadosLeads datos={datos} alCambiar={alCambiar} recargar={() => void query.refetch()} />
           </TabsContent>
-          <TabsContent value="linkedin" className="mt-0">
-            <ResultadosLinkedin periodo={periodo} />
+
+          {/* El detalle de cada fuente, para cuando la radiografía señala un paso y hay que ver por qué. */}
+          <TabsContent value="avanzado" className="mt-0">
+            <Tabs defaultValue="sitio" className="flex flex-col gap-4">
+              <TabsList className="self-start">
+                <TabsTrigger value="sitio">Sitio y Ads</TabsTrigger>
+                <TabsTrigger value="campanas">
+                  Campañas
+                  <span className="num text-ink-faint">{datos.ads.campanas.length}</span>
+                </TabsTrigger>
+                <TabsTrigger value="paginas">
+                  Páginas
+                  <span className="num text-ink-faint">{datos.sitio.paginas.length}</span>
+                </TabsTrigger>
+                <TabsTrigger value="linkedin">LinkedIn</TabsTrigger>
+                <TabsTrigger value="instagram">Instagram</TabsTrigger>
+                <TabsTrigger value="facebook">Facebook</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="sitio" className="mt-0">
+                <ResultadosResumen datos={datos} />
+              </TabsContent>
+              <TabsContent value="campanas" className="mt-0">
+                <ResultadosCampanas datos={datos} />
+              </TabsContent>
+              <TabsContent value="paginas" className="mt-0">
+                <ResultadosPaginas datos={datos} />
+              </TabsContent>
+              <TabsContent value="linkedin" className="mt-0">
+                <ResultadosLinkedin periodo={periodo} />
+              </TabsContent>
+              <TabsContent value="instagram" className="mt-0">
+                <ResultadosRedSocial red="instagram" periodo={periodo} />
+              </TabsContent>
+              <TabsContent value="facebook" className="mt-0">
+                <ResultadosRedSocial red="facebook" periodo={periodo} />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         </Tabs>
       )}

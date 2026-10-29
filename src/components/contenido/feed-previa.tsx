@@ -5,6 +5,8 @@ import Image from "next/image"
 import {
   ArrowLeft,
   Bookmark,
+  ChevronLeft,
+  ChevronRight,
   Heart,
   MessageCircle,
   MoreHorizontal,
@@ -60,7 +62,7 @@ export type SlotFeed = {
 }
 
 /** Qué se dibuja en una celda. */
-type Celda = {
+export type Celda = {
   slot: SlotFeed
   /** La imagen real de la pieza, si ya se generó. */
   imagen: string | null
@@ -108,9 +110,12 @@ export function FeedPrevia<T extends SlotFeed>({
   )
 
   const reales = celdas.filter((c) => c.imagen).length
+  const indice = detalle ? celdas.findIndex((c) => c.slot.id === detalle.slot.id) : -1
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft" && indice > 0) setDetalle(celdas[indice - 1])
+      if (e.key === "ArrowRight" && indice >= 0 && indice < celdas.length - 1) setDetalle(celdas[indice + 1])
       if (e.key !== "Escape") return
       // Escape cierra una capa por vez: primero el detalle, después el modal.
       if (detalle) setDetalle(null)
@@ -118,7 +123,7 @@ export function FeedPrevia<T extends SlotFeed>({
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [detalle, onCerrar])
+  }, [detalle, indice, celdas, onCerrar])
 
   return (
     <div
@@ -145,7 +150,12 @@ export function FeedPrevia<T extends SlotFeed>({
 
         <div className="mx-auto w-full max-w-[375px] overflow-hidden rounded-[26px] border-[6px] border-navy-950 bg-black shadow-e4">
           {detalle ? (
-            <DetalleInstagram celda={detalle} onVolver={() => setDetalle(null)} />
+            <DetalleInstagram
+              celda={detalle}
+              onVolver={() => setDetalle(null)}
+              onAnterior={indice > 0 ? () => setDetalle(celdas[indice - 1]) : undefined}
+              onSiguiente={indice < celdas.length - 1 ? () => setDetalle(celdas[indice + 1]) : undefined}
+            />
           ) : canal === "linkedin" ? (
             <FeedLinkedIn celdas={celdas} />
           ) : (
@@ -165,12 +175,15 @@ export function FeedPrevia<T extends SlotFeed>({
 
 /* ── Instagram ────────────────────────────────────────────────────────────── */
 
-function GrillaInstagram({
+export function GrillaInstagram({
   celdas,
   onAbrir,
+  publicacionesPrevias = 40,
 }: {
   celdas: Celda[]
   onAbrir: (c: Celda) => void
+  /** Las que ya están en el perfil real, para que el contador sea creíble. */
+  publicacionesPrevias?: number
 }) {
   return (
     <div className="font-sans text-white">
@@ -180,7 +193,7 @@ function GrillaInstagram({
         </div>
         <div className="flex flex-1 justify-around text-center">
           {[
-            [String(40 + celdas.length), "publicaciones"],
+            [String(publicacionesPrevias + celdas.length), "publicaciones"],
             ["57", "seguidores"],
             ["90", "seguidos"],
           ].map(([n, l]) => (
@@ -245,8 +258,21 @@ function Relleno({ celda }: { celda: Celda; detalle?: boolean }) {
   )
 }
 
-function DetalleInstagram({ celda, onVolver }: { celda: Celda; onVolver: () => void }) {
+export function DetalleInstagram({
+  celda,
+  onVolver,
+  onAnterior,
+  onSiguiente,
+}: {
+  celda: Celda
+  onVolver: () => void
+  /** Sin ellas no hay flechas: el detalle se abre suelto, como antes. */
+  onAnterior?: () => void
+  onSiguiente?: () => void
+}) {
   const [abierto, setAbierto] = useState(false)
+  // Al pasar a otra publicación el caption vuelve a mostrarse cortado.
+  useEffect(() => setAbierto(false), [celda.slot.id])
   const texto = textoDe(celda.slot)
   const primeraLinea = texto.split("\n")[0]
   const largo = texto.length > primeraLinea.length
@@ -271,6 +297,26 @@ function DetalleInstagram({ celda, onVolver }: { celda: Celda; onVolver: () => v
 
       <div className="relative aspect-square w-full">
         <Relleno celda={celda} detalle />
+        {onAnterior && (
+          <button
+            type="button"
+            onClick={onAnterior}
+            aria-label="Publicación anterior"
+            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/45 p-1 text-white backdrop-blur-sm transition-colors hover:bg-black/65"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        )}
+        {onSiguiente && (
+          <button
+            type="button"
+            onClick={onSiguiente}
+            aria-label="Publicación siguiente"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/45 p-1 text-white backdrop-blur-sm transition-colors hover:bg-black/65"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-4 px-3 pt-2.5">
