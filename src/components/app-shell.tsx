@@ -152,7 +152,7 @@ export function AppShell({
 
   /* El asistente envuelve el shell y no vive en una página: el shell no se
      remonta al navegar, así que la conversación sigue ahí al cambiar de
-     pantalla, y la barra lateral lo alcanza para abrir "Agentes". La `key` es
+     pantalla, y la barra lateral lo alcanza para abrir "Asistentes". La `key` es
      el usuario —si en la misma pestaña entra otra persona, arranca de cero— y
      no cambia al navegar. */
   return (

@@ -1,0 +1,68 @@
+name: Agentes
+
+# Los agentes semanales de marketing. Cada uno lee datos, le pide a Claude un
+# análisis y deja propuestas en la pantalla Agentes; ninguno publica ni toca
+# nada solo. Horarios en UTC (Argentina = UTC-3), los mismos del Calendario:
+#
+#   blog     domingos   10:00  → tres notas para elegir
+#   informe  lunes      08:00  → la semana en un texto y tres acciones
+#   ads      lunes      09:00  → qué bloquear o ajustar en Google Ads
+#   redes    miércoles  09:00  → análisis de redes y tres posts
+on:
+  schedule:
+    - cron: "0 13 * * 0"
+    - cron: "0 11 * * 1"
+    - cron: "0 12 * * 1"
+    - cron: "0 12 * * 3"
+  workflow_dispatch: # para correr uno a mano desde la pestaña Actions
+    inputs:
+      agente:
+        description: Qué agente correr
+        required: true
+        type: choice
+        options: [blog, informe, ads, redes]
+
+jobs:
+  correr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Del horario que disparó la corrida sale el agente. Un horario nuevo en
+      # `schedule` sin su línea acá hace fallar el job, a propósito.
+      - name: Qué agente
+        id: cual
+        env:
+          HORARIO: ${{ github.event.schedule }}
+          A_MANO: ${{ inputs.agente }}
+        run: |
+          if [ -n "$A_MANO" ]; then echo "agente=$A_MANO" >> "$GITHUB_OUTPUT"; exit 0; fi
+          case "$HORARIO" in
+            "0 13 * * 0") echo "agente=blog" >> "$GITHUB_OUTPUT" ;;
+            "0 11 * * 1") echo "agente=informe" >> "$GITHUB_OUTPUT" ;;
+            "0 12 * * 1") echo "agente=ads" >> "$GITHUB_OUTPUT" ;;
+            "0 12 * * 3") echo "agente=redes" >> "$GITHUB_OUTPUT" ;;
+            *) echo "Horario sin agente: $HORARIO"; exit 1 ;;
+          esac
+
+      - name: Correr ${{ steps.cual.outputs.agente }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          GOOGLE_ADS_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_CUSTOMER_ID }}
+          GOOGLE_ADS_LOGIN_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_LOGIN_CUSTOMER_ID }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GOOGLE_ADS_REFRESH_TOKEN: ${{ secrets.GOOGLE_ADS_REFRESH_TOKEN }}
+        run: npm run agente -- ${{ steps.cual.outputs.agente }}
