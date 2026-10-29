@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { windsorConfigurado } from "@/lib/marketing/linkedin-windsor"
 import { normalizarCabecera } from "@/lib/admin/importar-csv"
 import { ArchivoInvalido } from "@/lib/admin/xlsx"
 import type { Hoja } from "@/lib/admin/xls"
@@ -295,6 +296,7 @@ export async function linkedinDelPeriodo(
       tasa_interaccion: p.tasa_interaccion === null ? null : Number(p.tasa_interaccion),
     })),
     demografia: agrupar((demografia.data ?? []) as { dimension: string; valor: string; total: number }[]),
+    automatico: windsorConfigurado(),
   }
 }
 

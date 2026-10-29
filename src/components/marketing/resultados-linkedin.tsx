@@ -9,6 +9,7 @@ import {
   Heart,
   Loader2,
   MousePointerClick,
+  RefreshCw,
   UploadCloud,
   UserPlus,
 } from "lucide-react"
@@ -31,6 +32,7 @@ import {
   variacion,
   type ResultadosLinkedin,
   type ResumenImportacion,
+  type ResumenSincronizacion,
 } from "@/lib/marketing/linkedin"
 import { porcentaje, type Periodo } from "@/lib/marketing/resultados"
 import { cn } from "@/lib/utils"
@@ -85,6 +87,7 @@ export function ResultadosLinkedin({ periodo }: { periodo: Periodo }) {
 function EstadoDeCarga({ datos, alImportar }: { datos: ResultadosLinkedin; alImportar: () => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [subiendo, setSubiendo] = useState(false)
+  const [trayendo, setTrayendo] = useState(false)
 
   const ultima = Object.values(datos.cargas).sort((a, b) => b.cargado_en.localeCompare(a.cargado_en))[0]
   const viejo = ultima ? diasDesde(ultima.cargado_en) >= DIAS_PARA_AVISAR : false
@@ -107,6 +110,28 @@ function EstadoDeCarga({ datos, alImportar }: { datos: ResultadosLinkedin; alImp
     } finally {
       setSubiendo(false)
       if (input.current) input.current.value = ""
+    }
+  }
+
+  async function traer() {
+    setTrayendo(true)
+    try {
+      const r = await pedirJson<ResumenSincronizacion>(`${URL_DATOS}/sincronizar`, { method: "POST" })
+      const bien = r.partes.filter((p) => p.ok && p.filas > 0)
+      const mal = r.partes.filter((p) => !p.ok || p.detalle)
+      if (bien.length) {
+        toast.success(
+          bien
+            .map((p) => `${TIPO_CARGA_LABEL[p.tipo]}: ${p.filas} días${p.hasta ? ` hasta el ${diaCorto(p.hasta)}` : ""}`)
+            .join(" · ")
+        )
+      } else if (!mal.length) toast.info("LinkedIn no devolvió datos nuevos")
+      for (const p of mal) toast.error(`${TIPO_CARGA_LABEL[p.tipo]}: ${p.detalle ?? "no se pudo traer"}`)
+      alImportar()
+    } catch (e) {
+      toast.error(mensajeError(e, "No se pudo traer de LinkedIn"))
+    } finally {
+      setTrayendo(false)
     }
   }
 
@@ -158,15 +183,38 @@ function EstadoDeCarga({ datos, alImportar }: { datos: ResultadosLinkedin; alImp
             className="hidden"
             onChange={(e) => void subir(e.target.files)}
           />
-          <button
-            type="button"
-            onClick={() => input.current?.click()}
-            disabled={subiendo}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-600 px-3.5 text-[13px] font-semibold text-white shadow-e1 transition-colors hover:bg-brand-700 disabled:opacity-60"
-          >
-            {subiendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-            Importar de LinkedIn
-          </button>
+          {datos.automatico ? (
+            <>
+              <button
+                type="button"
+                onClick={() => void traer()}
+                disabled={trayendo}
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-600 px-3.5 text-[13px] font-semibold text-white shadow-e1 transition-colors hover:bg-brand-700 disabled:opacity-60"
+              >
+                {trayendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Actualizar ahora
+              </button>
+              <button
+                type="button"
+                onClick={() => input.current?.click()}
+                disabled={subiendo}
+                className="inline-flex items-center gap-1 text-[11.5px] text-ink-subtle hover:text-brand-700 disabled:opacity-60"
+              >
+                {subiendo ? <Loader2 className="h-3 w-3 animate-spin" /> : <UploadCloud className="h-3 w-3" />}
+                Importar un .xls igual
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => input.current?.click()}
+              disabled={subiendo}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-600 px-3.5 text-[13px] font-semibold text-white shadow-e1 transition-colors hover:bg-brand-700 disabled:opacity-60"
+            >
+              {subiendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+              Importar de LinkedIn
+            </button>
+          )}
           <a
             href={ANALITICA_LINKEDIN}
             target="_blank"
@@ -180,8 +228,9 @@ function EstadoDeCarga({ datos, alImportar }: { datos: ResultadosLinkedin; alImp
       </div>
 
       <p className="border-t border-line-soft px-4 py-2.5 text-[11.5px] text-ink-subtle">
-        En LinkedIn: Análisis → Contenido, Seguidores y Visitantes → Exportar, con «Últimos 365 días». Se pueden subir los
-        tres juntos; volver a subir el mismo período actualiza los números, no los duplica.
+        {datos.automatico
+          ? "Se actualiza solo todos los días a la mañana desde Windsor.ai. «Actualizar ahora» trae la última semana; las impresiones patrocinadas solo entran con el .xls."
+          : "En LinkedIn: Análisis → Contenido, Seguidores y Visitantes → Exportar, con «Últimos 365 días». Se pueden subir los tres juntos; volver a subir el mismo período actualiza los números, no los duplica."}
       </p>
     </section>
   )

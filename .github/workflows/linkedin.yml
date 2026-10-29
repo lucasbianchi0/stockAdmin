@@ -1,0 +1,24 @@
+name: Métricas de LinkedIn
+
+# Una vez por día, a las 7:30 de Argentina. Trae la analítica de la página de
+# Accedra desde Windsor.ai; cada corrida vuelve a pedir la última semana porque
+# LinkedIn corrige las cifras durante unos días.
+on:
+  schedule:
+    - cron: "30 10 * * *"
+  workflow_dispatch: # para forzar una corrida desde la pestaña Actions
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: LinkedIn (Windsor.ai)
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        # --fail-with-body: una clave vencida tiene que poner el workflow en rojo.
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 120 \
+            -X POST "$APP_URL/api/marketing/linkedin/sincronizar" \
+            -H "Authorization: Bearer $CRON_SECRET"

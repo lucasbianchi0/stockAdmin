@@ -82,6 +82,12 @@ export type ResultadosLinkedin = {
   serie: DiaLinkedin[]
   publicaciones: Publicacion[]
   demografia: Demografia[]
+  /** Hay clave de Windsor.ai: los datos se pueden traer solos, sin el .xls. */
+  automatico: boolean
+}
+
+export type ResumenSincronizacion = {
+  partes: { tipo: TipoCarga; ok: boolean; filas: number; desde: string | null; hasta: string | null; detalle?: string }[]
 }
 
 export type ResumenImportacion = {
