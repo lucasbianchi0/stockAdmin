@@ -512,6 +512,34 @@ export function PagoDialog({
   const saldarTodo = (p: Pendiente) =>
     setImputado((prev) => ({ ...prev, [p.id]: numeroEditable(p.saldo) }))
 
+  /** Tilda todos los pendientes por su saldo completo. */
+  const saldarTodas = () =>
+    setImputado(Object.fromEntries(pendientes.map((p) => [p.id, numeroEditable(p.saldo)] as const)))
+
+  /**
+   * Cubre lo imputado con el saldo a cuenta, de la orden más vieja a la más
+   * nueva. Es la aplicación única que hacen con Andreani: los cheques entran a
+   * cuenta a medida que se acreditan y al final se aplican todos juntos contra
+   * las facturas. Tocar «Todo» en diecisiete órdenes era el trabajo.
+   *
+   * Toma solo lo que falta después de los medios y las retenciones ya cargados,
+   * así que se puede combinar con plata nueva.
+   */
+  const usarSaldoACuenta = () => {
+    let falta = redondear(totalImputado - totalMedios - totalRetenciones)
+    const nuevo: Record<string, string> = {}
+    for (const o of ordenes) {
+      if (o.moneda !== moneda || falta <= 0) continue
+      const toma = redondear(Math.min(o.saldo, falta))
+      nuevo[o.id] = numeroEditable(toma)
+      falta = redondear(falta - toma)
+    }
+    setAplicado(nuevo)
+  }
+  const disponibleACuenta = redondear(
+    ordenes.filter((o) => o.moneda === moneda).reduce((a, o) => a + o.saldo, 0)
+  )
+
   /** Completa los medios de pago con lo que falta para que el recibo cierre. */
   const completarMedio = (i: number) => {
     const resto = balance.imputado - balance.retenciones - (totalMedios - (parsearImporte(medios[i].importe) ?? 0))
@@ -712,12 +740,33 @@ export function PagoDialog({
             <p className="eyebrow">
               {esCobro ? "Facturas a cancelar" : "Comprobantes a cancelar"}
             </p>
-            {ordenes.length > 0 && (
-              <p className="text-[11.5px] text-ink-muted">
-                {ordenes.length === 1 ? "Hay 1 pago a cuenta" : `Hay ${ordenes.length} pagos a cuenta`}{" "}
-                con saldo: aplicalos como una factura más.
-              </p>
-            )}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {ordenes.length > 0 && (
+                <p className="text-[11.5px] text-ink-muted">
+                  {ordenes.length === 1 ? "1 pago a cuenta" : `${ordenes.length} pagos a cuenta`} ·{" "}
+                  <span className="num font-semibold text-brand-700">
+                    {formatearImporte(disponibleACuenta, moneda)}
+                  </span>{" "}
+                  disponibles
+                </p>
+              )}
+              {pendientes.length > 1 && (
+                <Button variant="ghost" size="sm" onClick={saldarTodas} disabled={guardando}>
+                  Saldar todas
+                </Button>
+              )}
+              {ordenes.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={usarSaldoACuenta}
+                  disabled={guardando || totalImputado - totalMedios - totalRetenciones <= 0}
+                  title="Cubre lo tildado con el saldo a cuenta, empezando por el más viejo"
+                >
+                  Usar saldo a cuenta
+                </Button>
+              )}
+            </div>
           </div>
 
           {!cliente ? (
