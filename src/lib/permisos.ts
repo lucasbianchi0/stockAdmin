@@ -62,6 +62,9 @@ const RUTAS: { prefijo: string; modulos: Modulo[] }[] = [
   { prefijo: "/contenido", modulos: ["marketing"] },
   { prefijo: "/api/marketing", modulos: ["marketing"] },
   { prefijo: "/api/contenido", modulos: ["marketing"] },
+  // Los agentes semanales: hoy son todos de marketing (blog, redes, Ads, informe).
+  { prefijo: "/agentes", modulos: ["marketing"] },
+  { prefijo: "/api/agentes", modulos: ["marketing"] },
 
   // Productos
   { prefijo: "/product", modulos: ["productos"] },

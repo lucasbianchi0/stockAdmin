@@ -97,6 +97,15 @@ export async function middleware(request: NextRequest) {
   }
 
   /*
+   * Y la publicación programada (publicar.yml, cada quince minutos). Sin esta
+   * excepción el middleware le contestaba 401 al cron y nada agendado salía.
+   * El handler pide `CRON_SECRET` o una sesión con el módulo de marketing.
+   */
+  if (pathname === "/api/contenido/publicar/tick") {
+    return response
+  }
+
+  /*
    * `getClaims` y no `getUser`: la firma del token se verifica acá con la clave
    * pública (ES256, ver lib/sesion-server.ts), sin el viaje al servidor de
    * autenticación que `getUser` hacía en CADA pedido —páginas y API—.

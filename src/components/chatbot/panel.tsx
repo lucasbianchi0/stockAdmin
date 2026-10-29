@@ -161,7 +161,7 @@ export function Panel() {
             onClick={() => conSelector && setMenuAbierto((v) => !v)}
             aria-haspopup={conSelector ? "listbox" : undefined}
             aria-expanded={conSelector ? menuAbierto : undefined}
-            aria-label={conSelector ? `Agente: ${agente.nombre}. Cambiar de agente` : agente.nombre}
+            aria-label={conSelector ? `Asistente: ${agente.nombre}. Cambiar de asistente` : agente.nombre}
             className={cn(
               "flex w-full min-w-0 items-center gap-2.5 rounded-xl px-1.5 py-1 text-left transition-colors",
               conSelector ? "hover:bg-white/[0.07]" : "cursor-default",
@@ -189,11 +189,11 @@ export function Panel() {
           {menuAbierto && (
             <div
               role="listbox"
-              aria-label="Elegí con qué agente hablar"
+              aria-label="Elegí con qué asistente hablar"
               className="absolute left-2 right-2 top-full mt-1.5 max-h-[min(70dvh,520px)] overflow-y-auto overscroll-contain rounded-xl border border-line bg-surface p-1.5 shadow-e4 animate-in fade-in-0 zoom-in-95 duration-150 sm:right-auto sm:w-[380px]"
             >
               <p className="px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-[0.11em] text-ink-faint">
-                Agentes
+                Asistentes
               </p>
               {agentes.map((a) => (
                 <OpcionAgente key={a.id} agente={a} elegido={a.id === agente.id} onElegir={elegir} />
@@ -204,7 +204,7 @@ export function Panel() {
 
         <div className="flex shrink-0 items-center gap-0.5">
           {!vacio && (
-            <BotonCabecera onClick={reiniciar} etiqueta="Empezar una conversación nueva con este agente">
+            <BotonCabecera onClick={reiniciar} etiqueta="Empezar una conversación nueva con este asistente">
               <RotateCcw className="h-4 w-4" />
             </BotonCabecera>
           )}
@@ -226,7 +226,7 @@ export function Panel() {
         {ampliado && conSelector && (
           <aside className="hidden w-[280px] shrink-0 flex-col overflow-y-auto border-r border-line bg-surface lg:flex">
             <p className="px-5 pb-2 pt-5 text-[10px] font-bold uppercase tracking-[0.11em] text-ink-faint">
-              Agentes
+              Asistentes
             </p>
             <div className="space-y-0.5 px-2.5 pb-4">
               {agentes.map((a) => (

@@ -280,6 +280,63 @@ export async function campanasEnVivo(desde: string, hasta: string): Promise<Ads>
   }
 }
 
+/* ── Términos de búsqueda ─────────────────────────────────────────────────── */
+
+export type Termino = {
+  termino: string
+  campana: string
+  grupo: string
+  impresiones: number
+  clics: number
+  coste: number
+  conversiones: number
+}
+
+/**
+ * Lo que la gente buscó de verdad cuando apareció un anuncio, con lo que costó.
+ * Lo lee el agente de Ads para proponer negativas. Ordenado por gasto y cortado
+ * en `limite`: los términos que no gastaron no cambian ninguna decisión.
+ */
+export async function terminosDeBusqueda(
+  desde: string,
+  hasta: string,
+  limite = 150
+): Promise<{ ok: true; terminos: Termino[] } | { ok: false; motivo: MotivoSinAds; detalle: string }> {
+  const c = credenciales()
+  if (!c) return { ok: false, motivo: "sin-credenciales", detalle: "Faltan las variables GOOGLE_ADS_*" }
+
+  try {
+    const filas = (await gaql(
+      c,
+      `SELECT search_term_view.search_term, campaign.name, ad_group.name,
+              metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions
+       FROM search_term_view
+       WHERE segments.date BETWEEN '${desde}' AND '${hasta}' AND metrics.impressions > 0
+       ORDER BY metrics.cost_micros DESC
+       LIMIT ${Math.max(1, Math.min(1000, Math.floor(limite)))}`
+    )) as (FilaAds & { searchTermView?: { searchTerm?: string }; adGroup?: { name?: string } })[]
+
+    return {
+      ok: true,
+      terminos: filas.map((f) => ({
+        termino: f.searchTermView?.searchTerm ?? "",
+        campana: f.campaign?.name ?? "",
+        grupo: f.adGroup?.name ?? "",
+        impresiones: num(f.metrics?.impressions),
+        clics: num(f.metrics?.clicks),
+        coste: num(f.metrics?.costMicros) / MICROS,
+        conversiones: num(f.metrics?.conversions),
+      })),
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      motivo: e instanceof AdsError ? e.motivo : "error",
+      detalle: e instanceof Error ? e.message : String(e),
+    }
+  }
+}
+
 /* ── Lo guardado ──────────────────────────────────────────────────────────── */
 
 /** El cierre congelado que se haya guardado para los meses del rango. */

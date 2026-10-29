@@ -14,6 +14,7 @@ import {
   KanbanSquare,
   LogOut,
   Megaphone,
+  MessagesSquare,
   Package,
   SlidersHorizontal,
   type LucideIcon,
@@ -470,7 +471,33 @@ export function Sidebar({ mobile, modulos, usuario, admin, onAbrirAgentes, onAbr
         </Link>
         )}
 
-        {/* Agentes no es una pantalla sino el chat a pantalla completa: no
+        {/* Los agentes que trabajan solos, en horario, y dejan propuestas para
+            aprobar. Hoy son todos de marketing. No son los asistentes de abajo,
+            que contestan cuando les hablan. */}
+        {modulos.includes("marketing") && (
+        <Link
+          href="/agentes"
+          className={cn(
+            "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13.5px] font-semibold tracking-[-0.005em] transition-colors duration-150",
+            pathname.startsWith("/agentes")
+              ? "bg-white/[0.09] text-white"
+              : "text-white/75 hover:bg-white/[0.05] hover:text-white"
+          )}
+        >
+          <Bot
+            className={cn(
+              "h-[18px] w-[18px] shrink-0 transition-colors",
+              pathname.startsWith("/agentes")
+                ? "text-white/85"
+                : "text-white/50 group-hover:text-white/85"
+            )}
+            strokeWidth={1.85}
+          />
+          <span className="flex-1 truncate text-left">Agentes</span>
+        </Link>
+        )}
+
+        {/* Asistentes no es una pantalla sino el chat a pantalla completa: no
             navega, así que la página de atrás queda donde estaba al cerrarlo. */}
         {chat && (
           <div className="mb-2 border-b border-white/[0.07] pb-2">
@@ -488,11 +515,11 @@ export function Sidebar({ mobile, modulos, usuario, admin, onAbrirAgentes, onAbr
                   : "text-white/75 hover:bg-white/[0.05] hover:text-white"
               )}
             >
-              <Bot
+              <MessagesSquare
                 className="h-[18px] w-[18px] shrink-0 text-white/50 transition-colors group-hover:text-white/85"
                 strokeWidth={1.85}
               />
-              <span className="flex-1 truncate text-left">Agentes</span>
+              <span className="flex-1 truncate text-left">Asistentes</span>
               {chat.agentes.length > 1 && (
                 <span className="shrink-0 rounded-full bg-brand-400/15 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-brand-300">
                   {chat.agentes.length}

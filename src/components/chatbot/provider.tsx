@@ -36,7 +36,7 @@ import { Panel } from "./panel"
  * conversación sobrevive a navegar, que es justamente para lo que más se usa
  * —preguntar, ir a la pantalla que indicó, volver—. Las páginas no saben que el
  * chat existe; la barra lateral sí, para abrirlo en pantalla completa desde
- * "Agentes".
+ * "Asistentes".
  *
  * Cada agente tiene su propio hilo. Cambiar de agente no borra nada: se vuelve
  * y la conversación sigue ahí.
@@ -69,7 +69,7 @@ type Valor = {
   abierto: boolean
   ampliado: boolean
   abrir: () => void
-  /** Lo que hace "Agentes" en la barra lateral: el chat entero, a pantalla completa. */
+  /** Lo que hace "Asistentes" en la barra lateral: el chat entero, a pantalla completa. */
   abrirAgentes: () => void
   cerrar: () => void
   setAmpliado: (v: boolean) => void
