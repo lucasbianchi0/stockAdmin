@@ -89,6 +89,14 @@ export async function middleware(request: NextRequest) {
   }
 
   /*
+   * Lo mismo para Instagram y Facebook (API de Meta): cron diario de GitHub
+   * Actions sin sesión, y el handler pide `CRON_SECRET` o el módulo de marketing.
+   */
+  if (pathname === "/api/marketing/redes/sincronizar") {
+    return response
+  }
+
+  /*
    * `getClaims` y no `getUser`: la firma del token se verifica acá con la clave
    * pública (ES256, ver lib/sesion-server.ts), sin el viaje al servidor de
    * autenticación que `getUser` hacía en CADA pedido —páginas y API—.
