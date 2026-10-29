@@ -72,16 +72,22 @@ async function insightsTolerantes<T extends { name: string }>(
   armarUrl: (metricas: string[]) => string,
   metricas: string[]
 ): Promise<Map<string, T>> {
-  const leer = async (lista: string[]) =>
-    (await pedir<{ data: T[] }>(armarUrl(lista))).data.map((d) => [d.name, d] as const)
+  // Una métrica puede venir repetida con otro período (en los posts de
+  // Facebook, el total `lifetime` primero y después uno `day`): vale la primera.
+  const salida = new Map<string, T>()
+  const leer = async (lista: string[]) => {
+    for (const d of (await pedir<{ data: T[] }>(armarUrl(lista))).data) {
+      if (!salida.has(d.name)) salida.set(d.name, d)
+    }
+  }
 
   try {
-    return new Map(await leer(metricas))
+    await leer(metricas)
+    return salida
   } catch {
-    const salida = new Map<string, T>()
     for (const m of metricas) {
       try {
-        for (const [k, v] of await leer([m])) salida.set(k, v)
+        await leer([m])
       } catch {
         // Métrica no disponible para esta cuenta o dada de baja: queda en null.
       }
@@ -281,6 +287,10 @@ async function sincronizarFacebook(cuenta: Cuenta, dias: string[]) {
   const filas = [...porDia.values()]
   if (filas.length && pagina.followers_count !== undefined) filas[filas.length - 1].seguidores_total = pagina.followers_count
 
+  // Ni reacciones ni comentarios se pueden pedir como campos del post: Meta
+  // exige `pages_read_user_content`, que un acceso a tareas sobre la Página no
+  // da. Las reacciones salen igual de las estadísticas del post; los
+  // comentarios quedan en null.
   const posts = await pedir<{
     data: {
       id: string
@@ -289,13 +299,10 @@ async function sincronizarFacebook(cuenta: Cuenta, dias: string[]) {
       permalink_url?: string
       full_picture?: string
       shares?: { count: number }
-      reactions?: { summary?: { total_count: number } }
-      comments?: { summary?: { total_count: number } }
     }[]
   }>(
     conParams(`${BASE_FB}/${id}/posts`, {
-      fields:
-        "id,message,created_time,permalink_url,full_picture,shares,reactions.summary(true).limit(0),comments.summary(true).limit(0)",
+      fields: "id,message,created_time,permalink_url,full_picture,shares",
       limit: 50,
       access_token: token,
     })
@@ -303,13 +310,19 @@ async function sincronizarFacebook(cuenta: Cuenta, dias: string[]) {
 
   const publicaciones: FilaPublicacion[] = []
   for (const p of posts.data) {
-    const pm = await insightsTolerantes<Serie>(
+    const pm = await insightsTolerantes<{ name: string; values?: { value: number | Record<string, number> }[] }>(
       (lista) => conParams(`${BASE_FB}/${p.id}/insights`, { metric: lista.join(","), access_token: token }),
-      ["post_media_view", "post_total_media_view_unique"]
+      ["post_media_view", "post_total_media_view_unique", "post_reactions_by_type_total"]
     )
-    const v = (nombre: string) => pm.get(nombre)?.values?.[0]?.value ?? null
-    const reacciones = p.reactions?.summary?.total_count ?? null
-    const comentarios = p.comments?.summary?.total_count ?? null
+    const v = (nombre: string) => {
+      const valor = pm.get(nombre)?.values?.[0]?.value
+      return typeof valor === "number" ? valor : null
+    }
+    // Viene desglosado por tipo ({ like: 3, love: 1 }); se suman todas.
+    const porTipo = pm.get("post_reactions_by_type_total")?.values?.[0]?.value
+    const reacciones =
+      porTipo && typeof porTipo === "object" ? Object.values(porTipo).reduce((a, n) => a + n, 0) : null
+    const comentarios: number | null = null
     const compartidos = p.shares?.count ?? 0
     publicaciones.push({
       red: "facebook",
