@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import {
@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 
 import { SemaforoVencimiento } from "@/components/admin/semaforo-vencimiento"
+import { Preguntar } from "@/components/chatbot/preguntar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -39,6 +40,7 @@ import { formatearFecha } from "@/lib/admin/fecha"
 import { formatearContravalor, formatearImporte } from "@/lib/admin/moneda"
 import { claves, mensajeError, pedirJson } from "@/lib/admin/query"
 import { useTablaAdmin } from "@/lib/admin/use-tabla"
+import { renglon, resumen as unirRenglones } from "@/lib/chatbot/pantalla"
 import { cn } from "@/lib/utils"
 
 /**
@@ -224,6 +226,23 @@ export function FichaEntidadClient({
               : undefined
           }
           tono={debe ? "atencion" : "ok"}
+          accion={
+            <Preguntar
+              agente="finanzas"
+              compacto
+              pantalla={() => ({
+                titulo: `Administración · Ficha de ${entidad.razonSocial}`,
+                texto: textoFicha(tipo, entidad, resumen, comprobantes.filas, pagos.filas),
+              })}
+              pregunta={
+                tipo === "cliente"
+                  ? "¿Cómo viene este cliente? ¿Paga en término, qué nos debe y qué harías para cobrarlo?"
+                  : "¿Cómo viene este proveedor? ¿Qué le debemos, qué vence primero y cómo lo pagarías?"
+              }
+              ayuda="Le pasa el saldo, lo vencido y los últimos comprobantes y pagos de esta ficha."
+              seguimientos={SEGUIMIENTOS}
+            />
+          }
         />
         <Kpi
           rotulo="Vencido"
@@ -796,15 +815,19 @@ function Kpi({
   principal,
   secundario,
   tono,
+  accion,
 }: {
   rotulo: string
   principal: string
   secundario?: string
   tono?: "ok" | "atencion" | "alerta"
+  /** Un botón chico en el rincón, como el de preguntarle al asistente. */
+  accion?: ReactNode
 }) {
   return (
-    <div className="rounded-xl border border-line bg-surface px-4 py-3 shadow-e1">
-      <p className="eyebrow">{rotulo}</p>
+    <div className="relative rounded-xl border border-line bg-surface px-4 py-3 shadow-e1">
+      {accion && <div className="absolute right-2.5 top-2.5">{accion}</div>}
+      <p className={cn("eyebrow", accion && "pr-8")}>{rotulo}</p>
       <p
         className={cn(
           "num mt-1 text-[19px] font-bold tracking-[-0.02em]",
@@ -815,5 +838,60 @@ function Kpi({
       </p>
       {secundario && <p className="num mt-0.5 text-[11.5px] text-ink-muted">{secundario}</p>}
     </div>
+  )
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS = [
+  { emoji: "⏱️", corto: "¿Cuánto tarda en pagar?", texto: "Con lo que hay en la ficha, ¿cumple la condición de pago o se atrasa? ¿Cuántos días, más o menos?" },
+  { emoji: "📈", corto: "¿Crece o se achica?", texto: "¿Cómo viene el volumen con esta ficha en los últimos meses? ¿Crece, se mantiene o se achica?" },
+  { emoji: "🎯", corto: "Qué hago primero", texto: "Si tuviera que hacer una sola cosa con esta ficha esta semana, ¿cuál sería?" },
+]
+
+/**
+ * La ficha en texto, para el chat: los números de arriba y lo último que se
+ * movió. Va el nombre —es la ficha que la persona tiene abierta— pero nunca el
+ * CUIT, el mail, el teléfono ni el domicilio.
+ */
+function textoFicha(
+  tipo: TipoEntidad,
+  entidad: Cliente,
+  r: ResumenEntidad,
+  comprobantes: Comprobante[],
+  pagos: Cobro[]
+): string {
+  const voz = VOZ[tipo]
+  return unirRenglones(
+    renglon(tipo === "cliente" ? "Cliente" : "Proveedor", entidad.razonSocial),
+    renglon("Categoría", entidad.categoriaNombre),
+    !entidad.activo && "Está dado de baja.",
+    renglon("Condición de pago", entidad.condicionPagoDias !== null ? `${entidad.condicionPagoDias} días` : null),
+    "",
+    "## Saldo",
+    renglon(voz.deuda, formatearImporte(r.pendienteArs, "ARS")),
+    r.pendienteUsd !== 0 && renglon(`${voz.deuda} en dólares`, formatearImporte(r.pendienteUsd, "USD")),
+    renglon("Comprobantes pendientes", r.cantidad),
+    renglon("Vencido", `${formatearImporte(r.vencidoArs, "ARS")}${r.vencidoUsd !== 0 ? ` + ${formatearImporte(r.vencidoUsd, "USD")}` : ""} en ${r.vencidas} comprobantes`),
+    renglon("Próximo vencimiento", r.proximoVencimiento),
+    "",
+    `## Últimos ${voz.comprobantes.toLowerCase()}`,
+    comprobantes.length === 0 && "Ninguno.",
+    comprobantes.slice(0, 15).map(
+      (c) =>
+        `${c.fecha} · ${c.clase} ${formatearNumero(c.puntoVenta, c.numero)} · ${formatearImporte(c.total, c.moneda)} · ${etiquetaSaldo(
+          estadoDeSaldo(c.total, c.saldo),
+          c.tipo
+        )}${c.saldo > 0.01 ? ` (saldo ${formatearImporte(c.saldo, c.moneda)}${c.fechaVencimiento ? `, vence ${c.fechaVencimiento}` : ""})` : ""}`
+    ),
+    "",
+    `## Últimos ${voz.pagos.toLowerCase()}`,
+    pagos.length === 0 && "Ninguno.",
+    pagos.slice(0, 10).map(
+      (p) =>
+        `${p.fecha} · ${formatearImporte(p.totalMedios + p.totalRetenciones, p.moneda)} · ${p.imputaciones.length} comprobante${
+          p.imputaciones.length === 1 ? "" : "s"
+        }`
+    )
   )
 }

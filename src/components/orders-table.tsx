@@ -18,8 +18,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { Preguntar } from "@/components/chatbot/preguntar"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { cn } from "@/lib/utils"
 import {
   AlertCircle,
@@ -199,10 +201,21 @@ export function OrdersTable() {
               Distecna no informa el estado de los pedidos: lo actualizamos nosotros desde la columna Estado
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={load} disabled={query.isFetching}>
-            <RefreshCw className={cn(query.isFetching && "animate-spin")} />
-            Actualizar
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {orders.length > 0 && (
+              <Preguntar
+                agente="ecommerce"
+                pantalla={() => ({ titulo: "Productos · Pedidos a Distecna", texto: textoPedidos(orders) })}
+                pregunta="Mirá los pedidos a Distecna: ¿hay alguno trabado o con error, qué estados habría que actualizar y cuánto llevamos comprado?"
+                ayuda="Le pasa cada pedido con su estado, total, ítems y fecha, y los errores de Distecna."
+                seguimientos={SEGUIMIENTOS_PEDIDOS}
+              />
+            )}
+            <Button variant="outline" size="sm" onClick={load} disabled={query.isFetching}>
+              <RefreshCw className={cn(query.isFetching && "animate-spin")} />
+              Actualizar
+            </Button>
+          </div>
         </div>
 
         {orders.length === 0 ? (
@@ -338,9 +351,20 @@ export function OrdersTable() {
                               {order.error && (
                                 <div className="flex gap-2.5 rounded-lg border border-danger-line bg-danger-soft p-3">
                                   <AlertCircle className="mt-px h-4 w-4 shrink-0 text-danger-text" />
-                                  <p className="text-[12px] leading-relaxed text-danger-text">
+                                  <p className="flex-1 text-[12px] leading-relaxed text-danger-text">
                                     {order.error}
                                   </p>
+                                  <Preguntar
+                                    compacto
+                                    agente="ecommerce"
+                                    pantalla={() => ({
+                                      titulo: `Productos · Pedido ${order.sales_order_id ?? "con error"}`,
+                                      texto: textoPedido(order),
+                                    })}
+                                    pregunta="Este pedido a Distecna dio error. ¿Qué quiere decir el error, qué lo pudo causar y cómo lo vuelvo a generar bien?"
+                                    ayuda="Le pasa el error que devolvió Distecna y los ítems del pedido."
+                                    seguimientos={SEGUIMIENTOS_PEDIDOS}
+                                  />
                                 </div>
                               )}
 
@@ -391,5 +415,69 @@ export function OrdersTable() {
         )}
       </div>
     </div>
+  )
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+/** Las repreguntas que quedan a mano después de preguntar por los pedidos. */
+const SEGUIMIENTOS_PEDIDOS = [
+  { emoji: "⏳", corto: "¿Cuáles reclamo?", texto: "¿Qué pedidos llevan demasiado tiempo enviados o confirmados sin entregarse y conviene reclamar a Distecna?" },
+  { emoji: "🔁", corto: "¿Lo vuelvo a pedir?", texto: "Para los pedidos con error o cancelados, ¿conviene volver a generarlos? ¿Con qué cambios?" },
+  { emoji: "📦", corto: "¿Qué pido ahora?", texto: "Mirando lo que ya pedimos, ¿qué productos convendría pedir de nuevo?" },
+]
+
+const renglonItems = (o: Order) =>
+  o.items.map((i) => `  ${i.quantity} × ${i.name || i.code}${i.unit_price !== null ? ` a ${fmtUsd(i.unit_price)}` : ""}`)
+
+/**
+ * Los pedidos en texto, para el chat: cuántos hay en cada estado, lo comprado y
+ * cada pedido con sus ítems. Sin las notas de estado, que son texto libre.
+ */
+function textoPedidos(orders: Order[]): string {
+  const reales = orders.filter((o) => o.environment !== "qa")
+  const comprado = reales
+    .filter((o) => o.status !== "cancelado" && o.status !== "error")
+    .reduce((a, o) => a + (o.total_usd ?? 0), 0)
+  const estados = (["enviado", "confirmado", "entregado", "cancelado", "error"] as EstadoPedido[])
+    .map((e) => [e, orders.filter((o) => o.status === e).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([e, n]) => `${ESTADO_PEDIDO_LABEL[e]}: ${n}`)
+
+  return resumen(
+    `Pedidos: ${orders.length}`,
+    renglon("De homologación (QA, no llegaron a Distecna)", orders.length - reales.length || null),
+    estados.join(" · "),
+    renglon("Comprado (sin QA, cancelados ni errores)", fmtUsd(comprado)),
+    "Distecna no informa el estado: lo actualizamos a mano.",
+    "",
+    "## Pedidos, del más nuevo al más viejo",
+    orders.slice(0, 30).map((o) =>
+      [
+        `${o.sales_order_id ?? "sin número"}${o.environment === "qa" ? " (QA)" : ""} · ${ESTADO_PEDIDO_LABEL[o.status]} · ${fmtUsd(o.total_usd)} · ${fechaHora(o.created_at)}${
+          o.status_updated_at ? ` · estado cambiado el ${fechaHora(o.status_updated_at)}` : ""
+        }`,
+        o.error && `  Error: ${o.error.slice(0, 300)}`,
+        ...renglonItems(o),
+      ]
+        .filter(Boolean)
+        .join("\n")
+    ),
+    orders.length > 30 && `Y ${orders.length - 30} pedidos más viejos.`
+  )
+}
+
+/** Un pedido con error, para la pregunta desde su detalle. */
+function textoPedido(o: Order): string {
+  return resumen(
+    renglon("Pedido", o.sales_order_id ?? "sin número (Distecna no lo dio de alta)"),
+    renglon("Entorno", o.environment === "qa" ? "homologación (QA)" : o.environment),
+    renglon("Estado", ESTADO_PEDIDO_LABEL[o.status]),
+    renglon("Fecha", fechaHora(o.created_at)),
+    renglon("Total", fmtUsd(o.total_usd)),
+    renglon("Error de Distecna", o.error),
+    "",
+    "## Ítems",
+    o.items.map((i) => `${i.quantity} × ${i.name || i.code} (código ${i.code}, ${i.product_type})${i.unit_price !== null ? ` a ${fmtUsd(i.unit_price)}` : ""}`)
   )
 }

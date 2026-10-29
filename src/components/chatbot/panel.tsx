@@ -2,10 +2,11 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { ArrowUp, Check, ChevronDown, Maximize2, Minimize2, RotateCcw, Square, X } from "lucide-react"
+import { ArrowUp, Check, ChevronDown, Maximize2, Minimize2, Paperclip, RotateCcw, Square, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { MAX_LARGO } from "@/lib/chatbot/limites"
+import type { Pantalla } from "@/lib/chatbot/pantalla"
 import type { Agente, AgenteId } from "@/lib/chatbot/agentes"
 import { atajosPara, type Atajo } from "./atajos"
 import { Formato } from "./formato"
@@ -42,6 +43,7 @@ export function Panel() {
     cerrar,
     setAmpliado,
     enviar,
+    seguimientos,
     detener,
     reiniciar,
   } = useChatbot()
@@ -57,6 +59,9 @@ export function Panel() {
     () => (agente.id === "asistente" ? atajosPara(acceso) : agente.atajos),
     [acceso, agente]
   )
+  // Después de preguntar desde una pantalla, las repreguntas de esa pantalla
+  // sirven más que los atajos generales.
+  const fila = seguimientos ?? atajos
   const vacio = mensajes.length === 0
   const ultimo = mensajes[mensajes.length - 1]
   const esperando = escribiendo && (!ultimo || ultimo.rol !== "assistant" || !ultimo.texto)
@@ -161,7 +166,7 @@ export function Panel() {
             onClick={() => conSelector && setMenuAbierto((v) => !v)}
             aria-haspopup={conSelector ? "listbox" : undefined}
             aria-expanded={conSelector ? menuAbierto : undefined}
-            aria-label={conSelector ? `Agente: ${agente.nombre}. Cambiar de agente` : agente.nombre}
+            aria-label={conSelector ? `Asistente: ${agente.nombre}. Cambiar de asistente` : agente.nombre}
             className={cn(
               "flex w-full min-w-0 items-center gap-2.5 rounded-xl px-1.5 py-1 text-left transition-colors",
               conSelector ? "hover:bg-white/[0.07]" : "cursor-default",
@@ -189,11 +194,11 @@ export function Panel() {
           {menuAbierto && (
             <div
               role="listbox"
-              aria-label="Elegí con qué agente hablar"
+              aria-label="Elegí con qué asistente hablar"
               className="absolute left-2 right-2 top-full mt-1.5 max-h-[min(70dvh,520px)] overflow-y-auto overscroll-contain rounded-xl border border-line bg-surface p-1.5 shadow-e4 animate-in fade-in-0 zoom-in-95 duration-150 sm:right-auto sm:w-[380px]"
             >
               <p className="px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-[0.11em] text-ink-faint">
-                Agentes
+                Asistentes
               </p>
               {agentes.map((a) => (
                 <OpcionAgente key={a.id} agente={a} elegido={a.id === agente.id} onElegir={elegir} />
@@ -204,7 +209,7 @@ export function Panel() {
 
         <div className="flex shrink-0 items-center gap-0.5">
           {!vacio && (
-            <BotonCabecera onClick={reiniciar} etiqueta="Empezar una conversación nueva con este agente">
+            <BotonCabecera onClick={reiniciar} etiqueta="Empezar una conversación nueva con este asistente">
               <RotateCcw className="h-4 w-4" />
             </BotonCabecera>
           )}
@@ -226,7 +231,7 @@ export function Panel() {
         {ampliado && conSelector && (
           <aside className="hidden w-[280px] shrink-0 flex-col overflow-y-auto border-r border-line bg-surface lg:flex">
             <p className="px-5 pb-2 pt-5 text-[10px] font-bold uppercase tracking-[0.11em] text-ink-faint">
-              Agentes
+              Asistentes
             </p>
             <div className="space-y-0.5 px-2.5 pb-4">
               {agentes.map((a) => (
@@ -246,7 +251,8 @@ export function Panel() {
                 <div className="space-y-4">
                   {mensajes.map((m, i) =>
                     m.rol === "user" ? (
-                      <div key={m.id} className="flex justify-end">
+                      <div key={m.id} className="flex flex-col items-end gap-1">
+                        {m.pantalla && <ChipPantalla pantalla={m.pantalla} />}
                         <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-brand-600 px-3.5 py-2 text-[13px] leading-relaxed text-white shadow-e1">
                           {m.texto}
                         </p>
@@ -288,7 +294,7 @@ export function Panel() {
                   encola una pregunta que pisa la anterior. */}
               {!vacio && !escribiendo && (
                 <div className="flex gap-1.5 overflow-x-auto px-3 pt-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {atajos.map((a) => (
+                  {fila.map((a) => (
                     <button
                       key={a.corto}
                       type="button"
@@ -503,6 +509,26 @@ function Bienvenida({
         ))}
       </div>
     </div>
+  )
+}
+
+/**
+ * Lo que estaba mirando cuando preguntó desde una pantalla. Desplegable: que
+ * se pueda ver exactamente qué recibió el asistente, para confiar en la
+ * respuesta o darse cuenta de que faltaba algo.
+ */
+function ChipPantalla({ pantalla }: { pantalla: Pantalla }) {
+  return (
+    <details className="group max-w-[85%] text-right">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 transition-colors hover:bg-brand-100 [&::-webkit-details-marker]:hidden">
+        <Paperclip className="h-3 w-3 shrink-0" />
+        <span className="truncate">{pantalla.titulo}</span>
+        <ChevronDown className="h-3 w-3 shrink-0 transition-transform group-open:rotate-180" />
+      </summary>
+      <pre className="mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-line bg-surface px-3 py-2 text-left font-sans text-[11.5px] leading-relaxed text-ink-muted">
+        {pantalla.texto}
+      </pre>
+    </details>
   )
 }
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { Download, FileQuestion, FileText, FileWarning, PieChart, Users } from "lucide-react"
 
+import { Preguntar } from "@/components/chatbot/preguntar"
 import { Avatar } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -36,6 +37,7 @@ import {
   type PresupuestoFila,
 } from "@/lib/comercial/presupuestos"
 import type { FacturaDeReporte, FacturaFaltante } from "@/lib/comercial/presupuesto-facturas-server"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { cn } from "@/lib/utils"
 
 /**
@@ -189,10 +191,26 @@ export function ReportesComercialClient({ veFacturas }: { veFacturas: boolean })
             )
           )}
 
+          <Preguntar
+            className="ml-auto"
+            pantalla={() => ({
+              titulo: "Comercial · Reportes",
+              texto: textoReporte(filas, todos.length, {
+                estado,
+                vendedor: vendedores.find((v) => v.id === vendedor)?.nombre ?? "",
+                desde,
+                hasta,
+                facturas,
+                faltan,
+              }),
+            })}
+            pregunta="Mirá el reporte de presupuestos: ¿cómo viene la renta, qué presupuestos me preocupan y qué haría para cerrar más de lo que está enviado o aceptado?"
+            ayuda="Le pasa los totales por moneda y estado, la renta por vendedor y los presupuestos flojos, con los filtros puestos."
+            seguimientos={SEGUIMIENTOS_REPORTE}
+          />
           <Button
             variant="outline"
             size="sm"
-            className="ml-auto"
             disabled={filas.length === 0}
             onClick={() =>
               descargarCsv(
@@ -637,3 +655,106 @@ function useEncabezadoFijo(hayTabla: boolean) {
 
 /** El `<thead>` real: ocupa su lugar en el cálculo de anchos pero no se ve. */
 const OCULTO = "[&_th]:h-0 [&_th]:border-b-0 [&_th]:leading-[0] [&_th]:text-transparent [&_th]:select-none"
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+/** Las repreguntas que quedan a mano después de preguntar desde el reporte. */
+const SEGUIMIENTOS_REPORTE = [
+  { emoji: "📉", corto: "¿Por qué baja la renta?", texto: "¿Qué explica la renta más baja en algunos presupuestos? ¿Es el costo, el margen o el break?" },
+  { emoji: "🤝", corto: "Qué cierro primero", texto: "De lo enviado y aceptado, ¿qué conviene empujar primero para que se facture este mes?" },
+  { emoji: "🧾", corto: "Facturas sin vincular", texto: "¿Qué hago con los presupuestos facturados que no tienen la factura vinculada?" },
+  { emoji: "🎫", corto: "Anotalo como ticket", texto: "Anotá como ticket la acción principal que propusiste, con el detalle para que la pueda hacer otra persona." },
+]
+
+/**
+ * El reporte en texto, para el chat: totales por moneda, cómo se reparten por
+ * estado y por vendedor, y los presupuestos que piden mirarse. Sin nombres de
+ * clientes: el número del presupuesto alcanza para ubicarlo.
+ */
+function textoReporte(
+  filas: PresupuestoFila[],
+  total: number,
+  f: {
+    estado: EstadoPresupuesto | ""
+    vendedor: string
+    desde: string
+    hasta: string
+    facturas: Record<string, FacturaDeReporte[]>
+    faltan: Record<string, FacturaFaltante[]>
+  }
+): string {
+  const pct = (renta: number, venta: number) => (venta === 0 ? "—" : `${Math.round((renta / venta) * 100)}%`)
+  const monedas = (["ARS", "USD"] as const).filter((m) => filas.some((p) => p.moneda === m))
+
+  const porMoneda = monedas.map((m) => {
+    const de = filas.filter((p) => p.moneda === m)
+    const venta = de.reduce((a, p) => a + p.totales.venta, 0)
+    const costo = de.reduce((a, p) => a + p.totales.costo, 0)
+    const renta = de.reduce((a, p) => a + p.totales.rentabilidad, 0)
+    const puntos = de.reduce((a, p) => a + (puntosDe(p) ?? 0), 0)
+    return [
+      `### En ${m === "ARS" ? "pesos" : "dólares"} (${de.length})`,
+      `Vendido ${formatearImporte(venta, m)} · costo ${formatearImporte(costo, m)} · renta ${formatearImporte(renta, m)} (${pct(renta, venta)})`,
+      renglon("Puntos (8% de la renta facturada)", puntos ? formatearImporte(puntos, m) : null),
+      ESTADOS.map((e) => {
+        const est = de.filter((p) => p.estado === e)
+        if (!est.length) return null
+        const v = est.reduce((a, p) => a + p.totales.venta, 0)
+        const r = est.reduce((a, p) => a + p.totales.rentabilidad, 0)
+        return `${ESTADO_LABEL[e]}: ${est.length} · ${formatearImporte(v, m)} · renta ${pct(r, v)}`
+      }),
+    ]
+  })
+
+  // Por vendedor: cuántos tiene, cuántos facturó y con qué renta.
+  const vendedores = new Map<string, PresupuestoFila[]>()
+  for (const p of filas) {
+    const n = p.vendedorNombre ?? "Sin vendedor"
+    vendedores.set(n, [...(vendedores.get(n) ?? []), p])
+  }
+  const porVendedor = [...vendedores].map(([nombre, ps]) => {
+    const fact = ps.filter((p) => p.estado === "facturado").length
+    const montos = monedas
+      .map((m) => {
+        const de = ps.filter((p) => p.moneda === m)
+        if (!de.length) return null
+        const v = de.reduce((a, p) => a + p.totales.venta, 0)
+        const r = de.reduce((a, p) => a + p.totales.rentabilidad, 0)
+        return `${formatearImporte(v, m)} (renta ${pct(r, v)})`
+      })
+      .filter(Boolean)
+      .join(" + ")
+    return `${nombre}: ${ps.length} presupuestos, ${fact} facturados · ${montos}`
+  })
+
+  const negativos = filas.filter((p) => p.totales.rentabilidad < 0)
+  const flojos = filas.filter((p) => p.totales.venta > 0 && p.totales.rentabilidad >= 0 && p.totales.rentaPct < 0.1)
+  const sinFactura = filas.filter((p) => p.estado === "facturado" && !(f.facturas[p.id]?.length))
+  const conFaltantes = filas.filter((p) => f.faltan[p.id]?.length)
+  const lista = (ps: PresupuestoFila[]) =>
+    ps
+      .slice(0, 12)
+      .map((p) => `N.º ${p.numero} (${ESTADO_LABEL[p.estado]}, ${formatearImporte(p.totales.venta, p.moneda)}, renta ${pct(p.totales.rentabilidad, p.totales.venta)})`)
+      .join("; ") + (ps.length > 12 ? ` y ${ps.length - 12} más` : "")
+
+  return resumen(
+    `Presupuestos en pantalla: ${filas.length} de ${total}`,
+    renglon("Estado", f.estado ? ESTADO_LABEL[f.estado] : null),
+    renglon("Vendedor", f.vendedor || null),
+    renglon("Desde", f.desde || null),
+    renglon("Hasta", f.hasta || null),
+    "Los montos van por moneda: pesos y dólares no se suman.",
+    "",
+    "## Totales",
+    porMoneda.flat(2),
+    "",
+    "## Por vendedor",
+    porVendedor,
+    "",
+    "## Para mirar",
+    negativos.length ? `Con renta negativa: ${lista(negativos)}` : "Ninguno con renta negativa.",
+    flojos.length > 0 && `Con renta menor al 10%: ${lista(flojos)}`,
+    sinFactura.length > 0 && `Facturados sin factura vinculada: ${sinFactura.length} (${sinFactura.map((p) => `N.º ${p.numero}`).join(", ")})`,
+    conFaltantes.length > 0 && `Con un PDF de factura en el legajo que no se pudo vincular: ${conFaltantes.length}`
+  )
+}

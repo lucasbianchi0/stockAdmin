@@ -31,3 +31,13 @@ export const MAX_HISTORIAL = 60000
  */
 export const HISTORIAL_TRAS_RECORTE = 36000
 export const MENSAJES_TRAS_RECORTE = 20
+
+/**
+ * Lo que mira la persona cuando pregunta desde un botón de "Preguntar" de una
+ * pantalla: el resumen que arma la app de ese diagnóstico, esa tabla o esos
+ * números. Va aparte de lo que escribe, que conserva su tope, y entra en el
+ * mismo mensaje (ver pantalla.ts).
+ */
+export const MAX_PANTALLA = 4000
+/** El tope de un mensaje de la persona con su pantalla y el envoltorio. */
+export const MAX_LARGO_CON_PANTALLA = MAX_LARGO + MAX_PANTALLA + 200

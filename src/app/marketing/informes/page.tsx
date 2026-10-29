@@ -9,6 +9,8 @@ import {
   type Informe,
 } from "@/lib/informes"
 import { CopiarPrompt } from "@/components/marketing/copiar-prompt"
+import { Preguntar } from "@/components/chatbot/preguntar"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { PageBody, PageHeader } from "@/components/ui/page-header"
 
 /**
@@ -39,7 +41,18 @@ export default function InformesPage() {
         title="Informes de campañas"
         description="Un informe por mes, con la misma estructura siempre"
         back={{ href: "/marketing", label: "Marketing" }}
-        actions={<CopiarPrompt periodo={proximoPeriodo()} />}
+        actions={
+          <>
+            <Preguntar
+              agente="marketing"
+              pantalla={{ titulo: "Informes de campañas", texto: textoInformes() }}
+              pregunta="Leé los titulares de los informes: ¿cómo venimos mes a mes, qué se repite y qué deberíamos mirar en el próximo?"
+              ayuda="Le pasa el titular y el semáforo de cada informe, el plan vigente y los meses pendientes."
+              seguimientos={SEGUIMIENTOS}
+            />
+            <CopiarPrompt periodo={proximoPeriodo()} />
+          </>
+        }
       />
 
       <PageBody width="narrow">
@@ -223,4 +236,28 @@ function proximoPeriodo() {
 function formatearFecha(iso: string) {
   const [a, m, d] = iso.split("-")
   return `${Number(d)} de ${MESES[Number(m) - 1]} de ${a}`
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS = [
+  { emoji: "🎯", corto: "¿Vamos según el plan?", texto: "Comparando con el plan vigente, ¿vamos bien? ¿Qué parte del plan no se está cumpliendo?" },
+  { emoji: "📌", corto: "Qué mirar en el próximo", texto: "¿Qué tres cosas tendría que responder sí o sí el próximo informe mensual?" },
+]
+
+/**
+ * Los informes en texto, para el chat. Sólo el titular y el semáforo: es lo
+ * que se ve acá, y los números viven en el PDF (ver arriba por qué no se
+ * duplican).
+ */
+function textoInformes(): string {
+  const linea = (i: Informe) =>
+    `${i.tipo === "plan" ? "Plan" : i.tipo === "historico" ? "Diagnóstico histórico" : "Mensual"} · ${i.periodo} · semáforo ${i.semaforo} · emitido ${i.emitido}: ${i.titular}`
+  return resumen(
+    renglon("Hoy", `${HOY.toISOString().slice(0, 10)}`),
+    "",
+    "## Informes",
+    INFORMES.map(linea),
+    renglon("Meses pendientes este año", mesesPendientes(ANIO_ACTUAL, MES_ACTUAL).map((m) => MESES[m - 1]).join(", "))
+  )
 }

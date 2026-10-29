@@ -6,6 +6,8 @@ import { Clock, ExternalLink, Eye, LogOut, Repeat } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { StatCard } from "@/components/ui/stat-card"
 import { BarraCelda, Permanencia } from "@/components/marketing/resultados-graficos"
+import { Preguntar } from "@/components/chatbot/preguntar"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { duracion, porcentaje, type FilaPagina, type Resultados } from "@/lib/marketing/resultados"
 import { cn } from "@/lib/utils"
 
@@ -91,7 +93,16 @@ export function ResultadosPaginas({ datos }: { datos: Resultados }) {
 
       <section className="panel">
         <div className="panel-header flex-wrap gap-2">
-          <h3 className="text-[15px] font-semibold tracking-[-0.015em]">Páginas</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-[15px] font-semibold tracking-[-0.015em]">Páginas</h3>
+            <Preguntar
+              agente="marketing"
+              pantalla={() => ({ titulo: "Resultados · Páginas", texto: textoPaginas(datos) })}
+              pregunta="Mirá las páginas del sitio: ¿cuáles espantan a la gente sin dejar consultas, cuáles funcionan y qué cambiarías primero en cada una?"
+              ayuda="Le pasa las páginas más vistas con permanencia, salidas, scroll y consultas."
+              seguimientos={SEGUIMIENTOS}
+            />
+          </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11.5px] text-ink-subtle">Ordenar por</span>
             {ORDENES.map((o) => (
@@ -203,5 +214,39 @@ function FilaDePagina({ p, maxVistas }: { p: FilaPagina; maxVistas: number }) {
         {p.leads ? <Badge tone="brand">{p.leads}</Badge> : <span className="text-ink-faint">0</span>}
       </td>
     </tr>
+  )
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS = [
+  { emoji: "🛬", corto: "¿Qué landing arreglo?", texto: "Si pudiera rehacer una sola página esta semana, ¿cuál sería y qué le cambiarías arriba de todo?" },
+  { emoji: "🔗", corto: "¿Adónde mando los anuncios?", texto: "Con estos números, ¿a qué página conviene mandar el tráfico de los anuncios?" },
+  { emoji: "📝", corto: "Ideas para el blog", texto: "¿Qué notas del blog o contenidos nuevos se desprenden de lo que la gente lee más?" },
+]
+
+/**
+ * Las páginas en texto, para el chat: las 30 más vistas, con lo mismo que la
+ * tabla. Más que eso no cambia el diagnóstico y se come el tope del mensaje.
+ */
+function textoPaginas(datos: Resultados): string {
+  const t = datos.sitio.totales
+  const paginas = [...datos.sitio.paginas].sort((a, b) => b.vistas - a.vistas).slice(0, 30)
+  return resumen(
+    renglon("Período", `${datos.sitio.desde} → ${datos.sitio.hasta}`),
+    renglon("Vistas de página", t.vistas),
+    renglon("Visitas", t.sesiones),
+    renglon("Se van en la primera página", `${porcentaje(t.rebotes, t.sesiones, 1)} (${t.rebotes})`),
+    renglon("Permanencia media", duracion(t.permanencia_media)),
+    t.con_scroll > 0 ? null : "El scroll todavía no se mide (empieza el 13/9/2026).",
+    "",
+    "## Páginas (vistas / personas / permanencia / salen acá / scroll / consultas)",
+    paginas.map(
+      (p) =>
+        `${p.path}: ${p.vistas} / ${p.visitantes} / ${duracion(p.segundos)} / ${p.salidas} (${p.vistas ? Math.round((p.salidas / p.vistas) * 100) : 0}%) / ${
+          p.scroll === null ? "—" : `${Math.round(p.scroll)}%`
+        } / ${p.leads}`
+    ),
+    datos.sitio.paginas.length > paginas.length && `(y ${datos.sitio.paginas.length - paginas.length} páginas más con menos vistas)`
   )
 }

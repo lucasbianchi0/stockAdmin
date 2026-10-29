@@ -26,6 +26,8 @@ import {
   type Agente,
   type AgenteId,
 } from "@/lib/chatbot/agentes"
+import { acotarPantalla, conPantalla, type Pantalla } from "@/lib/chatbot/pantalla"
+import type { Atajo } from "@/lib/chatbot/agentes"
 import { Launcher } from "./launcher"
 import { Panel } from "./panel"
 
@@ -36,7 +38,7 @@ import { Panel } from "./panel"
  * conversación sobrevive a navegar, que es justamente para lo que más se usa
  * —preguntar, ir a la pantalla que indicó, volver—. Las páginas no saben que el
  * chat existe; la barra lateral sí, para abrirlo en pantalla completa desde
- * "Agentes".
+ * "Asistentes".
  *
  * Cada agente tiene su propio hilo. Cambiar de agente no borra nada: se vuelve
  * y la conversación sigue ahí.
@@ -52,6 +54,23 @@ export type Mensaje = {
   rol: "user" | "assistant"
   texto: string
   error?: boolean
+  /** Lo que estaba mirando si preguntó desde una pantalla. Se ve como un chip
+   *  sobre la burbuja y viaja pegado a la pregunta (ver pantalla.ts). */
+  pantalla?: Pantalla
+}
+
+/**
+ * Lo que manda un botón de "Preguntar" de una pantalla.
+ *
+ * `agente` es el especialista de esa pantalla; si la persona no lo tiene, va al
+ * asistente general, que con el contexto igual puede explicar qué se ve.
+ */
+export type Consulta = {
+  agente?: AgenteId
+  pantalla: Pantalla
+  pregunta: string
+  /** Las repreguntas que se ofrecen después, en lugar de los atajos generales. */
+  seguimientos?: Atajo[]
 }
 
 type Hilos = Partial<Record<AgenteId, Mensaje[]>>
@@ -69,11 +88,15 @@ type Valor = {
   abierto: boolean
   ampliado: boolean
   abrir: () => void
-  /** Lo que hace "Agentes" en la barra lateral: el chat entero, a pantalla completa. */
+  /** Lo que hace "Asistentes" en la barra lateral: el chat entero, a pantalla completa. */
   abrirAgentes: () => void
   cerrar: () => void
   setAmpliado: (v: boolean) => void
   enviar: (texto: string) => void
+  /** Abre el chat con el agente de la pantalla y pregunta con lo que se está mirando. */
+  preguntar: (c: Consulta) => void
+  /** Las repreguntas de la última consulta desde una pantalla, si es la de este agente. */
+  seguimientos: Atajo[] | null
   detener: () => void
   reiniciar: () => void
 }
@@ -93,8 +116,11 @@ export function useChatbotOpcional(): Valor | null {
 
 const nuevoId = () => Math.random().toString(36).slice(2, 10)
 
-const largoEnviado = (m: Mensaje) =>
-  m.rol === "user" ? m.texto.length : Math.min(m.texto.length, MAX_LARGO_RESPUESTA)
+/** Lo que viaja de cada mensaje: la pregunta con su pantalla, o la respuesta acotada. */
+const contenido = (m: Mensaje) =>
+  m.rol === "user" ? conPantalla(m.texto, m.pantalla) : m.texto.slice(0, MAX_LARGO_RESPUESTA)
+
+const largoEnviado = (m: Mensaje) => contenido(m).length
 
 /**
  * Qué parte del hilo viaja. Arranca donde arrancó el pedido anterior y sólo
@@ -176,6 +202,7 @@ export function ChatbotProvider({
   // mirando la página, no el chat.
   const [abierto, setAbierto] = React.useState(false)
   const [ampliado, setAmpliado] = React.useState(false)
+  const [consulta, setConsulta] = React.useState<{ agente: AgenteId; seguimientos: Atajo[] } | null>(null)
 
   const abortRef = React.useRef<AbortController | null>(null)
   const hilosRef = React.useRef(hilos)
@@ -207,20 +234,21 @@ export function ChatbotProvider({
   }, [])
 
   const enviar = React.useCallback(
-    async (crudo: string) => {
+    async (crudo: string, desde?: { agente: AgenteId; pantalla: Pantalla }) => {
       const texto = crudo.trim().slice(0, MAX_LARGO)
       if (!texto) return
 
       // La respuesta va al hilo del agente con el que se preguntó, aunque la
-      // persona cambie de agente mientras llega.
-      const agente = agenteRef.current
+      // persona cambie de agente mientras llega. Desde una pantalla viene
+      // explícito: el cambio de agente todavía no se renderizó.
+      const agente = desde?.agente ?? agenteRef.current
 
       // Sin esto, dos respuestas superpuestas escriben sobre el mismo mensaje.
       abortRef.current?.abort()
       const ctrl = new AbortController()
       abortRef.current = ctrl
 
-      const pregunta: Mensaje = { id: nuevoId(), rol: "user", texto }
+      const pregunta: Mensaje = { id: nuevoId(), rol: "user", texto, pantalla: desde?.pantalla }
       const respuesta: Mensaje = { id: nuevoId(), rol: "assistant", texto: "" }
 
       // Los errores y las respuestas vacías no viajan: no son conversación.
@@ -242,10 +270,7 @@ export function ChatbotProvider({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             agente,
-            messages: historial.map((m) => ({
-              role: m.rol,
-              content: m.rol === "user" ? m.texto : m.texto.slice(0, MAX_LARGO_RESPUESTA),
-            })),
+            messages: historial.map((m) => ({ role: m.rol, content: contenido(m) })),
           }),
           signal: ctrl.signal,
         })
@@ -340,8 +365,25 @@ export function ChatbotProvider({
     abortRef.current = null
     setEscribiendo(false)
     setPaso(null)
+    setConsulta(null)
     cambiarHilo(agenteRef.current, () => [])
   }, [cambiarHilo])
+
+  const preguntar = React.useCallback(
+    (c: Consulta) => {
+      const pedido = c.agente ?? "asistente"
+      const agente = agentes.some((a) => a.id === pedido) ? pedido : "asistente"
+      if (agente !== agenteRef.current) {
+        if (abortRef.current) detener()
+        setAgenteId(agente)
+        agenteRef.current = agente
+      }
+      setAbierto(true)
+      setConsulta(c.seguimientos?.length ? { agente, seguimientos: c.seguimientos } : null)
+      void enviar(c.pregunta, { agente, pantalla: acotarPantalla(c.pantalla, window.location.pathname) })
+    },
+    [agentes, detener, enviar]
+  )
 
   const valor: Valor = {
     acceso,
@@ -361,6 +403,8 @@ export function ChatbotProvider({
     cerrar: () => setAbierto(false),
     setAmpliado,
     enviar,
+    preguntar,
+    seguimientos: consulta?.agente === agenteId ? consulta.seguimientos : null,
     detener,
     reiniciar,
   }

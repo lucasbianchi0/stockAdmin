@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Download, PieChart } from "lucide-react"
 
 import { SemaforoVencimiento } from "@/components/admin/semaforo-vencimiento"
+import { Preguntar } from "@/components/chatbot/preguntar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FranjaFija } from "@/components/ui/franja-fija"
@@ -20,8 +21,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { descargarCsv } from "@/lib/admin/csv"
+import { hoyArgentina, sumarDias } from "@/lib/admin/fecha"
 import { formatearImporte, redondear } from "@/lib/admin/moneda"
 import { claves, pedirJson, useInvalidarAdmin } from "@/lib/admin/query"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { cn } from "@/lib/utils"
 
 /**
@@ -191,10 +194,26 @@ export function Pendientes({ tipo }: { tipo: "venta" | "compra" }) {
             </div>
           )}
 
-          <Button variant="outline" size="sm" onClick={exportar} className="ml-auto">
-            <Download className="h-3.5 w-3.5" />
-            Exportar CSV
-          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            <Preguntar
+              agente="finanzas"
+              pantalla={() => ({
+                titulo: `Administración · Pendientes de ${esVenta ? "cobro" : "pago"}`,
+                texto: textoPendientes(filas, totales, esVenta),
+              })}
+              pregunta={
+                esVenta
+                  ? "¿Cómo viene la cobranza? ¿Qué saldos vencidos me preocupan y por dónde empiezo a cobrar?"
+                  : "¿Cómo vienen los pagos? ¿Qué es lo más urgente, qué puede esperar y cuánta plata necesito en los próximos 30 días?"
+              }
+              ayuda="Le pasa los totales, la antigüedad de lo vencido y los saldos más grandes, sin nombres."
+              seguimientos={esVenta ? SEGUIMIENTOS_COBRO : SEGUIMIENTOS_PAGO}
+            />
+            <Button variant="outline" size="sm" onClick={exportar}>
+              <Download className="h-3.5 w-3.5" />
+              Exportar CSV
+            </Button>
+          </div>
         </FranjaFija>
       )}
 
@@ -415,4 +434,92 @@ function cuandoSeActualizo(iso: string): string {
 function fechaCorta(iso: string): string {
   const [a, m, d] = iso.split("-")
   return `${Number(d)}/${Number(m)}/${a.slice(2)}`
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS_COBRO = [
+  { emoji: "📞", corto: "Plan de cobranza", texto: "Armame un plan de cobranza para esta semana: qué saldos reclamo primero y en qué orden, según monto y antigüedad." },
+  { emoji: "📅", corto: "¿Cuánto entra este mes?", texto: "Con las fechas estimadas de cobro, ¿cuánto debería entrar en los próximos 30 días? ¿Qué tan confiable es esa cifra?" },
+  { emoji: "⚠️", corto: "¿Hay algo incobrable?", texto: "¿Hay saldos que por antigüedad ya conviene tratar como dudosos? ¿Qué harías con ellos?" },
+]
+
+const SEGUIMIENTOS_PAGO = [
+  { emoji: "🗓️", corto: "Calendario de pagos", texto: "Armame un calendario de pagos para las próximas semanas, priorizando lo vencido y lo que más pesa." },
+  { emoji: "💵", corto: "¿Cuánta caja necesito?", texto: "¿Cuánta plata necesito tener disponible en los próximos 30 días para cubrir lo que vence?" },
+  { emoji: "🔎", corto: "¿Algo raro?", texto: "¿Ves algo raro en estos pendientes? Notas de crédito sin aplicar, saldos a cuenta, facturas muy viejas." },
+]
+
+/**
+ * Los pendientes en texto, para el chat: totales, antigüedad de lo vencido y
+ * los saldos más grandes. Sin el nombre del cliente o proveedor: a quien no es
+ * administrador el asistente no se los puede dar, y para leer la foto de la
+ * cobranza alcanza con montos y días. Si hace falta saber quién, el agente
+ * tiene sus herramientas.
+ */
+function textoPendientes(filas: Pendiente[], totales: Totales | null, esVenta: boolean): string {
+  const ars = (n: number) => formatearImporte(n, "ARS")
+  const hoy = hoyArgentina()
+  const dias = (iso: string) => Math.round((Date.parse(hoy) - Date.parse(iso)) / 86_400_000)
+
+  // Lo que todavía se debe, sin los créditos (notas de crédito y saldos a cuenta).
+  const deudas = filas.filter((f) => f.saldoArs > 0)
+  const creditos = filas.filter((f) => f.saldoArs < 0)
+
+  // Antigüedad por días de vencida, como la lee cualquier informe de cobranza.
+  const tramos = [
+    { rotulo: "Sin vencer o sin fecha", de: -Infinity, a: 0 },
+    { rotulo: "Vencido 1 a 30 días", de: 1, a: 30 },
+    { rotulo: "Vencido 31 a 60 días", de: 31, a: 60 },
+    { rotulo: "Vencido 61 a 90 días", de: 61, a: 90 },
+    { rotulo: "Vencido más de 90 días", de: 91, a: Infinity },
+  ].map((t) => {
+    const del = deudas.filter((f) => {
+      const d = f.fechaVencimiento ? dias(f.fechaVencimiento) : 0
+      return d >= t.de && d <= t.a
+    })
+    return `${t.rotulo}: ${ars(del.reduce((a, f) => a + f.saldoArs, 0))} (${del.length})`
+  })
+
+  // Cuándo se estima que entra (o sale) la plata.
+  const en30 = sumarDias(hoy, 30)
+  const conFecha = deudas.filter((f) => f.fechaEstimadaPago)
+  const proximos = conFecha.filter((f) => f.fechaEstimadaPago! <= en30)
+  const sinFecha = deudas.filter((f) => !f.fechaEstimadaPago && !f.aCuenta)
+
+  const mayores = [...deudas].sort((a, b) => b.saldoArs - a.saldoArs).slice(0, 8)
+  const totalDeuda = deudas.reduce((a, f) => a + f.saldoArs, 0)
+  const top5 = mayores.slice(0, 5).reduce((a, f) => a + f.saldoArs, 0)
+  const entidades = new Set(deudas.map((f) => f.entidad)).size
+
+  return resumen(
+    renglon("Comprobantes pendientes", totales?.cantidad ?? filas.length),
+    totales && renglon(esVenta ? "Total a cobrar" : "Total a pagar", ars(totales.ars)),
+    totales?.usdHoy != null && renglon("Equivale a", `${formatearImporte(totales.usdHoy, "USD")} al dólar de hoy`),
+    totales && renglon("Vencido", `${ars(totales.vencidoArs)} en ${totales.vencidas} comprobantes`),
+    renglon(esVenta ? "Clientes con saldo" : "Proveedores con saldo", entidades),
+    creditos.length > 0 &&
+      renglon("Créditos sin aplicar (NC y a cuenta)", `${ars(creditos.reduce((a, f) => a + f.saldoArs, 0))} (${creditos.length})`),
+    totales?.truncado && "Ojo: el reporte se cortó en 2000 comprobantes, los totales no incluyen todo.",
+    "",
+    "## Antigüedad",
+    tramos,
+    "",
+    `## ${esVenta ? "Cobro" : "Pago"} estimado`,
+    renglon("Estimado en los próximos 30 días", `${ars(proximos.reduce((a, f) => a + f.saldoArs, 0))} (${proximos.length})`),
+    renglon("Sin fecha estimada", `${ars(sinFecha.reduce((a, f) => a + f.saldoArs, 0))} (${sinFecha.length})`),
+    "",
+    "## Los saldos más grandes",
+    totalDeuda > 0 && `Los 5 mayores suman ${ars(top5)} (${Math.round((top5 / totalDeuda) * 100)}% del total)`,
+    mayores.map(
+      (f, i) =>
+        `${i + 1}. ${f.clase} · ${ars(f.saldoArs)} · ${
+          f.fechaVencimiento
+            ? dias(f.fechaVencimiento) > 0
+              ? `vencida hace ${dias(f.fechaVencimiento)} días`
+              : `vence el ${fechaCorta(f.fechaVencimiento)}`
+            : "sin vencimiento"
+        }${f.moneda === "USD" ? " · en dólares" : ""}${f.fechaEstimadaPago ? ` · estimado ${fechaCorta(f.fechaEstimadaPago)}` : ""}`
+    )
+  )
 }

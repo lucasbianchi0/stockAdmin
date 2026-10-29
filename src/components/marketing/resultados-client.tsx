@@ -14,6 +14,7 @@ import { ResultadosPaginas } from "@/components/marketing/resultados-paginas"
 import { ResultadosRadiografia } from "@/components/marketing/resultados-radiografia"
 import { ResultadosResumen } from "@/components/marketing/resultados-resumen"
 import { claveDe, mensajeError, pedirJson } from "@/lib/admin/query"
+import type { Destino } from "@/lib/marketing/radiografia"
 import {
   PERIODOS,
   PERIODO_LABEL,
@@ -42,6 +43,17 @@ const URL = "/api/marketing/resultados"
 export function ResultadosClient() {
   const qc = useQueryClient()
   const [periodo, setPeriodo] = useState<Periodo>("30d")
+  // Controladas para que la radiografía pueda abrir la pestaña que explica un paso.
+  const [pestana, setPestana] = useState("radiografia")
+  const [avanzada, setAvanzada] = useState("sitio")
+  const irA = useCallback((destino: Destino) => {
+    if (destino === "leads") {
+      setPestana("leads")
+    } else {
+      setAvanzada(destino)
+      setPestana("avanzado")
+    }
+  }, [])
 
   const url = `${URL}?periodo=${periodo}`
   const query = useQuery({
@@ -121,9 +133,9 @@ export function ResultadosClient() {
       )}
 
       {datos && (
-        <Tabs defaultValue="radiografia" className="flex flex-col gap-4">
+        <Tabs value={pestana} onValueChange={setPestana} className="flex flex-col gap-4">
           <TabsList className="self-start">
-            <TabsTrigger value="radiografia">Radiografía</TabsTrigger>
+            <TabsTrigger value="radiografia">Resumen</TabsTrigger>
             <TabsTrigger value="leads">
               Leads
               <span className="num text-ink-faint">{datos.leads.filter((l) => !l.equipo).length}</span>
@@ -132,7 +144,7 @@ export function ResultadosClient() {
           </TabsList>
 
           <TabsContent value="radiografia" className="mt-0">
-            <ResultadosRadiografia datos={datos} periodo={periodo} />
+            <ResultadosRadiografia datos={datos} periodo={periodo} irA={irA} />
           </TabsContent>
           <TabsContent value="leads" className="mt-0">
             <ResultadosLeads datos={datos} alCambiar={alCambiar} recargar={() => void query.refetch()} />
@@ -140,7 +152,7 @@ export function ResultadosClient() {
 
           {/* El detalle de cada fuente, para cuando la radiografía señala un paso y hay que ver por qué. */}
           <TabsContent value="avanzado" className="mt-0">
-            <Tabs defaultValue="sitio" className="flex flex-col gap-4">
+            <Tabs value={avanzada} onValueChange={setAvanzada} className="flex flex-col gap-4">
               <TabsList className="self-start">
                 <TabsTrigger value="sitio">Sitio y Ads</TabsTrigger>
                 <TabsTrigger value="campanas">

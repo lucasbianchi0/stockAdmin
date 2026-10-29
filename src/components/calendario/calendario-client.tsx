@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   AlertTriangle,
   Bot,
+  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -18,6 +19,7 @@ import {
 import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { ErrorState, LoadingState } from "@/components/ui/states"
+import { Segmentado } from "@/components/calendario/controles"
 import { EntradaDialog } from "@/components/calendario/entrada-dialog"
 import { claveDe, pedirJson } from "@/lib/admin/query"
 import {
@@ -211,22 +213,11 @@ export function CalendarioClient() {
         </h2>
 
         <div className="ml-auto flex items-center gap-2">
-          <div className="flex rounded-lg border border-line bg-surface p-0.5">
-            {VISTAS.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                onClick={() => setVista(v.id)}
-                aria-pressed={vista === v.id}
-                className={cn(
-                  "rounded-md px-3 py-1 text-[12.5px] font-medium transition-colors",
-                  vista === v.id ? "bg-surface-muted text-ink" : "text-ink-muted hover:text-ink"
-                )}
-              >
-                {v.rotulo}
-              </button>
-            ))}
-          </div>
+          <Segmentado
+            opciones={VISTAS.map((v) => ({ valor: v.id, rotulo: v.rotulo }))}
+            valor={vista}
+            onCambio={setVista}
+          />
           <Button size="sm" onClick={() => setDialogo({ entrada: null, fecha: hoy, tipo: "persona" })}>
             <Plus className="h-3.5 w-3.5" />
             Nueva
@@ -245,15 +236,15 @@ export function CalendarioClient() {
                 type="button"
                 onClick={() => setCapas((c) => ({ ...c, [t]: !c[t] }))}
                 aria-pressed={capas[t]}
+                title={capas[t] ? `Ocultar ${TIPO_LABEL[t].toLowerCase()}` : `Mostrar ${TIPO_LABEL[t].toLowerCase()}`}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors",
+                  "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium transition-colors",
                   capas[t]
-                    ? "border-line-strong bg-surface text-ink"
-                    : "border-line bg-surface-subtle text-ink-faint line-through"
+                    ? cn(TIPO_COLOR[t].chip, TIPO_COLOR[t].anillo)
+                    : "border-dashed border-line-strong bg-surface text-ink-faint hover:text-ink-muted"
                 )}
               >
-                <span className={cn("h-2 w-2 rounded-full", capas[t] ? TIPO_COLOR[t].punto : "bg-n-300")} />
-                <Icono className="h-3.5 w-3.5" />
+                {capas[t] ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : <Icono className="h-3.5 w-3.5" />}
                 {TIPO_LABEL[t]}
               </button>
             )
@@ -269,10 +260,10 @@ export function CalendarioClient() {
             onClick={() => setPersona(TODOS)}
             aria-pressed={persona === TODOS}
             className={cn(
-              "rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors",
+              "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium transition-colors",
               persona === TODOS
-                ? "border-brand-300 bg-brand-50 text-brand-700"
-                : "border-line bg-surface text-ink-secondary hover:border-line-strong"
+                ? "border-brand-600 bg-brand-600 text-white shadow-e1"
+                : "border-line-strong bg-surface text-ink-secondary hover:border-n-400 hover:text-ink"
             )}
           >
             Todo el equipo

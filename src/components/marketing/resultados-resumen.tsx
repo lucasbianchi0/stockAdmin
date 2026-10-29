@@ -4,6 +4,8 @@ import { ArrowDown, ArrowUp, Receipt, Trophy, Users, Wallet } from "lucide-react
 
 import { Badge } from "@/components/ui/badge"
 import { StatCard } from "@/components/ui/stat-card"
+import { Preguntar } from "@/components/chatbot/preguntar"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { Embudo, MiniBarras, SerieDiaria, type PasoEmbudo } from "@/components/marketing/resultados-graficos"
 import {
   pesos,
@@ -136,7 +138,7 @@ export function ResultadosResumen({ datos }: { datos: Resultados }) {
           )}
           aria-hidden
         />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2
             className={cn(
               "text-[14px] font-semibold tracking-[-0.01em]",
@@ -149,6 +151,14 @@ export function ResultadosResumen({ datos }: { datos: Resultados }) {
           </h2>
           <p className="mt-1 max-w-[80ch] text-[12.5px] text-ink-secondary">{cabecera.detalle}</p>
         </div>
+        <Preguntar
+          agente="marketing"
+          pantalla={() => ({ titulo: "Resultados · Resumen", texto: textoResumen(datos) })}
+          pregunta={`El resumen dice: "${cabecera.frase}". ¿Qué está pasando en el período, dónde se corta el recorrido y qué harías esta semana?`}
+          ayuda="Le pasa el titular, las cifras clave, los dos recorridos y de dónde llegan las visitas."
+          seguimientos={SEGUIMIENTOS}
+          className="-mt-0.5"
+        />
       </div>
 
       {/* ── Los cuatro números ───────────────────────────────────────────── */}
@@ -245,7 +255,16 @@ export function ResultadosResumen({ datos }: { datos: Resultados }) {
         <section className="panel">
           <div className="panel-header">
             <h3 className="text-[15px] font-semibold tracking-[-0.015em]">De dónde llegan</h3>
-            <span className="num text-[11.5px] text-ink-subtle">{t.sesiones.toLocaleString("es-AR")} sesiones</span>
+            <span className="flex items-center gap-3">
+              <span className="num text-[11.5px] text-ink-subtle">{t.sesiones.toLocaleString("es-AR")} sesiones</span>
+              <Preguntar
+                agente="marketing"
+                pantalla={() => ({ titulo: "Resultados · De dónde llegan", texto: textoResumen(datos) })}
+                pregunta="Mirá de dónde llegan las visitas: ¿qué origen trae consultas de verdad, cuál sólo trae tráfico y en cuál pondrías más esfuerzo?"
+                ayuda="Le pasa cada origen con sus sesiones y consultas, más las cifras del período."
+                seguimientos={SEGUIMIENTOS}
+              />
+            </span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-[12.5px]">
@@ -306,5 +325,52 @@ export function ResultadosResumen({ datos }: { datos: Resultados }) {
         </section>
       </div>
     </div>
+  )
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS = [
+  { emoji: "🎯", corto: "Qué hago primero", texto: "Si tuviera que hacer una sola cosa esta semana con estos resultados, ¿cuál sería y cómo mido si funcionó?" },
+  { emoji: "💵", corto: "¿Vale lo que gastamos?", texto: "Con estos números, ¿la inversión en Google Ads se está justificando? ¿Qué cambiaría para que sí?" },
+  { emoji: "🔎", corto: "¿Es un problema de medición?", texto: "¿Puede ser que algo de esto sea un problema de medición y no de rendimiento? ¿Qué revisaría para descartarlo?" },
+]
+
+/**
+ * El resumen en texto, para el chat: el titular, las cuatro cifras, los dos
+ * recorridos y los orígenes. Sin leads uno por uno: con los totales alcanza.
+ */
+function textoResumen(datos: Resultados): string {
+  const t = datos.sitio.totales
+  const prev = datos.anterior
+  const cab = titular(datos)
+  const campanas = datos.ads.campanas
+  const gasto = campanas.reduce((s, c) => s + c.coste, 0)
+  const clics = campanas.reduce((s, c) => s + c.clics, 0)
+  const impresiones = campanas.reduce((s, c) => s + c.impresiones, 0)
+  const antes = (k: keyof typeof t) => (prev && typeof prev[k] === "number" ? ` (antes ${prev[k]})` : "")
+
+  return resumen(
+    renglon("Período", `${datos.sitio.desde} → ${datos.sitio.hasta}`),
+    renglon("Titular", cab.frase),
+    "",
+    "## Cifras",
+    renglon("Invertido en Google Ads", pesos(gasto)),
+    `Consultas de afuera: ${t.leads_reales}${antes("leads_reales")}${t.leads_equipo ? ` · ${t.leads_equipo} del equipo, descontadas` : ""}`,
+    renglon("Costo por consulta", t.leads_reales ? pesos(gasto / t.leads_reales) : "no se puede calcular"),
+    `Clientes nuevos: ${t.ganados}${t.ganados ? ` (${pesos(t.monto_ganado)})` : ""}`,
+    "",
+    "## Recorrido de Google Ads",
+    `Impresiones ${impresiones} → clics ${clics} (CTR ${porcentaje(clics, impresiones)}) → visitas con gclid ${t.de_ads} → tocaron WhatsApp/teléfono ${t.contactos_de_ads ?? 0} → dejaron el mail ${t.leads_de_ads}`,
+    "",
+    "## Recorrido del sitio",
+    `Visitas ${t.sesiones}${antes("sesiones")} → miran más de una página ${t.navegan} (${t.rebotes} se van en la primera) → clics a WhatsApp/teléfono ${t.contactos_directos} → dejaron el mail ${t.leads_reales} → se ganaron ${t.ganados}`,
+    "",
+    "## De dónde llegan (sesiones / consultas)",
+    datos.sitio.origenes.map((o) => `${o.origen}: ${o.sesiones} / ${o.leads}`),
+    "",
+    "## Quién entra",
+    renglon("Dispositivo", datos.sitio.dispositivos.map((d) => `${d.clave} ${d.valor}`).join(", ")),
+    renglon("País", datos.sitio.paises.slice(0, 5).map((d) => `${d.clave} ${d.valor}`).join(", "))
   )
 }

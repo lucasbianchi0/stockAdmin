@@ -7,6 +7,8 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { StatCard } from "@/components/ui/stat-card"
 import { EmptyState } from "@/components/ui/states"
+import { Preguntar } from "@/components/chatbot/preguntar"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import {
   ESTADOS,
   ESTADO_LABEL,
@@ -120,7 +122,16 @@ export function ResultadosLeads({
 
       <section className="panel">
         <div className="panel-header flex-wrap items-center gap-2">
-          <h3 className="text-[15px] font-semibold tracking-[-0.015em]">Bandeja</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-[15px] font-semibold tracking-[-0.015em]">Bandeja</h3>
+            <Preguntar
+              agente="marketing"
+              pantalla={() => ({ titulo: "Resultados · Leads", texto: textoLeads(datos) })}
+              pregunta="Mirá cómo vienen los leads del período: ¿de dónde llegan los que avanzan, dónde se traban y qué haría con los que siguen sin clasificar?"
+              ayuda="Le pasa cantidades por estado, tipo, origen y campaña, y la cola de conversiones. Sin nombres ni mails."
+              seguimientos={SEGUIMIENTOS}
+            />
+          </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {FILTROS.map((f) => {
               const n = f.clave === "todos" ? visibles.length : (conteos.get(f.clave) ?? 0)
@@ -670,3 +681,58 @@ const BOTON_BASE =
   "inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[12.5px] font-semibold shadow-e1 transition-colors disabled:opacity-50"
 const BOTON_FUERTE = `${BOTON_BASE} bg-brand-600 text-white hover:bg-brand-700`
 const BOTON_SUAVE = `${BOTON_BASE} border border-line-strong bg-surface text-ink-secondary hover:border-brand-200 hover:text-brand-700`
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS = [
+  { emoji: "📞", corto: "¿A cuáles llamo primero?", texto: "Con estos estados y orígenes, ¿qué tipo de lead conviene contactar primero y con qué mensaje?" },
+  { emoji: "⏱️", corto: "¿Estamos lentos?", texto: "¿Los leads están esperando demasiado sin que nadie los mire? ¿Qué rutina propondrías para clasificarlos?" },
+  { emoji: "📤", corto: "Conversiones a Google", texto: "¿Conviene informarle ya a Google las conversiones pendientes? ¿Qué gana la cuenta con eso?" },
+]
+
+/**
+ * La bandeja en texto, para el chat: sólo cantidades. Nada de nombres, mails,
+ * empresas ni el texto de la consulta: son datos de terceros y para leer cómo
+ * vienen los leads alcanza con contarlos.
+ */
+function textoLeads(datos: Resultados): string {
+  const reales = datos.leads.filter((l) => !l.equipo)
+  const contar = (clave: (l: Lead) => string | null | undefined) => {
+    const m = new Map<string, number>()
+    for (const l of reales) {
+      const k = clave(l) || "sin dato"
+      m.set(k, (m.get(k) ?? 0) + 1)
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(", ")
+  }
+  const ganados = reales.filter((l) => l.estado === "ganado")
+  const nuevos = reales.filter((l) => l.estado === "nuevo")
+  const ahora = Date.now()
+  const masViejo = nuevos.length
+    ? Math.floor(Math.max(...nuevos.map((l) => ahora - new Date(l.created_at).getTime())) / 86_400_000)
+    : null
+  const c = datos.conversiones
+
+  return resumen(
+    renglon("Período", `${datos.sitio.desde} → ${datos.sitio.hasta}`),
+    renglon("Consultas de afuera", reales.length),
+    renglon("Del propio equipo (descontadas)", datos.leads.length - reales.length),
+    `Ganados: ${ganados.length}${ganados.length ? ` (${pesos(ganados.reduce((s, l) => s + (l.monto ?? 0), 0))})` : ""}`,
+    `Sin clasificar: ${nuevos.length}${masViejo !== null ? ` (el más viejo espera hace ${masViejo} días)` : ""}`,
+    "",
+    "## Cómo vienen",
+    renglon("Por estado", contar((l) => (esEstado(l.estado) ? ESTADO_LABEL[l.estado] : l.estado))),
+    renglon("Por tipo", contar((l) => (esTipoLead(l.tipo) ? TIPO_LABEL[l.tipo] : l.tipo))),
+    renglon("Por origen", contar((l) => l.origen)),
+    renglon("Por campaña", contar((l) => l.campana)),
+    renglon("Por servicio pedido", contar((l) => l.servicio)),
+    renglon("Por dispositivo", contar((l) => l.dispositivo)),
+    renglon("Páginas vistas antes de escribir (promedio)", reales.length ? (reales.reduce((s, l) => s + l.paginas_vistas, 0) / reales.length).toFixed(1) : null),
+    "",
+    "## Conversiones para Google",
+    renglon("Con gclid y sin informar", c.pendientes),
+    renglon("De esas, ya ganadas", c.ganados),
+    renglon("Informadas en el período", c.subidas),
+    renglon("Contactos por WhatsApp/teléfono desde anuncios (90 días, van solos)", c.contactosAutomaticos)
+  )
+}

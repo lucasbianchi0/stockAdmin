@@ -7,6 +7,7 @@ import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-quer
 import { AlertTriangle, Boxes, Check, Eye, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { Preguntar } from "@/components/chatbot/preguntar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConfirmarDialog } from "@/components/ui/confirmar-dialog"
@@ -40,6 +41,7 @@ import {
   type MonedaStock,
   type Unidad,
 } from "@/lib/admin/stock"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { cn } from "@/lib/utils"
 
 /**
@@ -245,6 +247,17 @@ export function StockClient() {
                   {negativos} ítem{negativos === 1 ? "" : "s"} con saldo negativo: falta cargar alguna compra
                 </p>
               )}
+              <Preguntar
+                agente="finanzas"
+                className="ml-auto"
+                pantalla={() => ({
+                  titulo: `Administración · Stock${filtro === "todo" ? "" : ` · ${DESTINO_LABEL[filtro]}`}`,
+                  texto: textoStock(items, buscar),
+                })}
+                pregunta="¿Cómo está el stock? ¿Qué está parado, qué tiene saldo raro y dónde hay plata inmovilizada?"
+                ayuda="Le pasa los valores, los ítems con saldo negativo o sin costo y los que más pesan."
+                seguimientos={SEGUIMIENTOS}
+              />
             </div>
             {items.length === 0 ? (
               <p className="px-5 py-10 text-center text-[13px] text-ink-muted">
@@ -1193,5 +1206,56 @@ export function Campo({
       {children}
       {ayuda && <p className="mt-1 text-[11.5px] text-ink-muted">{ayuda}</p>}
     </div>
+  )
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS = [
+  { emoji: "🧮", corto: "¿Qué ajusto?", texto: "¿Qué ítems revisarías con un conteo físico o un ajuste antes que nada, y por qué?" },
+  { emoji: "🐢", corto: "Lo que no rota", texto: "De lo que está parado hace tiempo, ¿qué conviene liquidar, usar en trabajos o dejar como está?" },
+  { emoji: "🛒", corto: "¿Qué compro?", texto: "¿Hay algo para vender que se está por agotar y convendría reponer?" },
+]
+
+/**
+ * El stock en texto, para el chat: lo que se ve con el filtro puesto. Son
+ * productos y materiales, no fichas de clientes ni proveedores.
+ */
+function textoStock(items: ItemStock[], buscar: string): string {
+  const usd = (n: number) => formatearImporte(n, "USD")
+  const valor = (i: ItemStock) => Math.max(i.saldo, 0) * (i.costoPromedioUsd ?? 0)
+  const hoy = Date.parse(hoyArgentina())
+  const parado = (i: ItemStock) =>
+    i.saldo > 0 && (!i.ultimoMovimiento || hoy - Date.parse(i.ultimoMovimiento.slice(0, 10)) > 90 * 86_400_000)
+  const linea = (i: ItemStock) =>
+    `${i.nombre}: hay ${formatearCantidad(i.saldo, i.unidad)}${i.costoPromedioUsd !== null ? ` · ${usd(valor(i))}` : " · sin costo"}${
+      i.ultimoMovimiento ? ` · último movimiento ${i.ultimoMovimiento.slice(0, 10)}` : ""
+    }`
+
+  const total = (d: Destino) => items.filter((i) => i.destino === d).reduce((a, i) => a + valor(i), 0)
+  const negativos = items.filter((i) => i.saldo < 0)
+  const sinCosto = items.filter((i) => i.saldo > 0 && i.costoPromedioUsd === null)
+  const sinStock = items.filter((i) => i.saldo === 0 && i.destino === "venta" && i.activo)
+  const parados = items.filter(parado).sort((a, b) => valor(b) - valor(a))
+  const mayores = [...items].sort((a, b) => valor(b) - valor(a)).slice(0, 10)
+
+  return resumen(
+    buscar.trim() && renglon("Búsqueda", buscar.trim()),
+    renglon("Ítems", items.length),
+    renglon("Valor para vender", usd(total("venta"))),
+    renglon("Valor de materiales", usd(total("material"))),
+    "Valuado a costo promedio de compra, en dólares.",
+    "",
+    `## Saldo negativo (${negativos.length})`,
+    negativos.slice(0, 10).map(linea),
+    `## Con existencias y sin costo (${sinCosto.length})`,
+    sinCosto.slice(0, 10).map(linea),
+    `## Para vender y agotados (${sinStock.length})`,
+    sinStock.slice(0, 10).map((i) => i.nombre),
+    `## Sin movimiento hace más de 90 días (${parados.length}, ${usd(parados.reduce((a, i) => a + valor(i), 0))})`,
+    parados.slice(0, 10).map(linea),
+    "",
+    "## Los que más valen",
+    mayores.map(linea)
   )
 }

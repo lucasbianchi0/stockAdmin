@@ -5,7 +5,9 @@ import { AlertTriangle, BarChart3, MousePointerClick, Target, Wallet } from "luc
 import { Badge, Dot } from "@/components/ui/badge"
 import { StatCard } from "@/components/ui/stat-card"
 import { EmptyState } from "@/components/ui/states"
-import { MOTIVO_SIN_ADS, pesos, porcentaje, type Resultados } from "@/lib/marketing/resultados"
+import { Preguntar } from "@/components/chatbot/preguntar"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
+import { MOTIVO_SIN_ADS, pesos, porcentaje, type Campana, type Resultados } from "@/lib/marketing/resultados"
 import { cn } from "@/lib/utils"
 
 /**
@@ -68,8 +70,19 @@ export function ResultadosCampanas({ datos }: { datos: Resultados }) {
       <section className="panel">
         <div className="panel-header">
           <h3 className="text-[15px] font-semibold tracking-[-0.015em]">Campañas</h3>
-          <span className="text-[11.5px] text-ink-subtle">
-            {ads.ok && ads.enVivo ? "En vivo desde la API de Google Ads" : "Desde el cierre mensual guardado"}
+          <span className="flex items-center gap-3">
+            <span className="text-[11.5px] text-ink-subtle">
+              {ads.ok && ads.enVivo ? "En vivo desde la API de Google Ads" : "Desde el cierre mensual guardado"}
+            </span>
+            {campanas.length > 0 && (
+              <Preguntar
+                agente="marketing"
+                pantalla={() => ({ titulo: "Resultados · Campañas", texto: textoCampanas(datos) })}
+                pregunta="¿Qué campañas están gastando sin traer contactos y qué haría con cada una?"
+                ayuda="Le pasa cada campaña con su estado, impresiones, clics, costo, conversiones y consultas."
+                seguimientos={SEGUIMIENTOS}
+              />
+            )}
           </span>
         </div>
 
@@ -95,6 +108,9 @@ export function ResultadosCampanas({ datos }: { datos: Resultados }) {
                   <th className="eyebrow px-3 py-2 text-right">Coste</th>
                   <th className="eyebrow px-3 py-2 text-right">Conv. Google</th>
                   <th className="eyebrow px-3 py-2 text-right">Consultas</th>
+                  <th className="w-10 px-2 py-2">
+                    <span className="sr-only">Preguntar</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -145,6 +161,20 @@ export function ResultadosCampanas({ datos }: { datos: Resultados }) {
                           "—"
                         )}
                       </td>
+                      <td className="px-2 py-1.5 text-right">
+                        <Preguntar
+                          compacto
+                          agente="marketing"
+                          pantalla={() => ({
+                            titulo: `Campañas · ${c.nombre}`,
+                            texto: resumen(textoCampana(c), "", "## El resto de la cuenta", textoCampanas(datos)),
+                          })}
+                          pregunta={`¿Qué pasa con la campaña "${c.nombre}"? Explicame sus números y decime qué harías con ella.`}
+                          ayuda="Le pasa los números de esta campaña y, para comparar, los del resto."
+                          seguimientos={SEGUIMIENTOS}
+                          className="h-6 w-6"
+                        />
+                      </td>
                     </tr>
                   )
                 })}
@@ -170,5 +200,47 @@ export function ResultadosCampanas({ datos }: { datos: Resultados }) {
         </p>
       </div>
     </div>
+  )
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS = [
+  { emoji: "✂️", corto: "¿Pauso alguna?", texto: "¿Hay alguna campaña que pausarías ya? ¿Y adónde movería ese presupuesto?" },
+  { emoji: "🔎", corto: "¿Es un problema de medición?", texto: "¿Puede ser que las conversiones en cero sean un problema de medición y no de rendimiento? ¿Qué revisaría?" },
+  { emoji: "📝", corto: "¿Qué cambio en los anuncios?", texto: "Con estos CTR y CPC, ¿qué cambiaría en los anuncios o las palabras clave para mejorarlos?" },
+]
+
+/** Una campaña en un renglón, con lo mismo que muestra la fila. */
+function textoCampana(c: Campana): string {
+  return [
+    `${c.nombre} (${c.canal}, ${c.estado})`,
+    `impresiones ${c.impresiones}`,
+    `clics ${c.clics}`,
+    `CTR ${porcentaje(c.clics, c.impresiones, 2)}`,
+    `CPC ${c.clics ? pesos(c.coste / c.clics) : "—"}`,
+    `costo ${pesos(c.coste)}`,
+    `conv. Google ${c.conversiones}`,
+    `consultas nuestras ${c.leads}`,
+  ].join(" · ")
+}
+
+/**
+ * La tabla de campañas en texto, para el chat. Va con la aclaración de las dos
+ * últimas columnas: sin ella, "consultas 0" se lee como fracaso cuando suele
+ * ser falta de UTMs.
+ */
+function textoCampanas(datos: Resultados): string {
+  const { ads } = datos
+  const gasto = ads.campanas.reduce((s, c) => s + c.coste, 0)
+  return resumen(
+    renglon("Período", `${datos.sitio.desde} → ${datos.sitio.hasta}`),
+    renglon("Fuente", ads.ok ? (ads.enVivo ? "API de Google Ads en vivo" : "cierre mensual guardado") : `Google Ads no disponible (${MOTIVO_SIN_ADS[ads.motivo].titulo}); cierre mensual guardado`),
+    renglon("Costo total", pesos(gasto)),
+    renglon("Consultas del sitio traídas por Ads (total exacto)", datos.sitio.totales.leads_de_ads),
+    "Nota: «conv. Google» es lo que registra Google; «consultas nuestras» se reparte por utm_campaign/gclid y puede dar 0 aunque el lead venga de Ads.",
+    "",
+    "## Campañas",
+    ads.campanas.map(textoCampana)
   )
 }

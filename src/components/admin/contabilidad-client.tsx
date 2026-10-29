@@ -8,6 +8,7 @@ import { toast } from "sonner"
 
 import { SelectorCuenta } from "@/components/admin/selector-cuenta"
 import { CorregirImputacionDialog } from "@/components/admin/corregir-imputacion-dialog"
+import { Preguntar } from "@/components/chatbot/preguntar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,6 +26,7 @@ import {
 import {
   ORIGEN_ASIENTO_LABEL,
   agruparSumasYSaldos,
+  esDeudora,
   saldoNatural,
   type ColumnasSumasSaldos,
   type Asiento,
@@ -37,6 +39,7 @@ import { descargarCsv } from "@/lib/admin/csv"
 import { formatearImporte } from "@/lib/admin/moneda"
 import { TIPO_CUENTA_LABEL } from "@/lib/admin/plan-cuentas"
 import { claves, mensajeError, pedirJson } from "@/lib/admin/query"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { cn } from "@/lib/utils"
 import type { Ejercicio } from "@/lib/admin/ejercicios"
 import { useRangoDeEjercicio } from "@/lib/admin/use-ejercicios"
@@ -913,6 +916,14 @@ function Saldos() {
   const imprimir = () =>
     window.open(`/admin/contabilidad/sumas-y-saldos/imprimir?${p}`, "_blank", "noopener")
 
+  // La misma consulta que el cartel de arriba: comparten caché, no pide nada nuevo.
+  const sinAsentar =
+    useQuery({
+      queryKey: claves.url(`${URL_PENDIENTES}?solo=cantidad`),
+      queryFn: ({ signal }) =>
+        pedirJson<{ cantidad?: number }>(`${URL_PENDIENTES}?solo=cantidad`, { signal }),
+    }).data?.cantidad ?? 0
+
   if (cargando) return <LoadingState label="Cargando sumas y saldos…" />
   if (!datos) return <EmptyState icon={Scale} title="No se pudo cargar sumas y saldos" />
 
@@ -921,6 +932,16 @@ function Saldos() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <RangoFechas desde={desde} hasta={hasta} onDesde={setDesde} onHasta={setHasta} ejercicios={ejercicios} />
         <div className="flex items-center gap-2">
+          <Preguntar
+            agente="finanzas"
+            pantalla={() => ({
+              titulo: "Administración · Sumas y saldos",
+              texto: textoSaldos(datos, desde, hasta, sinAsentar),
+            })}
+            pregunta="Mirá estas sumas y saldos: ¿hay algo raro? Cuentas con saldo al revés, descuadres, rubros que no cierran con lo que esperarías."
+            ayuda="Le pasa el veredicto, los rubros, el resultado y las cuentas con saldo contrario a su naturaleza."
+            seguimientos={SEGUIMIENTOS_SALDOS}
+          />
           <Button variant="outline" size="sm" onClick={imprimir} disabled={!datos.filas.length}>
             <Printer className="h-3.5 w-3.5" />
             Imprimir / PDF
@@ -1225,4 +1246,74 @@ function Cifra({
 function formatearFecha(iso: string): string {
   const [a, m, d] = iso.split("-")
   return `${Number(d)}/${Number(m)}/${a.slice(2)}`
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS_SALDOS = [
+  { emoji: "🧾", corto: "¿Qué asiento falta?", texto: "Para cada cosa rara que encontraste, ¿qué asiento o qué carga probablemente falta o está mal?" },
+  { emoji: "📊", corto: "Leeme el resultado", texto: "Explicame el resultado del período en criollo: de dónde sale la ganancia o la pérdida y qué pesa más." },
+  { emoji: "✅", corto: "Antes de cerrar", texto: "¿Qué revisarías antes de mandarle este balance al contador o de cerrar el período?" },
+]
+
+/**
+ * Sumas y saldos en texto, para el chat: el veredicto de la partida doble, los
+ * rubros, el resultado y lo que suele delatar un error de carga —una cuenta
+ * con el saldo del lado que no le corresponde—. Son cuentas del plan, no
+ * fichas: no hay datos de clientes ni proveedores.
+ */
+function textoSaldos(
+  datos: SumasYSaldos & { truncado?: boolean },
+  desde: string | null | undefined,
+  hasta: string | null | undefined,
+  sinAsentar: number
+): string {
+  const $ = (n: number) => formatearImporte(n)
+  const de = (tipo: string) => datos.porRubro.find((r) => r.tipo === tipo)
+  const g = de("ingreso")
+  const pe = de("egreso")
+  const resultado = (g ? saldoNatural(g.tipo, g.saldo) : 0) - (pe ? saldoNatural(pe.tipo, pe.saldo) : 0)
+
+  // Saldo al revés: un activo acreedor o un pasivo deudor. A veces es legítimo
+  // (un banco en descubierto), pero casi siempre es una carga mal imputada.
+  const alReves = datos.filas
+    .filter((f) => Math.abs(f.saldoArs) >= 1 && saldoNatural(f.tipo, f.saldoArs) < 0)
+    .sort((a, b) => Math.abs(b.saldoArs) - Math.abs(a.saldoArs))
+
+  const mayores = (tipo: string) =>
+    datos.filas
+      .filter((f) => f.tipo === tipo && Math.abs(f.saldoArs) >= 1)
+      .sort((a, b) => Math.abs(b.saldoArs) - Math.abs(a.saldoArs))
+      .slice(0, 4)
+      .map((f) => `  ${f.codigo} ${f.nombre}: ${$(saldoNatural(f.tipo, f.saldoArs))}`)
+
+  return resumen(
+    renglon("Período", desde || hasta ? `${desde || "inicio"} → ${hasta || "hoy"}` : "todo"),
+    datos.cuadra ? "La partida doble cuadra." : `DESCUADRE de ${$(datos.totales.diferencia)}.`,
+    renglon("Débitos", $(datos.totales.debe)),
+    renglon("Créditos", $(datos.totales.haber)),
+    renglon("Cuentas con movimiento", datos.filas.length),
+    sinAsentar > 0 && `${sinAsentar} documentos sin asentar: están en los saldos de las fichas pero no en el mayor.`,
+    datos.truncado && "Ojo: la consulta se cortó, puede faltar algo.",
+    "",
+    "## Por rubro (saldo con su signo natural)",
+    datos.porRubro.map(
+      (r) => `${TIPO_CUENTA_LABEL[r.tipo]}: ${$(saldoNatural(r.tipo, r.saldo))} (${r.cuentas} cuentas)`
+    ),
+    (g || pe) && `Resultado: ${resultado >= 0 ? "ganancia" : "pérdida"} de ${$(Math.abs(resultado))}`,
+    "",
+    `## Cuentas con saldo contrario a su naturaleza (${alReves.length})`,
+    alReves.length === 0 && "Ninguna.",
+    alReves
+      .slice(0, 15)
+      .map(
+        (f) =>
+          `${f.codigo} ${f.nombre} (${TIPO_CUENTA_LABEL[f.tipo]}): saldo ${esDeudora(f.tipo) ? "acreedor" : "deudor"} de ${$(
+            Math.abs(f.saldoArs)
+          )}`
+      ),
+    "",
+    "## Los saldos más grandes de cada rubro",
+    datos.porRubro.flatMap((r) => [`${TIPO_CUENTA_LABEL[r.tipo]}:`, ...mayores(r.tipo)])
+  )
 }

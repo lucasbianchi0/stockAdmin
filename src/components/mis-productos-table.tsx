@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { Preguntar } from "@/components/chatbot/preguntar"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { StatCard } from "@/components/ui/stat-card"
@@ -25,6 +26,7 @@ import { toast } from "sonner"
 import { formatIva, normalizeIva } from "@/lib/iva"
 import { numeroEditable, parsearImporte } from "@/lib/admin/moneda"
 import { COEFICIENTE_FIJO, ENVIO_FIJO, calcPrecioMinimo, costoConConvenio } from "@/lib/precio-minimo"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { cn } from "@/lib/utils"
 import {
   OrderDialog,
@@ -518,10 +520,24 @@ export function MisProductosTable() {
               Precio mínimo = ((Costo × (1 − Convenio) × T/C BNA) × 1,155 × Margen × (1 + IVA)) + $8.000
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchAll}>
-            <RefreshCw />
-            Actualizar
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {products.length > 0 && (
+              <Preguntar
+                agente="ecommerce"
+                pantalla={() => ({
+                  titulo: "Productos · Nuestros Productos",
+                  texto: textoProductos(products, dolarNum, margenNum),
+                })}
+                pregunta="Mirá nuestros productos: ¿cuáles están publicados por debajo del mínimo o sin stock, cuáles tienen poco margen y qué harías con cada grupo?"
+                ayuda="Le pasa el dólar, el margen y cada producto con su stock, su mínimo y su precio publicado."
+                seguimientos={SEGUIMIENTOS_PRODUCTOS}
+              />
+            )}
+            <Button variant="outline" size="sm" onClick={fetchAll}>
+              <RefreshCw />
+              Actualizar
+            </Button>
+          </div>
         </div>
 
         {products.length === 0 ? (
@@ -880,6 +896,25 @@ export function MisProductosTable() {
                           </div>
                         ) : (
                           <div className="flex items-center justify-end gap-1">
+                            {/* Sólo en los que piden una decisión: publicado
+                                por debajo del mínimo o sin stock. */}
+                            {(bajoMinimo || product.stock <= 0) && (
+                              <Preguntar
+                                compacto
+                                agente="ecommerce"
+                                pantalla={() => ({
+                                  titulo: `Productos · ${product.name ?? product.code}`,
+                                  texto: textoProducto(product, minPrice, dolarNum, margenNum),
+                                })}
+                                pregunta={
+                                  bajoMinimo
+                                    ? "Este producto está publicado por debajo del precio mínimo. ¿Qué hago: subo el precio, lo pauso o lo dejo así? ¿A cuánto lo pondrías?"
+                                    : "Este producto se quedó sin stock en Distecna. ¿Qué hago con la publicación mientras tanto y conviene buscar un reemplazo?"
+                                }
+                                ayuda="Le pasa el costo, el convenio, el stock, el mínimo y el precio publicado de este producto."
+                                seguimientos={SEGUIMIENTOS_PRODUCTOS}
+                              />
+                            )}
                             <Button
                               asChild
                               variant="ghost"
@@ -984,5 +1019,88 @@ export function MisProductosTable() {
         />
       )}
     </div>
+  )
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+/** Las repreguntas que quedan a mano después de preguntar por los productos. */
+const SEGUIMIENTOS_PRODUCTOS = [
+  { emoji: "💲", corto: "¿A cuánto lo pongo?", texto: "Para los que están por debajo del mínimo, ¿a qué precio los publicarías y con qué margen quedan?" },
+  { emoji: "📦", corto: "¿Qué pido a Distecna?", texto: "¿Qué productos conviene pedir ahora a Distecna y cuántas unidades, mirando el stock?" },
+  { emoji: "🤝", corto: "¿Pido convenio?", texto: "¿En qué marcas valdría la pena negociar un convenio para bajar el mínimo?" },
+]
+
+/** El precio mínimo de un producto con el dólar y el margen de ahora; sin cotización, nada. */
+function minimoDe(p: MyProduct, dolar: number, margen: number): number | null {
+  if (dolar <= 0) return null
+  return calcPrecioMinimo({ costo: p.price, dolar, margen, iva: p.iva, convenioPct: p.convenio_pct })
+}
+
+/** Un producto en un renglón: lo que hace falta para decidir su precio. */
+function renglonProducto(p: MyProduct, minimo: number | null): string {
+  const publicado = p.published_price
+  const holgura = minimo !== null && publicado !== null ? Math.round((publicado / minimo - 1) * 100) : null
+  return [
+    p.name ?? p.code,
+    p.brand && `marca ${p.brand}`,
+    p.stock <= 0 ? "sin stock" : `stock ${p.stock}`,
+    `costo ${p.currency} ${fmtNum(p.price, 2)}${p.convenio_pct ? ` (convenio −${fmtNum(p.convenio_pct, 2)} %)` : ""}`,
+    minimo !== null && `mínimo ${formatARS(minimo)}`,
+    publicado !== null ? `publicado ${formatARS(publicado)}` : "sin precio publicado",
+    holgura !== null && `${holgura >= 0 ? "+" : ""}${holgura}% sobre el mínimo`,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+}
+
+/**
+ * Nuestros productos en texto, para el chat: primero los que piden algo
+ * (publicados por debajo del mínimo, sin stock, con poco stock) y después el
+ * resto. Un producto por renglón.
+ */
+function textoProductos(products: MyProduct[], dolar: number, margen: number): string {
+  const conMinimo = products.map((p) => ({ p, minimo: minimoDe(p, dolar, margen) }))
+  const bajo = conMinimo.filter(({ p, minimo }) => minimo !== null && p.published_price !== null && p.published_price <= minimo)
+  const sinStock = conMinimo.filter(({ p }) => p.stock <= 0)
+  const pocoStock = conMinimo.filter(({ p }) => p.stock > 0 && p.stock < 10)
+  const sinPrecio = conMinimo.filter(({ p }) => p.published_price === null)
+  const enRiesgo = new Set([...bajo, ...sinStock, ...pocoStock].map(({ p }) => p.code))
+
+  return resumen(
+    renglon("T/C BNA venta", dolar > 0 ? formatARS(dolar) : "sin cotización"),
+    renglon("Margen Accedra", fmtNum(margen, 2)),
+    "Precio mínimo = ((Costo × (1 − Convenio) × T/C BNA) × 1,155 × Margen × (1 + IVA)) + $8.000",
+    `Productos: ${products.length}`,
+    `Publicados por debajo del mínimo: ${bajo.length}`,
+    `Sin stock: ${sinStock.length} · con menos de 10 unidades: ${pocoStock.length}`,
+    `Sin precio publicado: ${sinPrecio.length}`,
+    renglon("Con convenio", products.filter((p) => p.convenio_pct).length),
+    bajo.length > 0 && ["", "## Por debajo del mínimo", ...bajo.map(({ p, minimo }) => renglonProducto(p, minimo))],
+    sinStock.length > 0 && ["", "## Sin stock", ...sinStock.map(({ p, minimo }) => renglonProducto(p, minimo))],
+    pocoStock.length > 0 && ["", "## Poco stock", ...pocoStock.map(({ p, minimo }) => renglonProducto(p, minimo))],
+    "",
+    "## El resto",
+    conMinimo.filter(({ p }) => !enRiesgo.has(p.code)).map(({ p, minimo }) => renglonProducto(p, minimo))
+  )
+}
+
+/** Un solo producto, para la pregunta desde su fila. */
+function textoProducto(p: MyProduct, minimo: number | null, dolar: number, margen: number): string {
+  return resumen(
+    renglon("Producto", p.name ?? p.code),
+    renglon("Marca", p.brand),
+    renglon("Código", p.code),
+    renglon("Stock en Distecna", p.stock <= 0 ? "sin stock" : p.stock),
+    renglon("Costo de lista", `${p.currency} ${fmtNum(p.price, 2)}`),
+    renglon("Convenio", p.convenio_pct ? `−${fmtNum(p.convenio_pct, 2)} %` : "sin convenio"),
+    renglon("IVA", formatIva(p.iva)),
+    renglon("T/C BNA venta", dolar > 0 ? formatARS(dolar) : "sin cotización"),
+    renglon("Margen Accedra", fmtNum(margen, 2)),
+    renglon("Precio mínimo", minimo !== null ? formatARS(minimo) : null),
+    renglon("Precio publicado", p.published_price !== null ? formatARS(p.published_price) : "sin precio publicado"),
+    minimo !== null && p.published_price !== null &&
+      `Diferencia: ${formatARS(p.published_price - minimo)} (${Math.round((p.published_price / minimo - 1) * 100)}% sobre el mínimo)`,
+    renglon("Publicación", p.publication_link ? "tiene link cargado" : "sin link cargado")
   )
 }

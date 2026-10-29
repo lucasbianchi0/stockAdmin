@@ -8,7 +8,7 @@ import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { ConfirmarDialog } from "@/components/ui/confirmar-dialog"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { Bloque, Desplegable, Pastilla, Rotulo, Segmentado, TextoLargo } from "@/components/calendario/controles"
 import {
   DIAS_CORTOS,
   EJECUTORES,
@@ -19,7 +19,6 @@ import {
   LIMITES,
   ORDEN_SEMANA,
   REPETICIONES,
-  REPETICION_LABEL,
   TIPOS,
   TIPO_COLOR,
   TIPO_PISTA,
@@ -29,15 +28,22 @@ import {
   type Borrador,
   type Corrida,
   type Entrada,
+  type Repeticion,
   type Tipo,
   type Usuario,
   type Yo,
 } from "@/lib/calendario-equipo"
 import { cn } from "@/lib/utils"
 
-/** El singular, para el título del diálogo. */
-const TIPO_SINGULAR: Record<Tipo, string> = { persona: "Tarea o reunión", agente: "Agente", proceso: "Proceso" }
 const TIPO_CORTO: Record<Tipo, string> = { persona: "Persona", agente: "Agente", proceso: "Proceso" }
+/** Cortos para que entren en un control segmentado en una sola fila. */
+const REPETICION_CORTO: Record<Repeticion, string> = {
+  nunca: "Una vez",
+  diaria: "Diaria",
+  semanal: "Semanal",
+  mensual: "Mensual",
+  continua: "Continua",
+}
 
 /**
  * El detalle de una entrada, que es también su formulario — como el ticket.
@@ -178,49 +184,52 @@ export function EntradaDialog({
         onClick={() => !guardando && onCerrar()}
       />
 
-      <div className="relative flex max-h-[94vh] w-full flex-col rounded-t-2xl border border-line bg-surface shadow-e4 animate-in slide-in-from-bottom-6 fade-in-0 duration-250 sm:max-h-[88vh] sm:max-w-xl sm:rounded-2xl">
+      <div className="relative flex max-h-[94vh] w-full flex-col rounded-t-2xl border border-line bg-surface-subtle shadow-e4 animate-in slide-in-from-bottom-6 fade-in-0 duration-250 sm:max-h-[90vh] sm:max-w-2xl sm:rounded-2xl">
         <div className={cn("h-1 shrink-0 rounded-t-2xl", TIPO_COLOR[f.tipo].punto)} />
 
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-5 py-4">
-          <div className="min-w-0">
-            <h2 className="text-[15px] font-semibold tracking-[-0.015em] text-ink">
-              {editando ? TIPO_SINGULAR[f.tipo] : "Nueva en el calendario"}
-            </h2>
-            <p className="mt-0.5 text-[11.5px] text-ink-muted">
-              {editando ? `Lo cargó ${entrada.autorNombre}` : TIPO_PISTA[f.tipo]}
-            </p>
-          </div>
-          <button
-            onClick={onCerrar}
-            disabled={guardando}
-            aria-label="Cerrar"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-40"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
-          <div>
-            <Rotulo>Qué es</Rotulo>
-            <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-              {TIPOS.map((t) => (
-                <Opcion key={t} activo={f.tipo === t} disabled={guardando} onClick={() => cambiarTipo(t)}>
+        {/* Cabecera: qué es, como control segmentado, y el cierre. El tipo va
+            arriba porque cambia el resto del formulario. */}
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-5 py-3">
+          <Segmentado
+            opciones={TIPOS.map((t) => ({
+              valor: t,
+              rotulo: (
+                <>
                   <span className={cn("h-2 w-2 rounded-full", TIPO_COLOR[t].punto)} />
                   {TIPO_CORTO[t]}
-                </Opcion>
-              ))}
-            </div>
+                </>
+              ),
+            }))}
+            valor={f.tipo}
+            onCambio={cambiarTipo}
+            disabled={guardando}
+          />
+          <div className="flex items-center gap-3">
+            <span className="hidden text-[11.5px] text-ink-muted sm:inline">
+              {editando ? `Lo cargó ${entrada.autorNombre}` : "Nueva en el calendario"}
+            </span>
+            <button
+              onClick={onCerrar}
+              disabled={guardando}
+              aria-label="Cerrar"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-40"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
+        </div>
 
-          <div>
-            <Rotulo htmlFor="titulo">Título</Rotulo>
-            <Input
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+          {/* Lo principal, como un documento: el título grande y el texto
+              abajo, sin rótulos encima que lo separen. */}
+          <section className="rounded-xl border border-line bg-surface p-4 shadow-e1">
+            <input
               id="titulo"
               autoFocus={!editando}
               value={f.titulo}
               maxLength={LIMITES.titulo}
               disabled={guardando}
+              aria-label="Título"
               placeholder={
                 f.tipo === "persona"
                   ? "Reunión de marketing, mandar el informe…"
@@ -229,207 +238,198 @@ export function EntradaDialog({
                     : "Inventario de Distecna"
               }
               onChange={(e) => set("titulo", e.target.value)}
-              className="mt-1.5"
+              className="w-full bg-transparent text-[18px] font-semibold tracking-[-0.02em] text-ink outline-none placeholder:font-medium placeholder:text-ink-faint disabled:opacity-60"
             />
-          </div>
-
-          <div>
-            <Rotulo htmlFor="descripcion">{maquina ? "Qué hace" : "Detalle"}</Rotulo>
-            <Textarea
+            <p className="mb-3 mt-0.5 text-[12px] text-ink-muted">{TIPO_PISTA[f.tipo]}</p>
+            <TextoLargo
               id="descripcion"
-              value={f.descripcion}
+              valor={f.descripcion}
+              onCambio={(v) => set("descripcion", v)}
               maxLength={LIMITES.descripcion}
               disabled={guardando}
-              rows={3}
-              placeholder={maquina ? "Qué trae o analiza, y qué deja hecho." : "Opcional"}
-              onChange={(e) => set("descripcion", e.target.value)}
-              className="mt-1.5"
+              placeholder={
+                maquina
+                  ? "Qué trae o analiza, con qué lo compara y dónde deja lo que hizo."
+                  : "El detalle: para qué es, qué hay que llevar, cómo se sabe que terminó."
+              }
             />
-          </div>
+          </section>
 
-          {/* Cuándo */}
-          <div>
-            <Rotulo>Se repite</Rotulo>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {REPETICIONES.filter((r) => maquina || r !== "continua").map((r) => (
-                <Opcion
-                  key={r}
-                  activo={f.repeticion === r}
-                  disabled={guardando}
-                  onClick={() => {
-                    set("repeticion", r)
-                    if (r === "semanal" && f.diasSemana.length === 0) set("diasSemana", [diaSemana(f.fecha)])
-                    if (r === "continua" && !f.intervaloMin) set("intervaloMin", 15)
-                  }}
-                >
-                  {REPETICION_LABEL[r]}
-                </Opcion>
-              ))}
-            </div>
-          </div>
-
-          {f.repeticion === "semanal" && (
+          <Bloque titulo="Cuándo">
             <div>
-              <Rotulo>Qué días</Rotulo>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {ORDEN_SEMANA.map((d) => (
-                  <Opcion
-                    key={d}
-                    activo={f.diasSemana.includes(d)}
-                    disabled={guardando}
-                    onClick={() =>
-                      set(
-                        "diasSemana",
-                        f.diasSemana.includes(d) ? f.diasSemana.filter((x) => x !== d) : [...f.diasSemana, d]
-                      )
-                    }
-                  >
-                    {DIAS_CORTOS[d]}
-                  </Opcion>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div>
-              <Rotulo htmlFor="fecha">{f.repeticion === "nunca" ? "Fecha" : "Desde"}</Rotulo>
-              <Input
-                id="fecha"
-                type="date"
-                value={f.fecha}
+              <Rotulo>Se repite</Rotulo>
+              <Segmentado
+                ancho
+                opciones={REPETICIONES.filter((r) => maquina || r !== "continua").map((r) => ({
+                  valor: r,
+                  rotulo: REPETICION_CORTO[r],
+                }))}
+                valor={f.repeticion}
                 disabled={guardando}
-                onChange={(e) => e.target.value && set("fecha", e.target.value)}
-                className="mt-1.5"
+                onCambio={(r) => {
+                  set("repeticion", r)
+                  if (r === "semanal" && f.diasSemana.length === 0) set("diasSemana", [diaSemana(f.fecha)])
+                  if (r === "continua" && !f.intervaloMin) set("intervaloMin", 15)
+                }}
               />
             </div>
-            {f.repeticion === "continua" ? (
-              <div>
-                <Rotulo htmlFor="intervalo">Cada (minutos)</Rotulo>
-                <Input
-                  id="intervalo"
-                  type="number"
-                  min={1}
-                  max={1440}
-                  value={f.intervaloMin ?? 15}
-                  disabled={guardando}
-                  onChange={(e) => set("intervaloMin", Number(e.target.value) || null)}
-                  className="mt-1.5"
-                />
-              </div>
-            ) : (
-              <div>
-                <Rotulo htmlFor="hora">Hora</Rotulo>
-                <Input
-                  id="hora"
-                  type="time"
-                  value={f.hora}
-                  disabled={guardando}
-                  onChange={(e) => set("hora", e.target.value)}
-                  className="mt-1.5"
-                />
-                <p className="mt-1 text-[11px] text-ink-faint">Vacía = todo el día</p>
-              </div>
-            )}
-            {f.repeticion !== "nunca" && (
-              <div>
-                <Rotulo htmlFor="hasta">Hasta</Rotulo>
-                <Input
-                  id="hasta"
-                  type="date"
-                  value={f.hasta}
-                  min={f.fecha}
-                  disabled={guardando}
-                  onChange={(e) => set("hasta", e.target.value)}
-                  className="mt-1.5"
-                />
-                <p className="mt-1 text-[11px] text-ink-faint">Vacía = sin fin</p>
-              </div>
-            )}
-          </div>
 
-          {/* Quiénes */}
-          <div>
-            <Rotulo>{maquina ? "Quién lo mira" : "Quiénes"}</Rotulo>
-            {maquina && (
-              <p className="mt-0.5 text-[11.5px] text-ink-muted">
-                Quien lee lo que deja y responde si un día no corre.
-              </p>
-            )}
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {usuarios.map((u) => (
-                <Opcion
-                  key={u.id}
-                  activo={f.personas.includes(u.id)}
-                  disabled={guardando}
-                  onClick={() =>
-                    set(
-                      "personas",
-                      f.personas.includes(u.id) ? f.personas.filter((x) => x !== u.id) : [...f.personas, u.id]
-                    )
-                  }
-                >
-                  <Avatar id={u.id} nombre={u.nombre} size="xs" />
-                  {u.id === yo.id ? "Yo" : u.nombre}
-                </Opcion>
-              ))}
-            </div>
-          </div>
-
-          {maquina && (
-            <>
+            {f.repeticion === "semanal" && (
               <div>
-                <Rotulo>Estado</Rotulo>
-                <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-                  {ESTADOS.map((s) => (
-                    <Opcion key={s} activo={f.estado === s} disabled={guardando} onClick={() => set("estado", s)}>
-                      {ESTADO_LABEL[s]}
-                    </Opcion>
+                <Rotulo>Qué días</Rotulo>
+                <div className="flex flex-wrap gap-1.5">
+                  {ORDEN_SEMANA.map((d) => (
+                    <Pastilla
+                      key={d}
+                      activo={f.diasSemana.includes(d)}
+                      disabled={guardando}
+                      onClick={() =>
+                        set(
+                          "diasSemana",
+                          f.diasSemana.includes(d) ? f.diasSemana.filter((x) => x !== d) : [...f.diasSemana, d]
+                        )
+                      }
+                    >
+                      {DIAS_CORTOS[d]}
+                    </Pastilla>
                   ))}
                 </div>
+              </div>
+            )}
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <Rotulo htmlFor="fecha">{f.repeticion === "nunca" ? "Fecha" : "Desde"}</Rotulo>
+                <Input
+                  id="fecha"
+                  type="date"
+                  value={f.fecha}
+                  disabled={guardando}
+                  onChange={(e) => e.target.value && set("fecha", e.target.value)}
+                />
+              </div>
+              {f.repeticion === "continua" ? (
+                <div>
+                  <Rotulo htmlFor="intervalo">Cada (minutos)</Rotulo>
+                  <Input
+                    id="intervalo"
+                    type="number"
+                    min={1}
+                    max={1440}
+                    value={f.intervaloMin ?? 15}
+                    disabled={guardando}
+                    onChange={(e) => set("intervaloMin", Number(e.target.value) || null)}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Rotulo htmlFor="hora">Hora</Rotulo>
+                  <Input
+                    id="hora"
+                    type="time"
+                    value={f.hora}
+                    disabled={guardando}
+                    onChange={(e) => set("hora", e.target.value)}
+                  />
+                  <p className="mt-1 text-[11px] text-ink-faint">Vacía = todo el día</p>
+                </div>
+              )}
+              {f.repeticion !== "nunca" && (
+                <div>
+                  <Rotulo htmlFor="hasta">Hasta</Rotulo>
+                  <Input
+                    id="hasta"
+                    type="date"
+                    value={f.hasta}
+                    min={f.fecha}
+                    disabled={guardando}
+                    onChange={(e) => set("hasta", e.target.value)}
+                  />
+                  <p className="mt-1 text-[11px] text-ink-faint">Vacía = sin fin</p>
+                </div>
+              )}
+            </div>
+          </Bloque>
+
+          <Bloque titulo={maquina ? "Quién lo mira" : "Quiénes"}>
+            {maquina && (
+              <p className="-mt-2 text-[12px] text-ink-muted">Quien lee lo que deja y responde si un día no corre.</p>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {usuarios.map((u) => {
+                const activo = f.personas.includes(u.id)
+                return (
+                  <Pastilla
+                    key={u.id}
+                    activo={activo}
+                    disabled={guardando}
+                    onClick={() =>
+                      set("personas", activo ? f.personas.filter((x) => x !== u.id) : [...f.personas, u.id])
+                    }
+                  >
+                    {!activo && <Avatar id={u.id} nombre={u.nombre} size="xs" className="-ml-1.5" />}
+                    {u.id === yo.id ? "Yo" : u.nombre}
+                  </Pastilla>
+                )
+              })}
+            </div>
+          </Bloque>
+
+          {maquina && (
+            <Bloque titulo="Cómo corre">
+              <div>
+                <Rotulo>Estado</Rotulo>
+                <Segmentado
+                  ancho
+                  opciones={ESTADOS.map((s) => ({ valor: s, rotulo: ESTADO_LABEL[s] }))}
+                  valor={f.estado}
+                  disabled={guardando}
+                  onCambio={(s) => set("estado", s)}
+                />
                 <p className="mt-1.5 text-[11.5px] text-ink-muted">{ESTADO_PISTA[f.estado]}</p>
               </div>
 
-              <div>
-                <Rotulo>Con qué corre</Rotulo>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {EJECUTORES.map((x) => (
-                    <Opcion key={x} activo={f.ejecutor === x} disabled={guardando} onClick={() => set("ejecutor", x)}>
-                      {EJECUTOR_LABEL[x]}
-                    </Opcion>
-                  ))}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Rotulo htmlFor="ejecutor">Con qué corre</Rotulo>
+                  <Desplegable
+                    id="ejecutor"
+                    valor={f.ejecutor ?? "otro"}
+                    disabled={guardando}
+                    onCambio={(x) => set("ejecutor", x)}
+                    opciones={EJECUTORES.map((x) => ({ valor: x, rotulo: EJECUTOR_LABEL[x] }))}
+                  />
+                </div>
+                <div>
+                  <Rotulo htmlFor="clave">Clave</Rotulo>
+                  <Input
+                    id="clave"
+                    value={f.clave}
+                    disabled={guardando}
+                    placeholder="agente-ads"
+                    onChange={(e) => set("clave", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                    className="font-mono text-[12.5px]"
+                  />
                 </div>
               </div>
-
-              <div>
-                <Rotulo htmlFor="clave">Clave</Rotulo>
-                <Input
-                  id="clave"
-                  value={f.clave}
-                  disabled={guardando}
-                  placeholder="agente-ads"
-                  onChange={(e) => set("clave", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                  className="mt-1.5 font-mono text-[12.5px]"
-                />
-                <p className="mt-1 text-[11.5px] text-ink-muted">
-                  Con este nombre avisa cada vez que corre (POST a{" "}
-                  <code className="rounded bg-surface-muted px-1">/api/calendario/corridas</code>). Sin clave, el
-                  calendario no puede decir si corrió.
-                </p>
-              </div>
+              <p className="-mt-1 text-[11.5px] text-ink-muted">
+                Con la clave avisa cada vez que corre (POST a{" "}
+                <code className="rounded bg-surface-muted px-1">/api/calendario/corridas</code>). Sin clave, el
+                calendario no puede decir si corrió.
+              </p>
 
               {editando && entrada.clave && (
                 <div>
                   <Rotulo>Últimas corridas</Rotulo>
                   {historial.length === 0 ? (
-                    <p className="mt-1.5 text-[12px] text-ink-muted">Ninguna en las últimas dos semanas.</p>
+                    <p className="text-[12px] text-ink-muted">Ninguna en las últimas dos semanas.</p>
                   ) : (
-                    <ul className="mt-1.5 space-y-1">
+                    <ul className="divide-y divide-line rounded-lg border border-line">
                       {historial.map((c) => (
                         <li
                           key={c.id}
                           className={cn(
-                            "flex items-start gap-1.5 text-[12px]",
+                            "flex items-start gap-2 px-3 py-2 text-[12px]",
                             c.ok ? "text-ink-secondary" : "text-danger-text"
                           )}
                         >
@@ -448,9 +448,8 @@ export function EntradaDialog({
                   )}
                 </div>
               )}
-            </>
+            </Bloque>
           )}
-
           {error && (
             <p className="rounded-lg border border-danger-line bg-danger-soft px-3 py-2 text-[12px] text-danger-text">
               {error}
@@ -499,42 +498,5 @@ export function EntradaDialog({
         onConfirmar={() => void borrar()}
       />
     </div>
-  )
-}
-
-function Rotulo({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
-  return (
-    <label htmlFor={htmlFor} className="text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-muted">
-      {children}
-    </label>
-  )
-}
-
-function Opcion({
-  activo,
-  disabled,
-  onClick,
-  children,
-}: {
-  activo: boolean
-  disabled?: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      aria-pressed={activo}
-      className={cn(
-        "inline-flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-60",
-        activo
-          ? "border-brand-300 bg-brand-50 text-brand-700"
-          : "border-line bg-surface text-ink-secondary hover:border-line-strong hover:bg-surface-subtle"
-      )}
-    >
-      {children}
-    </button>
   )
 }

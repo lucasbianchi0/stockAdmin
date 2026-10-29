@@ -19,6 +19,8 @@ import { Badge } from "@/components/ui/badge"
 import { StatCard } from "@/components/ui/stat-card"
 import { ErrorState, LoadingState } from "@/components/ui/states"
 import { BarraCelda, MiniBarras, SerieDiaria } from "@/components/marketing/resultados-graficos"
+import { Preguntar } from "@/components/chatbot/preguntar"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { claveDe, mensajeError, pedirJson } from "@/lib/admin/query"
 import {
   ANALITICA_LINKEDIN,
@@ -358,7 +360,16 @@ function Publicaciones({ datos }: { datos: ResultadosLinkedin }) {
     <section className="panel">
       <div className="panel-header">
         <h3 className="text-[15px] font-semibold tracking-[-0.015em]">Publicaciones del período</h3>
-        <span className="num text-[11.5px] text-ink-subtle">{pubs.length}</span>
+        <span className="flex items-center gap-3">
+          <span className="num text-[11.5px] text-ink-subtle">{pubs.length}</span>
+          <Preguntar
+            agente="marketing"
+            pantalla={() => ({ titulo: "Resultados · LinkedIn", texto: textoLinkedin(datos) })}
+            pregunta="Mirá LinkedIn en este período: ¿qué publicaciones funcionaron, por qué puede ser y qué publicaría las próximas dos semanas?"
+            ayuda="Le pasa impresiones, interacciones, clics y seguidores contra el período anterior, y cada publicación."
+            seguimientos={SEGUIMIENTOS}
+          />
+        </span>
       </div>
 
       {pubs.length === 0 ? (
@@ -420,5 +431,50 @@ function Publicaciones({ datos }: { datos: ResultadosLinkedin }) {
         </div>
       )}
     </section>
+  )
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS = [
+  { emoji: "🗓️", corto: "Armame el calendario", texto: "Proponeme un calendario de publicaciones para LinkedIn de las próximas dos semanas, con tema y formato de cada una." },
+  { emoji: "🔁", corto: "¿Qué repito?", texto: "¿Qué tienen en común las publicaciones que mejor anduvieron y cómo lo repito sin que se note igual?" },
+  { emoji: "🌐", corto: "¿Trae gente al sitio?", texto: "¿LinkedIn está trayendo visitas o contactos al sitio, o sólo se queda en la red? ¿Qué cambiaría para que traiga?" },
+]
+
+/**
+ * LinkedIn en texto, para el chat: totales contra el período anterior y las
+ * publicaciones con sus números. El texto de cada una va recortado: alcanza
+ * para saber de qué hablaba.
+ */
+function textoLinkedin(d: ResultadosLinkedin): string {
+  const t = d.totales
+  const a = d.anterior
+  const cmp = (ahora: number, antes: number) => {
+    const v = variacion(ahora, antes)
+    return `${ahora.toLocaleString("es-AR")}${v === null ? "" : ` (antes ${antes.toLocaleString("es-AR")}, ${v >= 0 ? "+" : ""}${Math.round(v * 100)}%)`}`
+  }
+  const inter = interacciones(t)
+  return resumen(
+    renglon("Período", `${d.desde} → ${d.hasta}`),
+    renglon("Datos hasta", TIPOS_CARGA.map((k) => `${TIPO_CARGA_LABEL[k]} ${d.datosHasta[k] ? diaCorto(d.datosHasta[k]) : "sin cargar"}`).join(", ")),
+    "",
+    "## Página",
+    renglon("Impresiones", `${cmp(t.impresiones, a.impresiones)} · ${pagas(t.impresiones_pagas)}`),
+    renglon("Interacciones", `${inter} (${t.reacciones} reacciones, ${t.comentarios} comentarios, ${t.compartidos} compartidos) · tasa ${porcentaje(inter + t.clics, t.impresiones, 1)}`),
+    renglon("Clics", cmp(t.clics, a.clics)),
+    renglon("Nuevos seguidores", cmp(t.seguidores_nuevos, a.seguidores_nuevos)),
+    renglon("Visitas a la página", t.vistas_pagina),
+    "",
+    "## Publicaciones (impresiones / clics / reacciones / comentarios / compartidos / interacción)",
+    d.publicaciones.length === 0 && "Ninguna en el período.",
+    d.publicaciones.slice(0, 25).map(
+      (p) =>
+        `${p.fecha ? diaCorto(p.fecha) : "s/f"} · ${(p.titulo ?? "(sin texto)").slice(0, 80)}${p.tipo && p.tipo !== "Orgánico" ? ` [${p.tipo}]` : ""}: ${p.impresiones} / ${p.clics} / ${p.reacciones} / ${p.comentarios} / ${p.compartidos} / ${
+          p.tasa_interaccion === null ? "—" : `${(p.tasa_interaccion * 100).toFixed(1)}%`
+        }`
+    ),
+    d.demografia.length > 0 && ["", "## Quién sigue la página (a la última carga)"],
+    d.demografia.map((dim) => `${dim.dimension}: ${dim.filas.slice(0, 4).map((f) => `${f.clave} ${f.valor}`).join(", ")}`)
   )
 }

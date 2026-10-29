@@ -1,15 +1,21 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ComponentType, type ReactNode, type SVGProps } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { SiFacebook, SiGoogle, SiGoogleads, SiInstagram } from "@icons-pack/react-simple-icons"
 import {
   AlertTriangle,
   ArrowDown,
+  ArrowRight,
+  Bot,
   CheckCircle2,
   CircleAlert,
   CircleDashed,
+  Globe2,
   Info,
+  Layers,
   Lightbulb,
+  Link2,
   Receipt,
   Trophy,
   Users,
@@ -18,6 +24,10 @@ import {
 } from "lucide-react"
 
 import { StatCard } from "@/components/ui/stat-card"
+import { Preguntar } from "@/components/chatbot/preguntar"
+import { renglon, resumen, type Pantalla } from "@/lib/chatbot/pantalla"
+import { LinkedInIcon } from "@/components/admin/platform-icons"
+import { BarraCelda } from "@/components/marketing/resultados-graficos"
 import { claveDe, pedirJson } from "@/lib/admin/query"
 import type { ResultadosLinkedin } from "@/lib/marketing/linkedin"
 import {
@@ -26,57 +36,105 @@ import {
   CANAL_LABEL,
   CANALES,
   type Canal,
+  type Destino,
   type Etapa,
+  type ExtraRadiografia,
+  type FilaCanal,
   type Hallazgo,
+  type Radiografia,
   type Salud,
 } from "@/lib/marketing/radiografia"
 import type { Red, ResultadosRed } from "@/lib/marketing/redes"
-import { PERIODO_DIAS, pesos, porcentaje, variacion, type Periodo, type Resultados } from "@/lib/marketing/resultados"
+import {
+  PERIODO_DIAS,
+  PERIODO_LABEL,
+  pesos,
+  porcentaje,
+  variacion,
+  type Periodo,
+  type Resultados,
+} from "@/lib/marketing/resultados"
 import { cn } from "@/lib/utils"
 
 /**
  * La primera hoja de Resultados: un embudo con todos los canales y qué dice.
  *
  * Trae LinkedIn, Instagram y Facebook con las mismas claves de caché que sus
- * pestañas en Avanzado, así que abrir una después no vuelve a pedir nada. Si una
- * red falla o no está conectada, el embudo se arma igual sin ella y lo avisa:
- * una red caída no puede dejar sin radiografía al resto.
+ * pestañas en Avanzado, así que abrir una después no vuelve a pedir nada. El
+ * desglose por canal viene aparte (`/radiografia`) porque es más lento. Si una
+ * fuente falla o no está conectada, el embudo se arma igual sin ella y lo
+ * avisa: una red caída no puede dejar sin radiografía al resto.
  */
-export function ResultadosRadiografia({ datos, periodo }: { datos: Resultados; periodo: Periodo }) {
+export function ResultadosRadiografia({
+  datos,
+  periodo,
+  irA,
+}: {
+  datos: Resultados
+  periodo: Periodo
+  /** Abre la pestaña de Avanzado (o Leads) que explica un paso. */
+  irA: (destino: Destino) => void
+}) {
+  const extra = useFuente<ExtraRadiografia>(`/api/marketing/resultados/radiografia?periodo=${periodo}`, 1)
   const linkedin = useFuente<ResultadosLinkedin>(`/api/marketing/linkedin?periodo=${periodo}`)
   const instagram = useFuente<ResultadosRed>(urlRed("instagram", periodo))
   const facebook = useFuente<ResultadosRed>(urlRed("facebook", periodo))
-  const cargandoRedes = linkedin.isPending || instagram.isPending || facebook.isPending
+  const [filtro, setFiltro] = useState<Canal | null>(null)
+  const cargando = extra.isPending || linkedin.isPending || instagram.isPending || facebook.isPending
 
   const rx = useMemo(
     () =>
       armarRadiografia({
         resultados: datos,
         dias: PERIODO_DIAS[periodo],
+        extra: extra.data ?? null,
         linkedin: linkedin.data ?? null,
         instagram: instagram.data ?? null,
         facebook: facebook.data ?? null,
+        filtro,
       }),
-    [datos, periodo, linkedin.data, instagram.data, facebook.data]
+    [datos, periodo, extra.data, linkedin.data, instagram.data, facebook.data, filtro]
   )
 
   const t = datos.sitio.totales
-  const prev = datos.anterior
-  const contactos = t.leads_reales + t.contactos_directos
-  const contactosAntes = prev ? prev.leads_reales + prev.contactos_directos : null
+  const { contactos, contactosAntes, clientes, montoGanado } = rx.resumen
+  // La inversión sólo es de Ads: con otro canal elegido, esas dos tarjetas no aplican.
+  const conGasto = !filtro || filtro === "ads"
+  const pantalla = (titulo: string): Pantalla => ({
+    titulo: `Resultados · ${titulo}`,
+    texto: textoRadiografia(rx, datos, periodo),
+  })
 
   return (
     <div className="flex flex-col gap-5">
-      <Diagnostico cuello={rx.cuello} otros={rx.otros} buenos={rx.buenos} />
+      <FiltroCanales filtro={filtro} alElegir={setFiltro} filas={rx.canales} />
+
+      {cargando ? (
+        <section className="rounded-xl border border-line bg-surface-subtle p-5 text-[13px] text-ink-muted">
+          Armando el diagnóstico con anuncios, redes y el desglose por canal…
+        </section>
+      ) : (
+        <Diagnostico cuello={rx.cuello} otros={rx.otros} buenos={rx.buenos} irA={irA} pantalla={pantalla} />
+      )}
 
       {/* ── Lo esencial ──────────────────────────────────────────────────── */}
       <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Invertido en Google Ads"
-          value={pesos(rx.gasto)}
+          value={conGasto ? pesos(rx.gasto) : "—"}
           icon={Wallet}
           tone="brand"
-          hint={`${datos.ads.campanas.filter((c) => c.coste > 0).length} campañas con gasto`}
+          hint={
+            !conGasto ? (
+              `${CANAL_LABEL[filtro!]} no tiene inversión paga cargada`
+            ) : extra.data?.adsAnterior ? (
+              <span className="text-ink-faint">
+                {pesos(extra.data.adsAnterior.coste)} el período anterior
+              </span>
+            ) : (
+              `${datos.ads.campanas.filter((c) => c.coste > 0).length} campañas con gasto`
+            )
+          }
         />
         <StatCard
           label="Contactos"
@@ -86,25 +144,33 @@ export function ResultadosRadiografia({ datos, periodo }: { datos: Resultados; p
           hint={
             <span className="inline-flex flex-wrap items-center gap-x-2">
               <Cambio ahora={contactos} antes={contactosAntes} />
-              <span className="text-ink-faint">
-                {t.leads_reales} por mail · {t.contactos_directos} por WhatsApp o teléfono
-              </span>
+              {!filtro && (
+                <span className="text-ink-faint">
+                  {t.leads_reales} por mail · {t.contactos_directos} por WhatsApp o teléfono
+                </span>
+              )}
             </span>
           }
         />
         <StatCard
           label="Costo por contacto de Ads"
-          value={rx.contactosAds ? pesos(rx.gasto / rx.contactosAds) : "—"}
+          value={conGasto && rx.contactosAds ? pesos(rx.gasto / rx.contactosAds) : "—"}
           icon={Receipt}
           tone="neutral"
           hint={rx.contactosAds ? `${rx.contactosAds} contactos traídos por anuncios` : "Ningún contacto vino de un anuncio"}
         />
         <StatCard
           label="Clientes nuevos"
-          value={t.ganados}
+          value={clientes}
           icon={Trophy}
-          tone={t.ganados ? "success" : "neutral"}
-          hint={t.ganados ? pesos(t.monto_ganado) : "Ninguna consulta marcada como ganada"}
+          tone={clientes ? "success" : "neutral"}
+          hint={
+            clientes
+              ? `${montoGanado !== null ? pesos(montoGanado) : `${clientes} de ${CANAL_LABEL[filtro!]}`}${
+                  conGasto && rx.gasto ? ` · ${pesos(rx.gasto / clientes)} de Ads por cliente` : ""
+                }`
+              : "Ninguna consulta marcada como ganada"
+          }
         />
       </div>
 
@@ -112,26 +178,56 @@ export function ResultadosRadiografia({ datos, periodo }: { datos: Resultados; p
       <section className="panel">
         <div className="panel-header flex-wrap gap-y-2">
           <div>
-            <h3 className="text-[15px] font-semibold tracking-[-0.015em]">El recorrido completo</h3>
+            <h3 className="text-[15px] font-semibold tracking-[-0.015em]">
+              {filtro ? `El recorrido de ${CANAL_LABEL[filtro]}` : "El recorrido completo"}
+            </h3>
             <p className="text-[11.5px] text-ink-subtle">
-              De cada paso, cuánta gente sigue al siguiente, y de qué canal viene
-              {cargandoRedes && " · cargando redes…"}
+              Cuánta gente sigue de un paso al siguiente y de qué canal viene · tocá un paso para ver el detalle
             </p>
           </div>
-          <Leyenda />
+          <div className="flex flex-wrap items-center gap-3">
+            <Leyenda />
+            <Preguntar
+              agente="marketing"
+              pantalla={() => pantalla("El recorrido")}
+              pregunta="Mirá el recorrido del período: ¿en qué paso se nos va la gente, por qué puede ser y qué cambiarías primero?"
+              ayuda="Le pasa el embudo con cada paso, su tasa y cómo venía antes."
+              seguimientos={SEGUIMIENTOS}
+            />
+          </div>
         </div>
         <div className="p-4">
-          <EmbudoCompleto etapas={rx.etapas} />
+          <EmbudoCompleto etapas={rx.etapas} irA={irA} />
         </div>
       </section>
 
       {/* ── Por canal ────────────────────────────────────────────────────── */}
-      <TablaCanales filas={rx.canales} />
+      <TablaCanales
+        filas={rx.canales}
+        estimado={rx.desglose === "estimado"}
+        filtro={filtro}
+        preguntar={
+          <Preguntar
+            agente="marketing"
+            pantalla={() => pantalla("Cómo rinde cada canal")}
+            pregunta="Compará los canales de este período: ¿cuál trae contactos de verdad, cuál sólo trae visitas y dónde pondrías el próximo peso?"
+            ayuda="Le pasa la tabla por canal: vistas, interés, visitas, contactos y clientes."
+            seguimientos={SEGUIMIENTOS}
+          />
+        }
+      />
+
+      {extra.data && (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <PanelGeo extra={extra.data} />
+          <PanelChatbots extra={extra.data} total={t.sesiones} />
+        </div>
+      )}
 
       {rx.avisos.length > 0 && (
         <section className="rounded-xl border border-dashed border-line-strong bg-surface-subtle p-4">
           <p className="eyebrow mb-2 flex items-center gap-1.5">
-            <Info className="h-3.5 w-3.5" /> Qué falta medir
+            <Info className="h-3.5 w-3.5" /> Qué falta medir o hay que tener en cuenta
           </p>
           <ul className="flex flex-col gap-1 text-[12.5px] text-ink-secondary">
             {rx.avisos.map((a) => (
@@ -148,14 +244,95 @@ function urlRed(red: Red, periodo: Periodo) {
   return `/api/marketing/redes?red=${red}&periodo=${periodo}`
 }
 
-function useFuente<T>(url: string) {
+function useFuente<T>(url: string, reintentos = 0) {
   return useQuery({
     queryKey: claveDe("marketing", url),
     queryFn: ({ signal }) => pedirJson<T>(url, { signal }),
     staleTime: 60_000,
     // Una red sin conectar contesta error siempre: reintentar sólo demora el embudo.
-    retry: false,
+    retry: reintentos,
   })
+}
+
+/* ── Filtro por canal ─────────────────────────────────────────────────────── */
+
+type Glifo = ComponentType<SVGProps<SVGSVGElement> & { color?: string }>
+
+/** El logo de cada canal. Los dos sin marca (chatbots, directo) van con un glifo de lucide. */
+const LOGO: Record<Canal, { Icon: Glifo; hex: string }> = {
+  ads: { Icon: SiGoogleads as Glifo, hex: "#4285F4" },
+  linkedin: { Icon: LinkedInIcon as Glifo, hex: "#0A66C2" },
+  instagram: { Icon: SiInstagram as Glifo, hex: "#E4405F" },
+  facebook: { Icon: SiFacebook as Glifo, hex: "#0866FF" },
+  organico: { Icon: SiGoogle as Glifo, hex: "#4285F4" },
+  ia: { Icon: Bot as Glifo, hex: "#10A37F" },
+  otros: { Icon: Link2 as Glifo, hex: "currentColor" },
+}
+
+/**
+ * Una fila de logos para mirar el resumen de un solo canal.
+ *
+ * El logo va en gris hasta que se elige y recién ahí toma el color de la marca:
+ * siete logos de colores en fila compiten con el semáforo del diagnóstico. El
+ * cuadradito al lado es el color del canal en el embudo, para que el filtro y
+ * el gráfico se lean como la misma cosa.
+ */
+function FiltroCanales({
+  filtro,
+  alElegir,
+  filas,
+}: {
+  filtro: Canal | null
+  alElegir: (c: Canal | null) => void
+  filas: FilaCanal[]
+}) {
+  const presentes = new Set(filas.map((f) => f.canal))
+  const visitas = new Map(filas.map((f) => [f.canal, f.visitas]))
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar el resumen por canal">
+      <button
+        type="button"
+        onClick={() => alElegir(null)}
+        aria-pressed={filtro === null}
+        className={cn(
+          "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px] font-medium transition-colors",
+          filtro === null
+            ? "border-brand-200 bg-brand-50 text-brand-700"
+            : "border-line bg-surface text-ink-muted hover:text-ink-secondary"
+        )}
+      >
+        <Layers className="h-3.5 w-3.5" />
+        Todos
+      </button>
+      {CANALES.map((c) => {
+        const activo = filtro === c
+        const { Icon, hex } = LOGO[c]
+        const hay = presentes.has(c)
+        return (
+          <button
+            key={c}
+            type="button"
+            onClick={() => alElegir(activo ? null : c)}
+            aria-pressed={activo}
+            disabled={!hay}
+            title={hay ? undefined : "Sin datos en el período"}
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+              activo
+                ? "border-line-strong bg-surface text-ink shadow-e1"
+                : "border-line bg-surface text-ink-muted hover:text-ink-secondary"
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" color={activo ? hex : "currentColor"} style={{ color: activo ? hex : undefined }} />
+            {CANAL_LABEL[c]}
+            {hay && <span className="num text-[11px] text-ink-faint">{(visitas.get(c) ?? 0).toLocaleString("es-AR")}</span>}
+            <i className="ml-0.5 inline-block h-1.5 w-1.5 rounded-[2px]" style={{ background: CANAL_COLOR[c] }} aria-hidden />
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 /* ── Salud ────────────────────────────────────────────────────────────────── */
@@ -168,31 +345,53 @@ const SALUD: Record<Salud, { label: string; icon: LucideIcon; clase: string }> =
   "sin-datos": { label: "Sin datos", icon: CircleDashed, clase: "border-line bg-surface-muted text-ink-faint" },
 }
 
+const DESTINO_LABEL: Record<Destino, string> = {
+  sitio: "Sitio y Ads",
+  campanas: "Campañas",
+  paginas: "Páginas",
+  linkedin: "LinkedIn",
+  instagram: "Instagram",
+  facebook: "Facebook",
+  leads: "Leads",
+}
+
 function PastillaSalud({ salud }: { salud: Salud }) {
   const s = SALUD[salud]
   const Icon = s.icon
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-md border px-1.5 py-[3px] text-[10.5px] font-semibold", s.clase)}>
+    <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-[3px] text-[10.5px] font-semibold", s.clase)}>
       <Icon className="h-3 w-3" />
       {s.label}
     </span>
   )
 }
 
-function Cambio({ ahora, antes }: { ahora: number; antes: number | null }) {
+function Cambio({ ahora, antes, corto }: { ahora: number; antes: number | null; corto?: boolean }) {
   const v = variacion(ahora, antes)
   if (v === null) return null
   if (Math.abs(v) < 0.5) return <span className="text-ink-faint">igual que antes</span>
   return (
-    <span className={cn("num", v > 0 ? "text-success-text" : "text-danger-text")}>
-      {v > 0 ? "▲" : "▼"} {Math.abs(v).toFixed(0)}% vs. período anterior
+    <span className={cn("num whitespace-nowrap", v > 0 ? "text-success-text" : "text-danger-text")}>
+      {v > 0 ? "▲" : "▼"} {Math.abs(v).toFixed(0)}%{corto ? "" : " vs. período anterior"}
     </span>
   )
 }
 
 /* ── Diagnóstico ──────────────────────────────────────────────────────────── */
 
-function Diagnostico({ cuello, otros, buenos }: { cuello: Hallazgo | null; otros: Hallazgo[]; buenos: string[] }) {
+function Diagnostico({
+  cuello,
+  otros,
+  buenos,
+  irA,
+  pantalla,
+}: {
+  cuello: Hallazgo | null
+  otros: Hallazgo[]
+  buenos: string[]
+  irA: (d: Destino) => void
+  pantalla: (titulo: string) => Pantalla
+}) {
   const tono = cuello?.salud === "mal" ? "danger" : cuello ? "warning" : "success"
 
   return (
@@ -204,7 +403,21 @@ function Diagnostico({ cuello, otros, buenos }: { cuello: Hallazgo | null; otros
         tono === "success" && "border-success-line bg-success-soft"
       )}
     >
-      <p className="eyebrow mb-1.5">Diagnóstico del período</p>
+      <div className="mb-1.5 flex items-start justify-between gap-3">
+        <p className="eyebrow">Diagnóstico del período</p>
+        <Preguntar
+          agente="marketing"
+          pantalla={() => pantalla("Diagnóstico del período")}
+          pregunta={
+            cuello
+              ? `El diagnóstico dice: "${cuello.titulo}". ¿Qué está pasando, por qué puede ser y qué hago esta semana para revertirlo?`
+              : "El diagnóstico no marca nada grave. ¿Qué está funcionando y cómo lo escalo sin romperlo?"
+          }
+          ayuda="Le pasa el diagnóstico, las cifras clave, el embudo y cada canal del período."
+          seguimientos={SEGUIMIENTOS}
+          className="-mt-1"
+        />
+      </div>
       {cuello ? (
         <>
           <h2
@@ -216,13 +429,16 @@ function Diagnostico({ cuello, otros, buenos }: { cuello: Hallazgo | null; otros
             {cuello.titulo}
           </h2>
           <p className="mt-1.5 max-w-[88ch] text-[13px] text-ink-secondary">{cuello.porque}</p>
-          <p className="mt-3 flex max-w-[88ch] items-start gap-2 rounded-lg bg-surface/70 px-3 py-2 text-[12.5px] text-ink">
-            <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-600" />
-            <span>
-              <span className="font-semibold">Qué hacer: </span>
-              {cuello.accion}
+          <div className="mt-3 flex max-w-[88ch] flex-wrap items-start gap-x-3 gap-y-2 rounded-lg bg-surface/70 px-3 py-2 text-[12.5px] text-ink">
+            <span className="flex min-w-0 flex-1 items-start gap-2">
+              <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-600" />
+              <span>
+                <span className="font-semibold">Qué hacer: </span>
+                {cuello.accion}
+              </span>
             </span>
-          </p>
+            <BotonDetalle destino={cuello.destino} irA={irA} />
+          </div>
         </>
       ) : (
         <>
@@ -240,13 +456,29 @@ function Diagnostico({ cuello, otros, buenos }: { cuello: Hallazgo | null; otros
           {otros.length > 0 && (
             <div>
               <p className="eyebrow mb-1.5">También hay que mirar</p>
-              <ul className="flex flex-col gap-1.5">
+              <ul className="flex flex-col gap-2">
                 {otros.map((h) => (
                   <li key={h.titulo} className="flex items-start gap-2 text-[12.5px] text-ink-secondary">
                     <PastillaSalud salud={h.salud} />
                     <span>
-                      <span className="font-medium text-ink">{h.titulo}.</span> {h.accion}
+                      <span className="font-medium text-ink">{h.titulo}.</span> {h.accion}{" "}
+                      <button
+                        type="button"
+                        onClick={() => irA(h.destino)}
+                        className="font-medium text-brand-700 underline-offset-2 hover:underline"
+                      >
+                        Ver {DESTINO_LABEL[h.destino]}
+                      </button>
                     </span>
+                    <Preguntar
+                      compacto
+                      agente="marketing"
+                      pantalla={() => pantalla(h.titulo)}
+                      pregunta={`Sobre esto que marca el diagnóstico: "${h.titulo}". ${h.porque} ¿Qué lo explica y qué haría?`}
+                      ayuda="Le pasa este problema con el resto del diagnóstico."
+                      seguimientos={SEGUIMIENTOS}
+                      className="-mt-0.5 ml-auto h-6 w-6"
+                    />
                   </li>
                 ))}
               </ul>
@@ -271,6 +503,19 @@ function Diagnostico({ cuello, otros, buenos }: { cuello: Hallazgo | null; otros
   )
 }
 
+function BotonDetalle({ destino, irA }: { destino: Destino; irA: (d: Destino) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => irA(destino)}
+      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-line-strong bg-surface px-2 py-1 text-[11.5px] font-medium text-ink-secondary hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700"
+    >
+      Ver {DESTINO_LABEL[destino]}
+      <ArrowRight className="h-3 w-3" />
+    </button>
+  )
+}
+
 /* ── El embudo ────────────────────────────────────────────────────────────── */
 
 function Leyenda() {
@@ -288,6 +533,7 @@ function Leyenda() {
 
 /** Ancho de cada escalón, en % del ancho disponible. */
 const ANCHOS = [100, 84, 68, 52, 38, 28]
+const COLUMNAS = "md:grid-cols-[170px_minmax(0,1fr)_minmax(220px,300px)]"
 
 /**
  * El embudo, como trapecios apilados.
@@ -301,7 +547,7 @@ const ANCHOS = [100, 84, 68, 52, 38, 28]
  * que importa, cuánto sigue de un paso al otro, va escrito entre escalones con
  * su semáforo.
  */
-function EmbudoCompleto({ etapas }: { etapas: Etapa[] }) {
+function EmbudoCompleto({ etapas, irA }: { etapas: Etapa[]; irA: (d: Destino) => void }) {
   const [foco, setFoco] = useState<{ etapa: string; canal: Canal } | null>(null)
 
   return (
@@ -318,11 +564,14 @@ function EmbudoCompleto({ etapas }: { etapas: Etapa[] }) {
           <div key={e.clave}>
             {e.paso && <Conector texto={e.paso.texto} salud={e.salud} />}
 
-            <div className="grid items-center gap-x-4 gap-y-2 md:grid-cols-[170px_minmax(0,1fr)_minmax(200px,280px)]">
-              <div className="min-w-0">
-                <p className="text-[13px] font-semibold text-ink">{e.titulo}</p>
+            <div className={cn("grid items-center gap-x-4 gap-y-2", COLUMNAS)}>
+              <button type="button" onClick={() => irA(e.destino)} className="group min-w-0 text-left">
+                <p className="text-[13px] font-semibold text-ink group-hover:text-brand-700">{e.titulo}</p>
                 <p className="text-[11px] text-ink-faint">{e.pregunta}</p>
-              </div>
+                <p className="mt-0.5 inline-flex items-center gap-0.5 text-[10.5px] font-medium text-brand-700 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  Ver {DESTINO_LABEL[e.destino]} <ArrowRight className="h-2.5 w-2.5" />
+                </p>
+              </button>
 
               <div className="flex justify-center">
                 <div
@@ -337,6 +586,7 @@ function EmbudoCompleto({ etapas }: { etapas: Etapa[] }) {
                       key={c}
                       type="button"
                       aria-label={`${CANAL_LABEL[c]}: ${e.partes[c].toLocaleString("es-AR")}`}
+                      onClick={() => irA(e.destino)}
                       onMouseEnter={() => setFoco({ etapa: e.clave, canal: c })}
                       onMouseLeave={() => setFoco(null)}
                       onFocus={() => setFoco({ etapa: e.clave, canal: c })}
@@ -354,11 +604,15 @@ function EmbudoCompleto({ etapas }: { etapas: Etapa[] }) {
               </div>
 
               <div className="min-w-0">
-                <div className="flex items-baseline gap-2">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <span className={cn("num text-[19px] font-bold leading-none", e.total === 0 ? "text-danger-text" : "text-ink")}>
                     {e.total.toLocaleString("es-AR")}
                   </span>
-                  <PastillaSalud salud={e.salud} />
+                  {/* Un paso con cifra pero sin vara (filtrado a un canal) no lleva pastilla: "Sin datos" mentiría. */}
+                  {!(e.salud === "sin-datos" && e.total > 0) && <PastillaSalud salud={e.salud} />}
+                  <span className="text-[11px]">
+                    <Cambio ahora={e.total} antes={e.antes} corto />
+                  </span>
                 </div>
                 <p className="mt-1 min-h-[16px] text-[11.5px] text-ink-muted">
                   {enFoco ? (
@@ -368,7 +622,8 @@ function EmbudoCompleto({ etapas }: { etapas: Etapa[] }) {
                       {porcentaje(e.partes[enFoco], e.total, 0)} del paso
                     </>
                   ) : (
-                    (e.evaluaciones.find((ev) => ev.salud === e.salud)?.texto ?? "Sin datos de este paso")
+                    (e.evaluaciones.find((ev) => ev.salud === e.salud)?.texto ??
+                      (e.total > 0 ? "Sin referencia para este paso" : "Sin datos de este paso"))
                   )}
                 </p>
               </div>
@@ -409,18 +664,18 @@ function PuntoSalud({ salud }: { salud: Salud }) {
 
 function Conector({ texto, salud }: { texto: string; salud: Salud }) {
   return (
-    <div className="grid gap-x-4 py-1.5 md:grid-cols-[170px_minmax(0,1fr)_minmax(200px,280px)]">
+    <div className={cn("grid gap-x-4 py-1.5", COLUMNAS)}>
       <span className="hidden md:block" />
       <span className="flex justify-center">
-      <span
-        className={cn(
-          "num inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
-          SALUD[salud].clase
-        )}
-      >
-        <ArrowDown className="h-3 w-3" />
-        {texto}
-      </span>
+        <span
+          className={cn(
+            "num inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
+            SALUD[salud].clase
+          )}
+        >
+          <ArrowDown className="h-3 w-3" />
+          {texto}
+        </span>
       </span>
     </div>
   )
@@ -428,7 +683,17 @@ function Conector({ texto, salud }: { texto: string; salud: Salud }) {
 
 /* ── Por canal ────────────────────────────────────────────────────────────── */
 
-function TablaCanales({ filas }: { filas: ReturnType<typeof armarRadiografia>["canales"] }) {
+function TablaCanales({
+  filas,
+  estimado,
+  filtro,
+  preguntar,
+}: {
+  filas: FilaCanal[]
+  estimado: boolean
+  filtro: Canal | null
+  preguntar: ReactNode
+}) {
   if (!filas.length) return null
   const cifra = (v: number | null) =>
     v === null ? <span className="text-ink-faint">—</span> : <span className="num">{v.toLocaleString("es-AR")}</span>
@@ -437,7 +702,10 @@ function TablaCanales({ filas }: { filas: ReturnType<typeof armarRadiografia>["c
     <section className="panel">
       <div className="panel-header">
         <h3 className="text-[15px] font-semibold tracking-[-0.015em]">Cómo rinde cada canal</h3>
-        <span className="text-[11.5px] text-ink-subtle">Las mismas cifras del embudo, por fila</span>
+        <span className="flex items-center gap-3">
+          <span className="text-[11.5px] text-ink-subtle">Las mismas cifras del embudo, por fila{estimado && " · estimado"}</span>
+          {preguntar}
+        </span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-[12.5px]">
@@ -454,7 +722,14 @@ function TablaCanales({ filas }: { filas: ReturnType<typeof armarRadiografia>["c
           </thead>
           <tbody>
             {filas.map((f) => (
-              <tr key={f.canal} className="border-b border-line-soft last:border-0 hover:bg-brand-50">
+              <tr
+                key={f.canal}
+                className={cn(
+                  "border-b border-line-soft last:border-0 hover:bg-brand-50",
+                  filtro && filtro !== f.canal && "opacity-45",
+                  filtro === f.canal && "bg-brand-50/60"
+                )}
+              >
                 <td className="px-3 py-2 font-medium text-ink">
                   <span className="inline-flex items-center gap-2">
                     <i className="inline-block h-2.5 w-2.5 rounded-[3px]" style={{ background: CANAL_COLOR[f.canal] }} />
@@ -463,7 +738,16 @@ function TablaCanales({ filas }: { filas: ReturnType<typeof armarRadiografia>["c
                 </td>
                 <td className="px-3 py-2 text-right">{cifra(f.vistas)}</td>
                 <td className="px-3 py-2 text-right">{cifra(f.interes)}</td>
-                <td className="px-3 py-2 text-right">{cifra(f.visitas)}</td>
+                <td className="px-3 py-2 text-right">
+                  <span className="inline-flex items-center gap-2">
+                    {f.visitasAntes !== null && (
+                      <span className="text-[11px]">
+                        <Cambio ahora={f.visitas} antes={f.visitasAntes} corto />
+                      </span>
+                    )}
+                    {cifra(f.visitas)}
+                  </span>
+                </td>
                 <td className="px-3 py-2 text-right">{cifra(f.contactos)}</td>
                 <td className="num px-3 py-2 text-right text-ink-muted">
                   {f.visitas ? porcentaje(f.contactos, f.visitas) : <span className="text-ink-faint">—</span>}
@@ -475,9 +759,183 @@ function TablaCanales({ filas }: { filas: ReturnType<typeof armarRadiografia>["c
         </table>
       </div>
       <p className="border-t border-dashed border-line-strong px-3 py-2.5 text-[11.5px] text-ink-muted">
-        Los clics a WhatsApp sólo se saben por canal cuando vienen de un anuncio; el resto queda en “Directo y otros”. Google
-        orgánico y directo no tienen vistas ni interés porque no sabemos cuántos nos vieron antes de entrar.
+        {estimado
+          ? "Sin el desglose del servidor, los clics a WhatsApp que no son de Ads quedan en “Directo y otros”. "
+          : "Cada visita, WhatsApp y consulta va al canal por el que entró esa visita. "}
+        Buscadores, chatbots y directo no tienen vistas ni interés: no sabemos cuántos nos vieron antes de entrar.
       </p>
     </section>
+  )
+}
+
+/* ── Geo ──────────────────────────────────────────────────────────────────── */
+
+function PanelGeo({ extra }: { extra: ExtraRadiografia }) {
+  const { paises, dudosas, exterior } = extra.geo
+  const max = Math.max(1, ...paises.map((p) => p.visitas))
+  const total = paises.reduce((s, p) => s + p.visitas, 0)
+
+  return (
+    <section className="panel">
+      <div className="panel-header">
+        <h3 className="flex items-center gap-1.5 text-[15px] font-semibold tracking-[-0.015em]">
+          <Globe2 className="h-4 w-4 text-ink-muted" /> De dónde entran
+        </h3>
+        <span className="num text-[11.5px] text-ink-subtle">
+          {porcentaje(exterior, total, 0)} del exterior · {dudosas.toLocaleString("es-AR")} dudosas
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[12.5px]">
+          <thead>
+            <tr className="border-b border-line bg-surface-subtle">
+              <th className="eyebrow px-3 py-2 text-left">País</th>
+              <th className="eyebrow px-3 py-2 text-right">Visitas</th>
+              <th className="eyebrow px-3 py-2 text-right">Contactos</th>
+              <th className="eyebrow px-3 py-2 text-right">Consultas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paises.map((p) => (
+              <tr key={p.pais} className="border-b border-line-soft last:border-0">
+                <td className="px-3 py-2 font-medium text-ink">{p.pais}</td>
+                <td className="px-3 py-2">
+                  <BarraCelda valor={p.visitas} maximo={max} tenue={p.pais !== "Argentina"} />
+                </td>
+                <td className="num px-3 py-2 text-right">{p.contactos || <span className="text-ink-faint">0</span>}</td>
+                <td className="num px-3 py-2 text-right">{p.leads || <span className="text-ink-faint">0</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="border-t border-dashed border-line-strong px-3 py-2.5 text-[11.5px] text-ink-muted">
+        “Dudosas” son visitas del exterior sin referente, sin anuncio y sin un gesto medido: casi seguro datacenters. Se
+        cuentan en Visitas pero se descuentan de la tasa de conversión, para no culpar a la propuesta por bots.
+      </p>
+    </section>
+  )
+}
+
+/* ── Chatbots ─────────────────────────────────────────────────────────────── */
+
+function PanelChatbots({ extra, total }: { extra: ExtraRadiografia; total: number }) {
+  const bots = extra.chatbots
+  const visitas = bots.reduce((s, b) => s + b.visitas, 0)
+  const contactos = bots.reduce((s, b) => s + b.contactos + b.leads, 0)
+  const paginas = new Map<string, number>()
+  for (const b of bots) for (const p of b.paginas) paginas.set(p.path, (paginas.get(p.path) ?? 0) + p.visitas)
+  const top = [...paginas.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4)
+
+  return (
+    <section className="panel">
+      <div className="panel-header">
+        <h3 className="flex items-center gap-1.5 text-[15px] font-semibold tracking-[-0.015em]">
+          <Bot className="h-4 w-4 text-ink-muted" /> Chatbots que nos recomiendan
+        </h3>
+        <span className="num text-[11.5px] text-ink-subtle">
+          {visitas.toLocaleString("es-AR")} visitas · {porcentaje(visitas, total, 1)} del sitio
+        </span>
+      </div>
+      {bots.length === 0 ? (
+        <p className="p-4 text-[12.5px] text-ink-muted">
+          Ningún chatbot (ChatGPT, Perplexity, Copilot, Gemini, Claude) mandó visitas en este período.
+        </p>
+      ) : (
+        <div className="p-4">
+          <ul className="flex flex-col gap-2">
+            {bots.map((b) => (
+              <li key={b.nombre} className="flex items-center justify-between gap-3 text-[12.5px]">
+                <span className="font-medium text-ink">{b.nombre}</span>
+                <span className="num text-ink-muted">
+                  {b.visitas} visitas · {b.contactos + b.leads} contactos
+                </span>
+              </li>
+            ))}
+          </ul>
+          {top.length > 0 && (
+            <>
+              <p className="eyebrow mb-1.5 mt-4">Qué páginas recomiendan</p>
+              <ul className="flex flex-col gap-1">
+                {top.map(([path, v]) => (
+                  <li key={path} className="flex items-center justify-between gap-3 text-[12px]">
+                    <span className="truncate font-mono text-[11.5px] text-ink-secondary">{path}</span>
+                    <span className="num shrink-0 text-ink-muted">{v}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <p className="mt-4 border-t border-dashed border-line-strong pt-3 text-[11.5px] text-ink-muted">
+            {contactos
+              ? `Ya trajeron ${contactos} ${contactos === 1 ? "contacto" : "contactos"}. `
+              : "Todavía no trajeron contactos. "}
+            Es un canal que crece solo: lo que los chatbots leen de esas páginas es lo que dicen de Accedra. Conviene que
+            tengan precio o rango, casos y preguntas frecuentes claras.
+          </p>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+/** Las repreguntas que quedan a mano después de preguntar desde la radiografía. */
+const SEGUIMIENTOS = [
+  { emoji: "🎯", corto: "Qué hago primero", texto: "Si tuviera que hacer una sola cosa esta semana con estos resultados, ¿cuál sería y cómo mido si funcionó?" },
+  { emoji: "💵", corto: "¿Muevo presupuesto?", texto: "Con estos números, ¿moverías presupuesto entre canales o campañas? ¿Cuánto y hacia dónde?" },
+  { emoji: "🔎", corto: "¿Es un problema de medición?", texto: "¿Puede ser que algo de esto sea un problema de medición y no de rendimiento? ¿Qué revisaría para descartarlo?" },
+  { emoji: "🎫", corto: "Anotalo como ticket", texto: "Anotá como ticket la acción principal que propusiste, con el detalle para que la pueda hacer otra persona." },
+]
+
+/**
+ * La radiografía en texto, para el chat: lo mismo que se ve, en el orden en que
+ * se lee. Sin la lista de leads ni nombres de personas: con las cifras alcanza
+ * para explicar qué pasa, y si hace falta más el agente tiene sus herramientas.
+ */
+function textoRadiografia(rx: Radiografia, datos: Resultados, periodo: Periodo): string {
+  const r = rx.resumen
+  const cambio = (ahora: number, antes: number | null) => {
+    if (antes === null) return ""
+    const v = variacion(ahora, antes)
+    return ` (antes ${antes.toLocaleString("es-AR")}${v === null ? "" : `, ${v > 0 ? "+" : ""}${Math.round(v)}%`})`
+  }
+  const SALUD: Record<Salud, string> = { bien: "bien", flojo: "flojo", mal: "mal", poco: "pocos datos", "sin-datos": "sin datos" }
+
+  return resumen(
+    renglon("Período", `${PERIODO_LABEL[periodo]} (${datos.sitio.desde} → ${datos.sitio.hasta})`),
+    renglon("Canal filtrado", rx.filtro ? CANAL_LABEL[rx.filtro] : "todos"),
+    "",
+    "## Diagnóstico",
+    rx.cuello
+      ? [`Problema principal (${rx.cuello.salud}): ${rx.cuello.titulo}`, `Por qué: ${rx.cuello.porque}`, `Qué propone el panel: ${rx.cuello.accion}`]
+      : "Ningún paso del embudo por debajo de lo esperable.",
+    rx.otros.map((h) => `También (${h.salud}): ${h.titulo}. ${h.accion}`),
+    rx.buenos.map((b) => `Anda bien: ${b}`),
+    "",
+    "## Cifras",
+    renglon("Invertido en Google Ads", pesos(rx.gasto)),
+    `Contactos: ${r.contactos}${cambio(r.contactos, r.contactosAntes)}`,
+    rx.contactosAds ? `Costo por contacto de Ads: ${pesos(rx.gasto / rx.contactosAds)} (${rx.contactosAds} contactos de anuncios)` : "Ningún contacto vino de un anuncio",
+    `Clientes nuevos: ${r.clientes}${r.montoGanado !== null && r.clientes ? ` (${pesos(r.montoGanado)})` : ""}`,
+    "",
+    "## Embudo",
+    rx.etapas.map(
+      (e) =>
+        `${e.titulo}: ${e.total.toLocaleString("es-AR")}${cambio(e.total, e.antes)} · ${SALUD[e.salud]}${
+          e.paso ? ` · ${e.paso.texto}` : ""
+        }${e.evaluaciones.length ? `\n  ${e.evaluaciones.filter((v) => !v.soloFiltro || rx.filtro).map((v) => v.texto).join("\n  ")}` : ""}`
+    ),
+    "",
+    "## Por canal (vistas / interés / visitas / contactos / clientes)",
+    rx.canales.map(
+      (f) =>
+        `${CANAL_LABEL[f.canal]}: ${f.vistas ?? "—"} / ${f.interes ?? "—"} / ${f.visitas}${
+          f.visitasAntes !== null ? ` (antes ${f.visitasAntes})` : ""
+        } / ${f.contactos} / ${f.clientes}`
+    ),
+    rx.desglose === "estimado" && "El desglose por canal es estimado.",
+    rx.avisos.length > 0 && ["", "## Qué falta medir", ...rx.avisos.map((a) => `- ${a}`)]
   )
 }

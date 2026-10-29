@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { Download, PieChart, Search } from "lucide-react"
 
+import { Preguntar } from "@/components/chatbot/preguntar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,6 +24,7 @@ import { formatearCuit } from "@/lib/admin/cuit"
 import type { Cliente, TipoEntidad } from "@/lib/admin/entidades"
 import { formatearImporte, formatearTc } from "@/lib/admin/moneda"
 import { claves, pedirJson } from "@/lib/admin/query"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { cn } from "@/lib/utils"
 
 type FilaCuenta = {
@@ -293,6 +295,21 @@ export function CuentaCorrienteClient({ tipo }: { tipo: TipoEntidad }) {
                   {formatearImporte(soloImpagas ? totalPendiente : saldoFinal, "ARS")}
                 </p>
               </div>
+
+              <Preguntar
+                agente="finanzas"
+                pantalla={() => ({
+                  titulo: `Administración · Cuenta corriente de ${elegida.razonSocial}`,
+                  texto: textoCuenta(tipo, elegida.razonSocial, filas, saldoFinal),
+                })}
+                pregunta={
+                  tipo === "cliente"
+                    ? "¿Cómo viene esta cuenta? ¿Paga en término, qué le queda impago y qué haría para cobrarlo?"
+                    : "¿Cómo viene esta cuenta? ¿Qué le debemos, desde cuándo y qué conviene pagar primero?"
+                }
+                ayuda="Le pasa el saldo, las impagas con su antigüedad y los últimos movimientos."
+                seguimientos={SEGUIMIENTOS}
+              />
             </div>
           </div>
 
@@ -423,4 +440,49 @@ const SIN_FILAS: never[] = []
 function fechaCorta(iso: string): string {
   const [a, m, d] = iso.split("-")
   return `${Number(d)}/${Number(m)}/${a.slice(2)}`
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS = [
+  { emoji: "⏱️", corto: "¿Cuánto tarda en pagar?", texto: "Mirando los movimientos, ¿cuántos días pasan en promedio entre una factura y su pago?" },
+  { emoji: "🔎", corto: "¿Algo que no cierra?", texto: "¿Hay algo en esta cuenta que no cierre? Pagos sin imputar, saldos a favor, diferencias de cambio." },
+  { emoji: "✉️", corto: "Redactá el reclamo", texto: "Redactame un mensaje corto y cordial para reclamar lo que está impago, con el detalle de cada comprobante." },
+]
+
+/**
+ * La cuenta corriente en texto, para el chat. Acá sí va el nombre: es la ficha
+ * que la persona eligió y está mirando. Nada de CUIT ni datos de contacto.
+ */
+function textoCuenta(tipo: TipoEntidad, nombre: string, filas: FilaCuenta[], saldoFinal: number): string {
+  const ars = (n: number) => formatearImporte(n, "ARS")
+  const hoy = Date.now()
+  const dias = (iso: string) => Math.round((hoy - Date.parse(iso)) / 86_400_000)
+  const impagas = filas.filter((f) => f.impaga)
+  const pagos = filas.filter((f) => f.importeArs < 0)
+  const ultimoPago = pagos[pagos.length - 1]
+
+  return resumen(
+    renglon(tipo === "cliente" ? "Cliente" : "Proveedor", nombre),
+    renglon(tipo === "cliente" ? "Saldo (nos debe)" : "Saldo (le debemos)", ars(saldoFinal)),
+    renglon("Movimientos en la cuenta", filas.length),
+    renglon("Primer movimiento", filas[0] && fechaCorta(filas[0].fecha)),
+    renglon(
+      tipo === "cliente" ? "Último cobro" : "Último pago",
+      ultimoPago ? `${fechaCorta(ultimoPago.fecha)} por ${ars(-ultimoPago.importeArs)}` : "ninguno"
+    ),
+    "",
+    `## Impagas (${impagas.length}, pendiente ${ars(impagas.reduce((a, f) => a + (f.pendienteArs ?? 0), 0))})`,
+    // Las más viejas primero: son las que preocupan.
+    impagas.slice(0, 20).map(
+      (f) =>
+        `${fechaCorta(f.fecha)} · ${f.tipo} ${f.comprobante ?? ""} · pendiente ${ars(f.pendienteArs ?? 0)} de ${ars(
+          f.importeArs
+        )} · hace ${dias(f.fecha)} días${f.moneda === "USD" ? " · en dólares" : ""}`
+    ),
+    impagas.length > 20 && `(y ${impagas.length - 20} impagas más recientes)`,
+    "",
+    "## Últimos movimientos",
+    filas.slice(-12).map((f) => `${fechaCorta(f.fecha)} · ${f.tipo} · ${ars(f.importeArs)} · saldo ${ars(f.saldo)}`)
+  )
 }

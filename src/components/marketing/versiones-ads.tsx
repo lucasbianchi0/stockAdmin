@@ -17,6 +17,8 @@ import {
 import Link from "next/link"
 
 import { Badge } from "@/components/ui/badge"
+import { Preguntar } from "@/components/chatbot/preguntar"
+import { renglon, resumen as juntar } from "@/lib/chatbot/pantalla"
 import type { Cambio, EstadoVersion, TipoCambio, Version } from "@/lib/marketing/ads-versiones"
 import { cn } from "@/lib/utils"
 
@@ -57,7 +59,21 @@ export function VersionesAds({ versiones }: { versiones: Version[] }) {
 
   return (
     <div className="mx-auto w-full max-w-[880px] space-y-10 px-5 py-8 sm:px-8">
-      <Portada actual={actual} versiones={versiones.length} cambios={cambios} enCurso={enCurso} />
+      <Portada
+        actual={actual}
+        versiones={versiones.length}
+        cambios={cambios}
+        enCurso={enCurso}
+        preguntar={
+          <Preguntar
+            agente="marketing"
+            pantalla={{ titulo: "Versiones de Ads", texto: textoVersiones(versiones) }}
+            pregunta="Mirá el historial de versiones de Ads: ¿qué cambios funcionaron, cuáles hay que revisar ya y qué probarías en la próxima versión?"
+            ayuda="Le pasa cada versión con su estado, qué se esperaba, qué pasó y los cambios que tuvo."
+            seguimientos={SEGUIMIENTOS}
+          />
+        }
+      />
 
       <ol className="relative">
         {/* La línea: arranca fuerte en "Hoy" y se apaga hacia la primera versión. */}
@@ -98,15 +114,20 @@ function Portada({
   versiones,
   cambios,
   enCurso,
+  preguntar,
 }: {
   actual?: Version
   versiones: number
   cambios: number
   enCurso: number
+  preguntar?: React.ReactNode
 }) {
   return (
     <div className="rounded-2xl border border-line bg-gradient-to-br from-brand-50/80 via-surface to-surface p-6 shadow-e1 sm:p-7">
-      <p className="eyebrow">Changelog de Google Ads · cuenta 300-886-7811</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="eyebrow">Changelog de Google Ads · cuenta 300-886-7811</p>
+        {preguntar}
+      </div>
       <h2 className="mt-2 max-w-2xl text-[20px] font-semibold leading-snug tracking-[-0.025em] text-ink">
         Cada cambio en las campañas, con su porqué y el dato que lo respalda.
       </h2>
@@ -191,6 +212,13 @@ export function VersionDetalle({ v }: { v: Version }) {
           <Badge tone={estado.tone} size="md" className="ml-auto">
             {estado.label}
           </Badge>
+          <Preguntar
+            agente="marketing"
+            pantalla={{ titulo: `Versiones de Ads · v${v.numero}`, texto: textoVersion(v) }}
+            pregunta={`¿Qué cambió en la v${v.numero} y cómo le fue? Decime si cumplió lo que esperábamos y qué harías ahora.`}
+            ayuda="Le pasa la versión completa: cambios, porqués, datos, qué se esperaba y qué pasó."
+            seguimientos={SEGUIMIENTOS}
+          />
         </div>
         <h2 className="mt-3 text-[21px] font-semibold leading-snug tracking-[-0.025em] text-ink">{v.titulo}</h2>
         <p className="mt-2 max-w-2xl text-[13.5px] leading-[1.7] text-ink-secondary">{v.resumen}</p>
@@ -333,5 +361,55 @@ function Nota({
         {children}
       </div>
     </div>
+  )
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS = [
+  { emoji: "📊", corto: "¿Cómo lo mido?", texto: "¿Con qué números concretos de la cuenta confirmo si esto funcionó? Si podés, fijate cómo vienen ahora." },
+  { emoji: "↩️", corto: "¿Lo revierto?", texto: "¿Hay algún cambio que revertirías? ¿Por qué y qué riesgo tiene dejarlo?" },
+  { emoji: "🧪", corto: "Próxima versión", texto: "Proponeme la próxima versión: qué cambios, por qué, qué esperamos ver y cuándo revisarlo." },
+]
+
+/** Un cambio en un renglón, con el antes y el después si los tiene. */
+function textoCambio(c: Cambio): string {
+  const tramo = c.antes || c.despues ? ` (${c.antes ?? "—"} → ${c.despues ?? "—"})` : ""
+  return `- [${TIPOS[c.tipo]?.label ?? c.tipo} · ${c.campana}] ${c.que}${tramo}. Por qué: ${c.porque}${c.dato ? ` Dato: ${c.dato}` : ""}`
+}
+
+/** Una versión entera en texto, para el chat: lo mismo que su página. */
+function textoVersion(v: Version): string {
+  return juntar(
+    renglon("Versión", `v${v.numero} · ${v.fecha} · ${v.titulo}`),
+    renglon("Estado", ESTADOS[v.estado].label),
+    renglon("Resumen", v.resumen),
+    renglon("Qué esperábamos ver", v.esperado),
+    renglon("Revisar el", v.revisar_el),
+    renglon("Qué pasó", v.resultado),
+    "",
+    `## ${v.cambios.length} cambios`,
+    v.cambios.map(textoCambio)
+  )
+}
+
+/**
+ * El historial en texto: cada versión en pocas líneas, sin el porqué de cada
+ * cambio (para eso está el botón de la versión). Va de la última a la primera.
+ */
+function textoVersiones(versiones: Version[]): string {
+  return juntar(
+    renglon("Versiones", versiones.length),
+    renglon("En observación", versiones.filter((v) => v.estado === "en_curso").length),
+    "",
+    versiones.map((v) =>
+      juntar(
+        `## v${v.numero} · ${v.fecha} · ${ESTADOS[v.estado].label} · ${v.titulo}`,
+        renglon("Cambios", v.cambios.map((c) => `${TIPOS[c.tipo]?.label ?? c.tipo} en ${c.campana}: ${c.que}`).join("; ")),
+        renglon("Esperado", v.esperado),
+        v.estado === "en_curso" ? renglon("Se revisa el", v.revisar_el) : null,
+        renglon("Qué pasó", v.resultado)
+      )
+    )
   )
 }

@@ -31,21 +31,24 @@ export const TIPO_PISTA: Record<Tipo, string> = {
 
 /** Personas en azul de marca; agentes en violeta, el mismo de la etiqueta de
  *  agente de la ticketera; procesos en verde azulado. */
-export const TIPO_COLOR: Record<Tipo, { punto: string; chip: string; borde: string }> = {
+export const TIPO_COLOR: Record<Tipo, { punto: string; chip: string; borde: string; anillo: string }> = {
   persona: {
     punto: "bg-brand-500",
     chip: "bg-brand-50 text-brand-800 hover:bg-brand-100",
     borde: "border-l-brand-500",
+    anillo: "border-brand-300",
   },
   agente: {
     punto: "bg-violet-500",
     chip: "bg-violet-50 text-violet-800 hover:bg-violet-100",
     borde: "border-l-violet-500",
+    anillo: "border-violet-300",
   },
   proceso: {
     punto: "bg-teal-500",
     chip: "bg-teal-50 text-teal-800 hover:bg-teal-100",
     borde: "border-l-teal-500",
+    anillo: "border-teal-300",
   },
 }
 

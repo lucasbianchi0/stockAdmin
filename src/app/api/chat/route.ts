@@ -30,7 +30,7 @@ import {
   proyectosDeTickets,
   type ProyectoTicket,
 } from "@/lib/chatbot/tickets"
-import { MAX_HISTORIAL, MAX_LARGO, MAX_LARGO_RESPUESTA, MAX_MENSAJES } from "@/lib/chatbot/limites"
+import { MAX_HISTORIAL, MAX_LARGO_CON_PANTALLA, MAX_LARGO_RESPUESTA, MAX_MENSAJES } from "@/lib/chatbot/limites"
 import { nombreDeUsuario } from "@/lib/usuario"
 
 /**
@@ -113,8 +113,9 @@ function leerHistorial(body: unknown): Entrada[] | null {
     const texto = content.trim()
     // Lo que escribe la persona tiene un tope; lo que respondió el asistente,
     // otro más alto. Con uno solo, la primera respuesta larga rompía el
-    // mensaje siguiente.
-    const tope = role === "user" ? MAX_LARGO : MAX_LARGO_RESPUESTA
+    // mensaje siguiente. El de la persona incluye lo que estaba mirando si
+    // preguntó desde una pantalla (ver pantalla.ts).
+    const tope = role === "user" ? MAX_LARGO_CON_PANTALLA : MAX_LARGO_RESPUESTA
     if (!texto || texto.length > tope) return null
     mensajes.push({ role, content: texto })
   }

@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
+import { Preguntar } from "@/components/chatbot/preguntar"
 import { Avatar } from "@/components/ui/avatar"
 import { BarraTabla } from "@/components/ui/barra-tabla"
 import { Button } from "@/components/ui/button"
@@ -72,6 +73,7 @@ import {
 } from "@/lib/comercial/crm"
 import type { FichaEmpresa } from "@/lib/contactos-compartido"
 import { coincide, palabrasDeBusqueda } from "@/lib/busqueda"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { cn } from "@/lib/utils"
 
 /**
@@ -594,6 +596,25 @@ export function CrmClient() {
           ]}
           extra={
             <span className="flex items-center gap-3">
+              <Preguntar
+                pantalla={() => ({
+                  titulo: `Comercial · ${esEquipo ? "CRM del equipo" : esMio ? "Mi CRM" : `CRM de ${d.owner.nombre}`}`,
+                  texto: textoCrm(base, {
+                    equipo: esEquipo ? d.equipo : null,
+                    filtros: [
+                      filtros.am && `AM: ${filtros.am === "sin" ? "sin AM" : (d.equipo.find((u) => u.id === filtros.am)?.nombre ?? "uno")}`,
+                      filtros.proyecto && `Proyecto: ${filtros.proyecto}`,
+                      filtros.vertical && `Vertical: ${filtros.vertical}`,
+                      filtros.empresa && "Una sola empresa",
+                      filtros.fecha && `Próxima acción: ${filtros.fecha === "vencidas" ? "vencidas" : filtros.fecha === "semana" ? "próximos 7 días" : "sin fecha"}`,
+                      busqueda.trim() && "Con una búsqueda escrita",
+                    ],
+                  }),
+                })}
+                pregunta="Mirá el embudo del CRM: ¿dónde se traban los proyectos, qué está en riesgo y en qué tendría que enfocarme esta semana?"
+                ayuda="Le pasa cuántos proyectos hay en cada etapa, los montos y lo vencido o quieto. Sin nombres de contactos."
+                seguimientos={SEGUIMIENTOS_CRM}
+              />
               {!editable && !esEquipo && (
                 <span className="inline-flex items-center gap-1">
                   <Lock className="h-3 w-3" />
@@ -1276,6 +1297,95 @@ function ResumenEquipo({
         </tbody>
       </table>
     </div>
+  )
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+/** Las repreguntas que quedan a mano después de preguntar desde el CRM. */
+const SEGUIMIENTOS_CRM = [
+  { emoji: "🧊", corto: "Los quietos", texto: "¿Qué hago con los proyectos sin movimiento? ¿Cuáles reactivo y cuáles doy por perdidos?" },
+  { emoji: "🎯", corto: "Qué cierro este mes", texto: "De lo que está en propuesta y negociación, ¿qué es lo más probable de cerrar este mes y qué paso falta en cada caso?" },
+  { emoji: "📉", corto: "Por qué perdemos", texto: "Con los motivos de pérdida, ¿hay un patrón? ¿Qué cambiaría en la propuesta o en el seguimiento?" },
+  { emoji: "🎫", corto: "Anotalo como ticket", texto: "Anotá como ticket la acción principal que propusiste, con el detalle para que la pueda hacer otra persona." },
+]
+
+/**
+ * El CRM en texto, para el chat: el embudo por etapa con cantidades y montos,
+ * lo vencido o quieto, y cómo se reparte por proyecto. Sin nombres de
+ * contactos, mails ni teléfonos: para leer el embudo alcanzan las cifras.
+ */
+function textoCrm(
+  ops: Oportunidad[],
+  c: { equipo: { id: string; nombre: string }[] | null; filtros: (string | false)[] }
+): string {
+  const usd = (n: number) => `USD ${Math.round(n).toLocaleString("es-AR")}`
+  const monto = (os: Oportunidad[]) => os.reduce((a, o) => a + (o.montoUsd ?? 0), 0)
+  const ponderado = (os: Oportunidad[]) => os.reduce((a, o) => a + ((o.montoUsd ?? 0) * o.probabilidad) / 100, 0)
+  const abiertas = ops.filter((o) => ESTA_ABIERTA(o.estado))
+  const k = calcularKpis(ops)
+
+  const etapas = ESTADOS_CRM.map((e) => {
+    const de = ops.filter((o) => o.estado === e)
+    if (!de.length) return `${ESTADO_CRM_LABEL[e]}: 0`
+    const m = monto(de)
+    return `${ESTADO_CRM_LABEL[e]}: ${de.length}${m ? ` · ${usd(m)}` : ""}${
+      ESTA_ABIERTA(e) ? ` · ${de.filter(esEstancada).length} sin movimiento` : ""
+    }`
+  })
+
+  // Lo abierto por proyecto (lo que se vende), de mayor a menor.
+  const proyectos = new Map<string, Oportunidad[]>()
+  for (const o of abiertas) {
+    const n = o.proyecto ?? "Sin proyecto"
+    proyectos.set(n, [...(proyectos.get(n) ?? []), o])
+  }
+  const porProyecto = [...proyectos]
+    .sort((a, b) => b[1].length - a[1].length)
+    .slice(0, 10)
+    .map(([n, os]) => `${n}: ${os.length} abiertos${monto(os) ? ` · ${usd(monto(os))}` : ""}`)
+
+  const motivos = new Map<string, number>()
+  for (const o of ops) {
+    if (o.estado !== "perdida" || !o.motivoPerdida) continue
+    const m = o.motivoPerdida.trim().slice(0, 80)
+    motivos.set(m, (motivos.get(m) ?? 0) + 1)
+  }
+
+  const porPersona = c.equipo?.map((u) => {
+    const suyas = ops.filter((o) => o.ownerId === u.id)
+    const ku = calcularKpis(suyas)
+    return `${u.nombre}: ${ku.activas} abiertos · ${ku.negociacion} en negociación · ${ku.vencidas} vencidas · ${
+      suyas.filter(esEstancada).length
+    } sin movimiento · ${ku.ganadas} ganados · ${ku.perdidas} perdidos`
+  })
+
+  return resumen(
+    `Proyectos en pantalla: ${ops.length}`,
+    c.filtros.filter(Boolean).length > 0 && `Filtros: ${c.filtros.filter(Boolean).join(" · ")}`,
+    "",
+    "## Embudo por etapa",
+    etapas,
+    "",
+    "## Lo abierto",
+    `Abiertos: ${abiertas.length}`,
+    renglon("Monto abierto", monto(abiertas) ? usd(monto(abiertas)) : null),
+    renglon("Ponderado por % de cierre", ponderado(abiertas) ? usd(ponderado(abiertas)) : null),
+    renglon("Sin monto cargado", abiertas.filter((o) => o.montoUsd === null).length),
+    `Próximas acciones vencidas: ${k.vencidas}`,
+    `Próximas acciones en los próximos 7 días: ${k.proximas - k.vencidas}`,
+    renglon("Sin próxima acción ni fecha", abiertas.filter((o) => !o.proximaAccion && !o.fechaProxima).length),
+    `Sin movimiento hace ${DIAS_ESTANCADA} días o más: ${abiertas.filter(esEstancada).length}`,
+    renglon("Con presupuesto armado", abiertas.filter((o) => o.presupuesto).length),
+    "",
+    "## Abiertos por proyecto",
+    porProyecto,
+    motivos.size > 0 && [
+      "",
+      "## Motivos de pérdida",
+      ...[...motivos].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([m, n]) => `${m} (${n})`),
+    ],
+    porPersona && ["", "## Por persona", ...porPersona]
   )
 }
 

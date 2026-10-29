@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { StatCard } from "@/components/ui/stat-card"
 import { ErrorState, LoadingState } from "@/components/ui/states"
 import { BarraCelda, SerieDiaria } from "@/components/marketing/resultados-graficos"
+import { Preguntar } from "@/components/chatbot/preguntar"
+import { renglon, resumen } from "@/lib/chatbot/pantalla"
 import { claveDe, mensajeError, pedirJson } from "@/lib/admin/query"
 import { diaCorto, momento, variacion } from "@/lib/marketing/linkedin"
 import {
@@ -233,7 +235,16 @@ function Publicaciones({ datos }: { datos: ResultadosRed }) {
     <section className="panel">
       <div className="panel-header">
         <h3 className="text-[15px] font-semibold tracking-[-0.015em]">Publicaciones del período</h3>
-        <span className="num text-[11.5px] text-ink-subtle">{pubs.length}</span>
+        <span className="flex items-center gap-3">
+          <span className="num text-[11.5px] text-ink-subtle">{pubs.length}</span>
+          <Preguntar
+            agente="marketing"
+            pantalla={() => ({ titulo: `Resultados · ${RED_LABEL[datos.red]}`, texto: textoRed(datos) })}
+            pregunta={`Mirá ${RED_LABEL[datos.red]} en este período: ¿qué publicaciones funcionaron, cuáles no, por qué puede ser y qué publicaría ahora?`}
+            ayuda="Le pasa vistas, alcance, interacciones y seguidores contra el período anterior, y cada publicación."
+            seguimientos={SEGUIMIENTOS}
+          />
+        </span>
       </div>
       {pubs.length === 0 ? (
         <p className="p-4 text-[12.5px] text-ink-faint">Ninguna publicación en este período.</p>
@@ -303,5 +314,49 @@ function Num({ v }: { v: number | null }) {
     <td className="num px-3 py-2 text-right text-ink-muted">
       {v === null ? <span className="text-ink-faint">—</span> : v.toLocaleString("es-AR")}
     </td>
+  )
+}
+
+/* ── Para el chat ─────────────────────────────────────────────────────────── */
+
+const SEGUIMIENTOS = [
+  { emoji: "🗓️", corto: "Armame el calendario", texto: "Proponeme qué publicar las próximas dos semanas, con tema y formato de cada pieza." },
+  { emoji: "🔁", corto: "¿Qué repito?", texto: "¿Qué tienen en común las publicaciones que mejor anduvieron y cómo lo repito sin que se note igual?" },
+  { emoji: "🌐", corto: "¿Trae gente al sitio?", texto: "¿Esta red está trayendo visitas o contactos, o sólo se queda en la red? ¿Qué cambiaría para que traiga?" },
+]
+
+/**
+ * La red en texto, para el chat: totales contra el período anterior y las
+ * publicaciones con sus números. De cada texto va sólo el primer renglón.
+ */
+function textoRed(d: ResultadosRed): string {
+  const t = d.totales
+  const a = d.anterior
+  const esIg = d.red === "instagram"
+  const cmp = (ahora: number, antes: number) => {
+    const v = variacion(ahora, antes)
+    return `${ahora.toLocaleString("es-AR")}${v === null ? "" : ` (antes ${antes.toLocaleString("es-AR")}, ${v >= 0 ? "+" : ""}${Math.round(v * 100)}%)`}`
+  }
+  const n = (v: number | null) => (v === null ? "—" : String(v))
+  return resumen(
+    renglon("Red", RED_LABEL[d.red]),
+    renglon("Período", `${d.desde} → ${d.hasta}`),
+    renglon("Datos hasta", d.datosHasta ? diaCorto(d.datosHasta) : null),
+    d.ultima && !d.ultima.ok && `La última actualización falló: ${d.ultima.detalle}`,
+    "",
+    "## Cuenta",
+    renglon("Vistas", cmp(t.vistas, a.vistas)),
+    renglon("Cuentas alcanzadas (suma diaria)", cmp(t.alcance, a.alcance)),
+    renglon("Interacciones", `${cmp(t.interacciones, a.interacciones)} · ${t.me_gusta} me gusta, ${t.comentarios} comentarios, ${t.compartidos} compartidos${esIg ? `, ${t.guardados} guardados` : ""}`),
+    renglon("Seguidores", d.seguidores),
+    renglon("Seguidores nuevos", `+${t.seguidores_nuevos}${t.seguidores_perdidos ? ` / −${t.seguidores_perdidos}` : ""}`),
+    esIg ? renglon("Clics en el perfil", t.clics_enlace) : renglon("Visitas a la página", t.visitas_perfil),
+    "",
+    `## Publicaciones (vistas / alcance / me gusta / comentarios / compartidos${esIg ? " / guardados" : ""})`,
+    d.publicaciones.length === 0 && "Ninguna en el período.",
+    d.publicaciones.slice(0, 25).map(
+      (p) =>
+        `${p.fecha ? p.fecha.slice(0, 10) : "s/f"}${p.tipo ? ` [${p.tipo}]` : ""} · ${(p.texto?.split("\n")[0] || "(sin texto)").slice(0, 80)}: ${n(p.vistas)} / ${n(p.alcance)} / ${n(p.me_gusta)} / ${n(p.comentarios)} / ${n(p.compartidos)}${esIg ? ` / ${n(p.guardados)}` : ""}`
+    )
   )
 }
